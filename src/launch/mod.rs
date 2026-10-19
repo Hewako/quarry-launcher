@@ -1,3 +1,5 @@
+pub mod e2e;
+
 use std::path::PathBuf;
 
 pub struct LaunchConfig {

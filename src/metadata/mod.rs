@@ -49,7 +49,7 @@ pub struct VersionDetails {
     #[serde(rename = "javaVersion")]
     pub java_version: JavaVersion,
     #[serde(default)]
-    pub libraries: Vec<Library>,
+    pub libraries: Vec<LibraryFull>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -216,7 +216,7 @@ mod tests {
             d.id,
             d.java_version.major_version,
             d.libraries.len(),
-            usable_libraries(&d.libraries).len()
+            usable_libraries_full(&d.libraries).len()
         );
     }
 
@@ -233,4 +233,40 @@ mod tests {
         ];
         assert!(!is_library_allowed(&disallow_current));
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LibraryDownloadsFull {
+    pub artifact: Option<Artifact>,
+    #[serde(default)]
+    pub classifiers: std::collections::HashMap<String, Artifact>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LibraryFull {
+    pub name: String,
+    #[serde(default)]
+    pub rules: Vec<Rule>,
+    pub downloads: Option<LibraryDownloadsFull>,
+    #[serde(default)]
+    pub natives: std::collections::HashMap<String, String>,
+}
+
+impl LibraryFull {
+    pub fn is_allowed(&self) -> bool {
+        is_library_allowed(&self.rules)
+    }
+
+    /// Имя классификатора нативов для текущей ОС (например, "natives-macos-arm64")
+    pub fn native_classifier(&self) -> Option<&str> {
+        self.natives.get(current_os()).map(|s| s.as_str())
+    }
+}
+
+pub fn usable_libraries_full(libs: &[LibraryFull]) -> Vec<&Artifact> {
+    libs.iter()
+        .filter(|lib| lib.is_allowed())
+        .filter_map(|lib| lib.downloads.as_ref())
+        .filter_map(|d| d.artifact.as_ref())
+        .collect()
 }
