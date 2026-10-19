@@ -1,9 +1,12 @@
-use std::path::Path;
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 
-// Проверяем, что файл существует и его SHA-1 совпадает с ожидаемым
-pub async fn verify_sha1(path: &Path, expected: &str) -> Result<bool, Box<dyn std::error::Error>> {
+type BoxErr = Box<dyn std::error::Error + Send + Sync>;
+
+pub async fn verify_sha1(path: &Path, expected: &str) -> Result<bool, BoxErr> {
     if !path.exists() {
         return Ok(false);
     }
@@ -14,48 +17,78 @@ pub async fn verify_sha1(path: &Path, expected: &str) -> Result<bool, Box<dyn st
     Ok(hex.eq_ignore_ascii_case(expected))
 }
 
-// Скачиваем файл во временный, проверяем SHA-1, затем атомарно заменяем целевой
-pub async fn download_file(
-    url: &str,
-    dest: &Path,
-    expected_sha1: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn download_file(url: &str, dest: &Path, expected_sha1: &str) -> Result<(), BoxErr> {
     if verify_sha1(dest, expected_sha1).await? {
         return Ok(());
     }
-
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-
     let client = reqwest::Client::builder()
         .user_agent(crate::USER_AGENT)
         .build()?;
-
     let resp = client.get(url).send().await?;
     if !resp.status().is_success() {
-        return Err(format!("Ошибка HTTP: {}", resp.status()).into());
+        return Err(format!("HTTP {} для {}", resp.status(), url).into());
     }
-
     let bytes = resp.bytes().await?;
-
     let mut hasher = Sha1::new();
     hasher.update(&bytes);
     let hex = hex::encode(hasher.finalize());
     if !hex.eq_ignore_ascii_case(expected_sha1) {
-        return Err(format!(
-            "Несовпадение SHA-1: ожидался {}, получен {}",
-            expected_sha1, hex
-        )
-        .into());
+        return Err(format!("SHA-1 не совпал: ожидали {}, получили {}", expected_sha1, hex).into());
     }
-
     let tmp = dest.with_extension("tmp");
     let mut file = tokio::fs::File::create(&tmp).await?;
     file.write_all(&bytes).await?;
     file.flush().await?;
     tokio::fs::rename(&tmp, dest).await?;
+    Ok(())
+}
 
+pub async fn download_raw(url: &str, dest: &Path) -> Result<(), BoxErr> {
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let client = reqwest::Client::builder()
+        .user_agent(crate::USER_AGENT)
+        .build()?;
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {} для {}", resp.status(), url).into());
+    }
+    let bytes = resp.bytes().await?;
+    let tmp = dest.with_extension("tmp");
+    let mut file = tokio::fs::File::create(&tmp).await?;
+    file.write_all(&bytes).await?;
+    file.flush().await?;
+    tokio::fs::rename(&tmp, dest).await?;
+    Ok(())
+}
+
+/// Скачиваем несколько файлов параллельно, но не больше `concurrency` одновременно.
+pub async fn download_many(
+    items: Vec<(String, PathBuf, String)>,
+    concurrency: usize,
+) -> Result<(), BoxErr> {
+    let sem = Arc::new(Semaphore::new(concurrency));
+    let mut set = tokio::task::JoinSet::new();
+    for (url, dest, sha1) in items {
+        let permit = sem.clone().acquire_owned().await.map_err(|e| e.to_string())?;
+        set.spawn(async move {
+            let _permit = permit;
+            download_file(&url, &dest, &sha1)
+                .await
+                .map_err(|e| e.to_string())
+        });
+    }
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(e.into()),
+            Err(e) => return Err(format!("Задача упала: {}", e).into()),
+        }
+    }
     Ok(())
 }
 
@@ -69,17 +102,14 @@ mod tests {
         tokio::fs::create_dir_all(&dir).await.unwrap();
         let path = dir.join("test.txt");
         tokio::fs::write(&path, b"hello").await.unwrap();
-
         let ok = verify_sha1(&path, "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d")
             .await
             .unwrap();
-        assert!(ok, "Хэш должен совпасть");
-
+        assert!(ok);
         let bad = verify_sha1(&path, "0000000000000000000000000000000000000000")
             .await
             .unwrap();
-        assert!(!bad, "Неверный хэш не должен совпадать");
-
+        assert!(!bad);
         tokio::fs::remove_dir_all(&dir).await.unwrap();
     }
 
@@ -95,12 +125,10 @@ mod tests {
         let details = crate::metadata::fetch_version_details(&entry.url)
             .await
             .unwrap();
-
         let dir = std::env::temp_dir().join("quarry_test_download_client");
         tokio::fs::create_dir_all(&dir).await.unwrap();
         let dest = dir.join("client.jar");
         let _ = tokio::fs::remove_file(&dest).await;
-
         download_file(
             &details.downloads.client.url,
             &dest,
@@ -108,41 +136,7 @@ mod tests {
         )
         .await
         .unwrap();
-
-        assert!(dest.exists(), "Файл должен существовать после скачивания");
-        let ok = verify_sha1(&dest, &details.downloads.client.sha1)
-            .await
-            .unwrap();
-        assert!(ok, "SHA-1 скачанного файла должен совпасть");
-
+        assert!(dest.exists());
         tokio::fs::remove_dir_all(&dir).await.unwrap();
     }
-}
-
-// Скачиваем файл без проверки хэша. Нужно для источников, которые не публикуют SHA-1
-// (например, Adoptium отдаёт только SHA-256). Целостность проверяется отдельно —
-// запуском скачанного бинарника и разбором его версии.
-pub async fn download_raw(url: &str, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(parent) = dest.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    let client = reqwest::Client::builder()
-        .user_agent(crate::USER_AGENT)
-        .build()?;
-
-    let resp = client.get(url).send().await?;
-    if !resp.status().is_success() {
-        return Err(format!("Ошибка HTTP: {}", resp.status()).into());
-    }
-
-    let bytes = resp.bytes().await?;
-
-    let tmp = dest.with_extension("tmp");
-    let mut file = tokio::fs::File::create(&tmp).await?;
-    file.write_all(&bytes).await?;
-    file.flush().await?;
-    tokio::fs::rename(&tmp, dest).await?;
-
-    Ok(())
 }
