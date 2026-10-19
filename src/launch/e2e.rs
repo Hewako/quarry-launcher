@@ -17,7 +17,6 @@ async fn e2e_launch() {
         username: "QuarryTest".into(),
         uuid: "00000000000000000000000000000001".into(),
         access_token: "0".into(),
-        user_type: "legacy".into(),
         version_type: "release".into(),
         asset_index: inst.asset_index.clone(),
         min_memory_mb: 1024,

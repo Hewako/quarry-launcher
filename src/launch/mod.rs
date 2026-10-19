@@ -13,7 +13,6 @@ pub struct LaunchConfig {
     pub username: String,
     pub uuid: String,
     pub access_token: String,
-    pub user_type: String,
     pub version_type: String,
     pub asset_index: String,
     pub min_memory_mb: u32,
@@ -59,8 +58,6 @@ pub fn build_command(cfg: &LaunchConfig) -> LaunchCommand {
     args.push(cfg.uuid.clone());
     args.push("--accessToken".into());
     args.push(cfg.access_token.clone());
-    args.push("--userType".into());
-    args.push(cfg.user_type.clone());
     args.push("--versionType".into());
     args.push(cfg.version_type.clone());
 
@@ -83,7 +80,6 @@ mod tests {
             username: "Steve".into(),
             uuid: "00000000-0000-0000-0000-000000000000".into(),
             access_token: "secret-token".into(),
-            user_type: "msa".into(),
             version_type: "release".into(),
             asset_index: "26".into(),
             min_memory_mb: 2048,
@@ -110,6 +106,12 @@ mod tests {
         let c = build_command(&sample());
         let i = c.args.iter().position(|a| a == "--accessToken").unwrap();
         assert_eq!(c.args[i + 1], "secret-token");
+    }
+
+    #[test]
+    fn no_usertype() {
+        let c = build_command(&sample());
+        assert!(!c.args.iter().any(|a| a == "--userType"));
     }
 
     #[test]

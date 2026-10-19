@@ -270,3 +270,45 @@ pub fn usable_libraries_full(libs: &[LibraryFull]) -> Vec<&Artifact> {
         .filter_map(|d| d.artifact.as_ref())
         .collect()
 }
+
+/// Возвращает все версии, если include_all = true, иначе только релизы.
+pub fn filter_versions<'a>(
+    versions: &'a [VersionEntry],
+    include_all: bool,
+) -> Vec<&'a VersionEntry> {
+    if include_all {
+        versions.iter().collect()
+    } else {
+        versions.iter().filter(|v| v.version_type == "release").collect()
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    fn v(id: &str, t: &str) -> VersionEntry {
+        VersionEntry {
+            id: id.into(),
+            version_type: t.into(),
+            url: String::new(),
+            time: String::new(),
+            release_time: String::new(),
+        }
+    }
+
+    #[test]
+    fn only_release_by_default() {
+        let list = vec![v("26.3", "release"), v("26.4-snap", "snapshot"), v("a1.2.6", "old_alpha")];
+        let out = filter_versions(&list, false);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "26.3");
+    }
+
+    #[test]
+    fn all_types_when_requested() {
+        let list = vec![v("26.3", "release"), v("26.4-snap", "snapshot"), v("a1.2.6", "old_alpha")];
+        let out = filter_versions(&list, true);
+        assert_eq!(out.len(), 3);
+    }
+}

@@ -17,9 +17,17 @@ enum Commands {
         #[command(subcommand)]
         action: ProfileAction,
     },
+    /// Список доступных версий Minecraft
+    Versions {
+        /// Показать не только релизы (снапшоты, альфы, беты)
+        #[arg(long)]
+        all: bool,
+        /// Максимум строк в выводе
+        #[arg(long, default_value = "30")]
+        limit: usize,
+    },
     /// Запустить профиль
     Launch {
-        /// ID профиля (например, my-survival)
         profile_id: String,
         #[arg(short, long, default_value = "Player")]
         username: String,
@@ -64,6 +72,18 @@ fn to_anyhow(e: Box<dyn std::error::Error + Send + Sync>) -> anyhow::Error {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Versions { all, limit } => {
+            let manifest = quarry_core::metadata::fetch_manifest()
+                .await
+                .map_err(to_anyhow)?;
+            let filtered = quarry_core::metadata::filter_versions(&manifest.versions, all);
+            println!("{:<25} {:<15} {}", "ID", "Тип", "Дата релиза");
+            for v in filtered.iter().take(limit) {
+                let date = v.release_time.get(0..10).unwrap_or(&v.release_time);
+                println!("{:<25} {:<15} {}", v.id, v.version_type, date);
+            }
+            println!("\nВсего: {}", filtered.len());
+        }
         Commands::Profile { action } => match action {
             ProfileAction::Create { name, version, root } => {
                 let root = data_root(root)?;
@@ -113,7 +133,6 @@ async fn main() -> Result<()> {
                 username,
                 uuid: "00000000000000000000000000000001".into(),
                 access_token: "0".into(),
-                user_type: "legacy".into(),
                 version_type: "release".into(),
                 asset_index: inst.asset_index.clone(),
                 min_memory_mb: 2048,
