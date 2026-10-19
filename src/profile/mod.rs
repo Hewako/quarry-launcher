@@ -8,6 +8,8 @@ pub struct Profile {
     pub id: String,
     pub name: String,
     pub mc_version: String,
+    #[serde(default)]
+    pub loader: Option<String>,
 }
 
 pub struct ProfileStore {
@@ -55,7 +57,7 @@ impl ProfileStore {
         }
         Ok(toml::from_str(&std::fs::read_to_string(&path)?)?)
     }
-    pub fn create(&self, name: &str, mc_version: &str) -> Result<Profile, BoxErr> {
+    pub fn create(&self, name: &str, mc_version: &str, loader: Option<&str>) -> Result<Profile, BoxErr> {
         let id = slugify(name);
         if id.is_empty() {
             return Err("Имя профиля не может быть пустым".into());
@@ -69,6 +71,7 @@ impl ProfileStore {
             id: id.clone(),
             name: name.to_string(),
             mc_version: mc_version.to_string(),
+            loader: loader.map(|l| l.to_string()),
         };
         std::fs::write(dir.join("profile.toml"), toml::to_string_pretty(&profile)?)?;
         Ok(profile)

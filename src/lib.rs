@@ -5,5 +5,6 @@ pub mod launch;
 pub mod account;
 pub mod instance;
 pub mod profile;
+pub mod loader;
 
 pub const USER_AGENT: &str = concat!("Quarry/", env!("CARGO_PKG_VERSION"));

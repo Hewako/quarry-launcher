@@ -5,7 +5,7 @@ async fn e2e_launch() {
     let _ = tokio::fs::remove_dir_all(&root).await;
     let game_dir = root.join("game");
 
-    let inst = crate::instance::prepare("26.3", &root, &game_dir).await.unwrap();
+    let inst = crate::instance::prepare("26.3", &root, &game_dir, None).await.unwrap();
     let cfg = crate::launch::LaunchConfig {
         java_path: inst.java_path.clone(),
         main_class: inst.main_class.clone(),

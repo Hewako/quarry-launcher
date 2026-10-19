@@ -20,14 +20,25 @@ pub async fn prepare(
     version_id: &str,
     cache_root: &Path,
     game_dir: &Path,
+    loader: Option<&str>,
 ) -> Result<PreparedInstance, BoxErr> {
-    let manifest = metadata::fetch_manifest().await?;
-    let entry = manifest
-        .versions
-        .iter()
-        .find(|v| v.id == version_id)
-        .ok_or_else(|| format!("Версия {} не найдена", version_id))?;
-    let details = metadata::fetch_version_details(&entry.url).await?;
+    let (details, maven_libs) = match loader {
+        Some("fabric") => {
+            let install = crate::loader::install_fabric(version_id, None).await?;
+            println!("Fabric Loader {}", install.loader_version);
+            (install.details, install.maven_libs)
+        }
+        Some(other) => return Err(format!("Неизвестный загрузчик: {}", other).into()),
+        None => {
+            let manifest = metadata::fetch_manifest().await?;
+            let entry = manifest
+                .versions
+                .iter()
+                .find(|v| v.id == version_id)
+                .ok_or_else(|| format!("Версия {} не найдена", version_id))?;
+            (metadata::fetch_version_details(&entry.url).await?, Vec::new())
+        }
+    };
 
     let lib_dir = cache_root.join("libraries");
     let version_dir = cache_root.join("versions").join(version_id);
@@ -104,6 +115,20 @@ pub async fn prepare(
     downloader::download_many(asset_downloads, 16).await?;
     println!("Ассеты готовы");
 
+    // Maven-библиотеки Fabric: скачиваем последовательно, если файла ещё нет
+    let mut maven_paths: Vec<PathBuf> = Vec::new();
+    if !maven_libs.is_empty() {
+        println!("Скачиваем {} библиотек Fabric...", maven_libs.len());
+        for m in &maven_libs {
+            let dest = lib_dir.join(&m.path);
+            if !dest.exists() {
+                downloader::download_raw(&m.url, &dest).await?;
+            }
+            maven_paths.push(dest);
+        }
+        println!("Библиотеки Fabric готовы");
+    }
+
     let mut classpath: Vec<PathBuf> = vec![client_path];
     for lib in &details.libraries {
         if !lib.is_allowed() {
@@ -115,6 +140,7 @@ pub async fn prepare(
             }
         }
     }
+    classpath.extend(maven_paths);
 
     let java_root = cache_root.join("java");
     let java_path = match crate::java::find_java().await {

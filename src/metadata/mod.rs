@@ -50,6 +50,10 @@ pub struct VersionDetails {
     pub java_version: JavaVersion,
     #[serde(default)]
     pub libraries: Vec<LibraryFull>,
+    #[serde(rename = "inheritsFrom", default)]
+    pub inherits_from: Option<String>,
+    #[serde(default)]
+    pub arguments: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

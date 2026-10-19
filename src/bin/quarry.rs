@@ -42,6 +42,9 @@ enum ProfileAction {
         name: String,
         #[arg(short, long)]
         version: String,
+        /// Загрузчик модов: fabric или ничего (vanilla)
+        #[arg(long)]
+        loader: Option<String>,
         #[arg(long)]
         root: Option<PathBuf>,
     },
@@ -85,11 +88,14 @@ async fn main() -> Result<()> {
             println!("\nВсего: {}", filtered.len());
         }
         Commands::Profile { action } => match action {
-            ProfileAction::Create { name, version, root } => {
+            ProfileAction::Create { name, version, loader, root } => {
                 let root = data_root(root)?;
                 let store = ProfileStore::new(root);
-                let p = store.create(&name, &version).map_err(to_anyhow)?;
-                println!("Создан профиль '{}' (ID: {})", p.name, p.id);
+                let p = store.create(&name, &version, loader.as_deref()).map_err(to_anyhow)?;
+                match &p.loader {
+                    Some(l) => println!("Создан профиль '{}' (ID: {}) с загрузчиком {}", p.name, p.id, l),
+                    None => println!("Создан профиль '{}' (ID: {})", p.name, p.id),
+                }
             }
             ProfileAction::List { root } => {
                 let root = data_root(root)?;
@@ -118,9 +124,14 @@ async fn main() -> Result<()> {
             let game_dir = store.game_dir(&profile_id);
             println!("Запускаем '{}' ({})", profile.name, profile.mc_version);
 
-            let inst = quarry_core::instance::prepare(&profile.mc_version, &root, &game_dir)
-                .await
-                .map_err(to_anyhow)?;
+            let inst = quarry_core::instance::prepare(
+                &profile.mc_version,
+                &root,
+                &game_dir,
+                profile.loader.as_deref(),
+            )
+            .await
+            .map_err(to_anyhow)?;
 
             let cfg = quarry_core::launch::LaunchConfig {
                 java_path: inst.java_path.clone(),
