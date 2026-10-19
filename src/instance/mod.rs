@@ -16,7 +16,11 @@ pub struct PreparedInstance {
     pub required_java: u32,
 }
 
-pub async fn prepare(version_id: &str, root: &Path) -> Result<PreparedInstance, BoxErr> {
+pub async fn prepare(
+    version_id: &str,
+    cache_root: &Path,
+    game_dir: &Path,
+) -> Result<PreparedInstance, BoxErr> {
     let manifest = metadata::fetch_manifest().await?;
     let entry = manifest
         .versions
@@ -25,16 +29,15 @@ pub async fn prepare(version_id: &str, root: &Path) -> Result<PreparedInstance, 
         .ok_or_else(|| format!("Версия {} не найдена", version_id))?;
     let details = metadata::fetch_version_details(&entry.url).await?;
 
-    let lib_dir = root.join("libraries");
-    let version_dir = root.join("versions").join(version_id);
-    let assets_dir = root.join("assets");
-    let natives_dir = root.join("natives");
-    let game_dir = root.join("game");
+    let lib_dir = cache_root.join("libraries");
+    let version_dir = cache_root.join("versions").join(version_id);
+    let assets_dir = cache_root.join("assets");
+    let natives_dir = cache_root.join("natives").join(version_id);
     tokio::fs::create_dir_all(&lib_dir).await?;
     tokio::fs::create_dir_all(&version_dir).await?;
     tokio::fs::create_dir_all(&assets_dir).await?;
     tokio::fs::create_dir_all(&natives_dir).await?;
-    tokio::fs::create_dir_all(&game_dir).await?;
+    tokio::fs::create_dir_all(game_dir).await?;
 
     let client_path = version_dir.join("client.jar");
     downloader::download_file(
@@ -113,9 +116,13 @@ pub async fn prepare(version_id: &str, root: &Path) -> Result<PreparedInstance, 
         }
     }
 
-    let java_root = root.join("java");
+    let java_root = cache_root.join("java");
     let java_path = match crate::java::find_java().await {
-        Ok(Some((path, ver))) if ver >= details.java_version.major_version && path != PathBuf::from("java") => path,
+        Ok(Some((path, ver)))
+            if ver >= details.java_version.major_version && path != PathBuf::from("java") =>
+        {
+            path
+        }
         _ => crate::java::download_jre(details.java_version.major_version, &java_root).await?,
     };
 
@@ -124,7 +131,7 @@ pub async fn prepare(version_id: &str, root: &Path) -> Result<PreparedInstance, 
         main_class: details.main_class.clone(),
         java_path,
         classpath,
-        game_dir,
+        game_dir: game_dir.to_path_buf(),
         assets_dir,
         natives_dir,
         asset_index: details.asset_index.id.clone(),

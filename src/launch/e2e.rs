@@ -1,13 +1,12 @@
-use tokio::process::Command;
-
 #[tokio::test]
 #[ignore]
 async fn e2e_launch() {
     let root = std::env::temp_dir().join("quarry_e2e");
     let _ = tokio::fs::remove_dir_all(&root).await;
+    let game_dir = root.join("game");
 
-    let inst = quarry_core::instance::prepare("26.3", &root).await.unwrap();
-    let cfg = quarry_core::launch::LaunchConfig {
+    let inst = crate::instance::prepare("26.3", &root, &game_dir).await.unwrap();
+    let cfg = crate::launch::LaunchConfig {
         java_path: inst.java_path.clone(),
         main_class: inst.main_class.clone(),
         classpath: inst.classpath.clone(),
@@ -24,9 +23,9 @@ async fn e2e_launch() {
         min_memory_mb: 1024,
         max_memory_mb: 2048,
     };
-    let cmd = quarry_core::launch::build_command(&cfg);
+    let cmd = crate::launch::build_command(&cfg);
 
-    let mut child = Command::new(&cmd.program)
+    let mut child = tokio::process::Command::new(&cmd.program)
         .args(&cmd.args)
         .current_dir(&inst.game_dir)
         .stdout(std::process::Stdio::piped())
@@ -40,9 +39,11 @@ async fn e2e_launch() {
             let log = tokio::fs::read_to_string(inst.game_dir.join("logs").join("latest.log"))
                 .await
                 .unwrap_or_default();
-            let errors: Vec<&str> = log.lines()
+            let errors: Vec<&str> = log
+                .lines()
                 .filter(|l| l.contains("ERROR") || l.contains("FATAL") || l.contains("Caused by"))
-                .take(20).collect();
+                .take(20)
+                .collect();
             panic!("Игра упала с {:?}:\n{}", status, errors.join("\n"));
         }
         None => {
