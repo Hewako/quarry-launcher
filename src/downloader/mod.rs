@@ -118,3 +118,31 @@ mod tests {
         tokio::fs::remove_dir_all(&dir).await.unwrap();
     }
 }
+
+// Скачиваем файл без проверки хэша. Нужно для источников, которые не публикуют SHA-1
+// (например, Adoptium отдаёт только SHA-256). Целостность проверяется отдельно —
+// запуском скачанного бинарника и разбором его версии.
+pub async fn download_raw(url: &str, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent(crate::USER_AGENT)
+        .build()?;
+
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(format!("Ошибка HTTP: {}", resp.status()).into());
+    }
+
+    let bytes = resp.bytes().await?;
+
+    let tmp = dest.with_extension("tmp");
+    let mut file = tokio::fs::File::create(&tmp).await?;
+    file.write_all(&bytes).await?;
+    file.flush().await?;
+    tokio::fs::rename(&tmp, dest).await?;
+
+    Ok(())
+}
