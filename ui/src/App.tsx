@@ -42,8 +42,14 @@ function inkFor(hex: string): string {
 }
 
 /** Акцентный цвет, масштаб и плотность интерфейса из настроек. */
-export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | "compact">) {
+const FONTS: Record<string, string> = {
+  readable: 'Verdana, "DejaVu Sans", Tahoma, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+};
+
+export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | "compact" | "font">) {
   const root = document.documentElement;
+  if (FONTS[g.font]) root.style.setProperty("--font", FONTS[g.font]); else root.style.removeProperty("--font");
   if (g.accent) {
     root.style.setProperty("--accent", g.accent);
     root.style.setProperty("--accent-ink", inkFor(g.accent));

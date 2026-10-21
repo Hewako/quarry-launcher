@@ -891,4 +891,8 @@ export const EN: Record<string, string> = {
   "Аккаунты и скины": "Accounts & skins",
   "{0} на диске": "{0} on disk",
   " · процессор в среднем {0} %": " · CPU {0} % on average",
+  "Шрифт": "Font",
+  "Системный": "System",
+  "Разборчивый (шире буквы)": "Readable (wider letters)",
+  "С засечками": "Serif",
 };

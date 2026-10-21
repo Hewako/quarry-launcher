@@ -93,6 +93,15 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           <span />
         </div>
         <div className="setting">
+          <div className="lbl">{t("Шрифт")}</div>
+          <select className="field" value={s.font} onChange={(e) => { const n = { ...s, font: e.target.value }; setS(n); onAppearance(n); }}>
+            <option value="system">{t("Системный")}</option>
+            <option value="readable">{t("Разборчивый (шире буквы)")}</option>
+            <option value="serif">{t("С засечками")}</option>
+          </select>
+          <span />
+        </div>
+        <div className="setting">
           <div className="lbl">{t("Компактный режим")}<span className="hint">{t("меньше отступов — больше строк на экране")}</span></div>
           <label className="row"><input type="checkbox" checked={s.compact} onChange={(e) => { const n = { ...s, compact: e.target.checked }; setS(n); onAppearance(n); }} /> {t("включён")}</label>
           <span />

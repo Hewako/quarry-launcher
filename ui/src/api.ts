@@ -141,7 +141,7 @@ export interface LoaderVersion { version: string; stable: boolean }
 export interface AccountRef { provider: Provider; uuid: string; name: string; owns_java_edition: boolean; checked_at: number; skin_url?: string; skin_variant?: string }
 export interface GlobalSettings {
   launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string;
-  language: string; accent?: string; ui_scale: number; compact: boolean; first_run_done: boolean;
+  language: string; accent?: string; ui_scale: number; compact: boolean; font: string; first_run_done: boolean;
   backup_before_risky_launch: boolean; backup_after_exit: boolean; backup_every_days: number; download_limit_kbps: number; check_launcher_updates: boolean;
 }
 export interface WorldBackup { world: string; file: string; size: number; created_at: number }

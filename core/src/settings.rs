@@ -284,6 +284,9 @@ pub struct GlobalSettings {
     /// Компактный режим: меньше отступов.
     #[serde(default)]
     pub compact: bool,
+    /// Шрифт интерфейса: `system`, `readable` или `serif`.
+    #[serde(default = "default_font")]
+    pub font: String,
     /// Мастер первого запуска пройден.
     #[serde(default)]
     pub first_run_done: bool,
@@ -310,6 +313,9 @@ fn default_theme() -> String {
 fn default_language() -> String {
     "ru".into()
 }
+fn default_font() -> String {
+    "system".into()
+}
 fn default_scale() -> u32 {
     100
 }
@@ -328,6 +334,7 @@ impl Default for GlobalSettings {
             accent: None,
             ui_scale: default_scale(),
             compact: false,
+            font: default_font(),
             first_run_done: false,
             backup_before_risky_launch: true,
             backup_after_exit: false,
