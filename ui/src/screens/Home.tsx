@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { duration, loaderName, relTime, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
+import { duration, loaderName, relTime, sizeText, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
 import { CrashCard } from "../ui/CrashCard";
@@ -34,6 +34,10 @@ function remarks(inst: Instance, accounts: AccountRef[], info: AppInfo) {
     if (ms.length === 0 && info.dev_launch) out.push({ cls: "warn", text: t("Режим разработчика: запуск без входа"), hint: t("только для отладки на своей копии игры") });
   } else {
     out.push({ cls: "warn", text: t("Профиль входит через Ely.by"), hint: t("только совместимые серверы; официальные недоступны") });
+  }
+  const free = info.free_bytes;
+  if (free !== undefined && free < 5 * 1024 ** 3) {
+    out.push({ cls: free < 2 * 1024 ** 3 ? "err" : "warn", text: t("Мало места на диске: свободно {0}", sizeText(free)), hint: t("версии игры с модами нужно 1–3 ГБ") });
   }
   const l = inst.last_launch;
   if (l && (l.outcome === "crashed" || l.outcome === "failed_to_start")) {

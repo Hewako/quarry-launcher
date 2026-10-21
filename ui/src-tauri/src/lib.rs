@@ -35,6 +35,8 @@ struct AppInfo {
     microsoft_configured: bool,
     /// В сборку подставлен ключ CurseForge.
     curseforge: bool,
+    /// Свободно на диске с данными Quarry (для проверки перед запуском).
+    free_bytes: Option<u64>,
     os: &'static str,
 }
 
@@ -46,6 +48,7 @@ fn app_info(state: State<AppState>) -> AppInfo {
         data_dir: state.data.root().display().to_string(),
         microsoft_configured: quarry_core::account::microsoft::CLIENT_ID.is_some(),
         curseforge: quarry_core::curseforge::api_key().is_some(),
+        free_bytes: quarry_core::paths::free_space(state.data.root()),
         os: std::env::consts::OS,
     }
 }
@@ -505,6 +508,18 @@ async fn account_avatar(state: State<'_, AppState>, key: String) -> CmdResult<Op
         .map_err(err)?;
     Ok(match account {
         Some(a) => quarry_core::skin::avatar_data_url(&state.data, &a).await,
+        None => None,
+    })
+}
+
+/// Текущий скин аккаунта: фигура спереди и сзади (data-URL); `None` — скина нет.
+#[tauri::command]
+async fn account_skin(state: State<'_, AppState>, key: String) -> CmdResult<Option<String>> {
+    let account = AccountStore::new(&state.data, &KeyringStore)
+        .get(&key)
+        .map_err(err)?;
+    Ok(match account {
+        Some(a) => quarry_core::skin::figure_data_url(&state.data, &a).await,
         None => None,
     })
 }
@@ -1845,6 +1860,7 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            account_skin,
             launcher_update,
             bisect_status,
             bisect_step,

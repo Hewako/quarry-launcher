@@ -848,4 +848,11 @@ export const EN: Record<string, string> = {
   "Сообщать о новой версии Quarry": "Tell me about new Quarry versions",
   "проверка на GitHub при запуске; скачивание — только по вашему нажатию": "checked on GitHub at startup; downloading only when you click",
   "Подробнее о приватности": "More about privacy",
+  "Скин": "Skin",
+  "Скин спереди и сзади": "Skin front and back",
+  "Скина нет — в игре будет стандартный Steve или Alex.": "No skin — the game will use the default Steve or Alex.",
+  "Скин Ely.by виден только на серверах, которые используют Ely.by. Сменить его можно на ely.by.": "An Ely.by skin is visible only on servers that use Ely.by. You can change it on ely.by.",
+  "Сменить скин можно на minecraft.net.": "You can change your skin on minecraft.net.",
+  "Мало места на диске: свободно {0}": "Low disk space: {0} free",
+  "версии игры с модами нужно 1–3 ГБ": "a game version with mods needs 1–3 GB",
 };

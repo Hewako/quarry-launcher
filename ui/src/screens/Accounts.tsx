@@ -94,6 +94,11 @@ function ElyLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: Accoun
 
 export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppInfo; accounts: AccountRef[]; defaultKey?: string; onChanged: () => void }) {
   const streamer = useStreamer();
+  const [skin, setSkin] = useState<Record<string, string | null>>({});
+  const showSkin = (key: string) => {
+    if (key in skin) { const { [key]: _, ...rest } = skin; setSkin(rest); return; }
+    api.accountSkin(key).then((url) => setSkin((s) => ({ ...s, [key]: url }))).catch(() => setSkin((s) => ({ ...s, [key]: null })));
+  };
   const dialog = useDialog();
   const [msLogin, setMsLogin] = useState(false);
   const [elyBusy, setElyBusy] = useState(false);
@@ -138,7 +143,14 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
         <div className="acc" key={accountKey(a)}>
           <Avatar account={a} size={40} />
           <div className="grow">
-            <b>{nick(a.name, streamer)}</b>
+            <b>{nick(a.name, streamer)}</b>{" "}
+            <button className="btn link small" aria-expanded={skin[accountKey(a)] !== undefined} onClick={() => showSkin(accountKey(a))}>{t("Скин")}</button>
+            {skin[accountKey(a)] !== undefined && (
+              <div style={{ margin: "8px 0" }}>
+                {skin[accountKey(a)] ? <img className="skinfig" src={skin[accountKey(a)]!} alt={t("Скин спереди и сзади")} /> : <span className="muted small">{t("Скина нет — в игре будет стандартный Steve или Alex.")}</span>}
+                <div className="muted small">{a.provider === "elyby" ? t("Скин Ely.by виден только на серверах, которые используют Ely.by. Сменить его можно на ely.by.") : t("Сменить скин можно на minecraft.net.")}</div>
+              </div>
+            )}
             <div className="row" style={{ gap: 6, marginTop: 4 }}>
               {a.provider === "microsoft" ? (
                 <>

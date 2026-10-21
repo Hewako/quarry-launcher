@@ -56,6 +56,7 @@ mockIPC((cmd, args) => {
     case "support_report_preview": return [{ name: "summary.txt", content: "Отчёт поддержки Quarry\n\nQuarry: 0.1.0\nВерсия игры: 26.3" }, { name: "mods.txt", content: "[вкл] Sodium 0.8.14 (sodium.jar)" }];
     case "first_run_info": return { data_dir: "/Users/player/.quarry", free_bytes: 84_000_000_000, javas: [{ path: "/usr/bin/java", major: 21, version: "21.0.4", arch: "aarch64" }] };
     case "first_run_done": return null;
+    case "account_skin": return null;
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

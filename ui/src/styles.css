@@ -291,3 +291,4 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .steps li.on { background: var(--accent); color: var(--accent-ink); }
 .steps li.done { color: var(--text); }
 .privacy li { margin-bottom: 6px; }
+.skinfig { width: 144px; height: 128px; image-rendering: pixelated; display: block; }

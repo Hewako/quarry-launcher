@@ -122,6 +122,7 @@ export interface AppInfo {
   version: string;
   dev_launch: boolean;
   curseforge: boolean;
+  free_bytes?: number;
   data_dir: string;
   microsoft_configured: boolean;
   os: string;
@@ -211,6 +212,7 @@ export const api = {
   listAccounts: () => invoke<AccountRef[]>("list_accounts"),
   removeAccount: (key: string) => invoke<void>("remove_account", { key }),
   accountAvatar: (key: string) => invoke<string | null>("account_avatar", { key }),
+  accountSkin: (key: string) => invoke<string | null>("account_skin", { key }),
   setDefaultAccount: (key: string) => invoke<void>("set_default_account", { key }),
   microsoftStart: () => invoke<DeviceCode>("microsoft_start"),
   microsoftFinish: (code: DeviceCode) => invoke<AccountRef>("microsoft_finish", { code }),
