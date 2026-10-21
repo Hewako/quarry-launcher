@@ -45,6 +45,9 @@ pub struct LockEntry {
     pub layer: Layer,
     #[serde(default)]
     pub installed_at: u64,
+    /// Версия закреплена: проверка обновлений её не трогает.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -117,6 +120,7 @@ mod tests {
             title: Some("Sodium".into()),
             layer: Layer::User,
             installed_at: 1,
+            pinned: false,
         });
         l.save(&d).unwrap();
         let l = PackLock::load(&d).unwrap();

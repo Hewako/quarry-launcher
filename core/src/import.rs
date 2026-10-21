@@ -238,6 +238,7 @@ fn mark_imported(instance_dir: &Path, game_dir: &Path) -> Result<()> {
                 title: None,
                 layer: Layer::Base,
                 installed_at: now(),
+                pinned: false,
             });
         }
     }
@@ -429,6 +430,7 @@ pub async fn import_mrpack(
                 title: None,
                 layer: Layer::Base,
                 installed_at: now(),
+                pinned: false,
             });
         }
         download::download_all(tasks, 6, Verify::Full, None, cancel).await?;

@@ -1,7 +1,8 @@
 // Вкладка «Моды · Mod Doctor»: проверка сборки, список модов, каталог Modrinth, обновления.
 // Любое изменение модов — через предпросмотр и автоматический снимок.
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { errText, mods, sizeText, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
+import { errText, mods, sizeText, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
@@ -135,9 +136,52 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   const [catalog, setCatalog] = useState<string | null>(null);
   const [plan, setPlan] = useState<{ title: string; plan: Plan; reason: string } | null>(null);
   const [checking, setChecking] = useState(false);
+  // Доступные обновления: проверяются сами при открытии вкладки (один запрос к Modrinth).
+  const [available, setAvailable] = useState<Plan | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [dragging, setDragging] = useState(false);
 
   const load = useCallback(() => { mods.view(inst.id).then((d) => { setData(d); setError(""); }).catch((e) => setError(errText(e))); }, [inst.id]);
   useEffect(load, [load]);
+  const refreshUpdates = useCallback(() => {
+    if (inst.loader === "vanilla") return;
+    mods.checkUpdates(inst.id).then(setAvailable).catch(() => setAvailable(null));
+  }, [inst.id, inst.loader]);
+  useEffect(refreshUpdates, [refreshUpdates]);
+
+  // Перетаскивание JAR-файлов в окно.
+  useEffect(() => {
+    if (inst.loader === "vanilla" || running) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    getCurrentWebview()
+      .onDragDropEvent(async (e) => {
+        if (e.payload.type === "over" || e.payload.type === "enter") setDragging(true);
+        else if (e.payload.type === "leave") setDragging(false);
+        else if (e.payload.type === "drop") {
+          setDragging(false);
+          const jars = e.payload.paths.filter((p) => p.toLowerCase().endsWith(".jar"));
+          if (jars.length === 0) { await dialog.alert("Не JAR-файлы", "Перетащите файлы модов с расширением .jar."); return; }
+          try {
+            const added = await mods.addFiles(inst.id, jars);
+            load();
+            refreshUpdates();
+            const unknown = added.filter((a) => !a.known);
+            await dialog.alert(
+              `Добавлено модов: ${added.length}`,
+              unknown.length === 0
+                ? "Все файлы опознаны в каталоге Modrinth. Перед добавлением создан снимок."
+                : `Не найдены в каталоге Modrinth: ${unknown.map((u) => u.title).join(", ")}. Происхождение этих файлов неизвестно — ставьте моды только из надёжных источников (через заражённые моды распространялся вирус Fractureiser). Перед добавлением создан снимок.`,
+            );
+          } catch (err) {
+            await dialog.alert("Файлы не добавлены", errText(err));
+          }
+        }
+      })
+      .then((u) => { if (alive) off = u; else u(); })
+      .catch(() => {}); // в предпросмотре без Tauri перетаскивания нет
+    return () => { alive = false; off?.(); };
+  }, [inst.id, inst.loader, running, dialog, load, refreshUpdates]);
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -158,16 +202,28 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   };
   const updates = async () => {
     setChecking(true);
-    try { setPlan({ title: "Обновления модов", plan: await mods.checkUpdates(inst.id), reason: "Перед обновлением модов" }); }
+    try {
+      const p = await mods.checkUpdates(inst.id);
+      setAvailable(p);
+      const chosen = picked.size ? p.changes.filter((c) => picked.has(base(c.old_file ?? ""))) : p.changes;
+      setPlan({ title: picked.size ? "Обновить выбранные" : "Обновления модов", plan: { ...p, changes: chosen }, reason: "Перед обновлением модов" });
+    }
     catch (e) { await dialog.alert("Не удалось проверить обновления", errText(e)); }
     finally { setChecking(false); }
   };
+  const pin = async (f: ModFile) => {
+    try { await mods.pin(inst.id, f.file_name, !f.source?.pinned); load(); refreshUpdates(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+  };
   const r = data.report;
+  const base = (name: string) => name.replace(/\.disabled$/, "");
+  const updateFor = (f: ModFile): Change | undefined => available?.changes.find((c) => base(c.old_file ?? "") === f.file_name);
+  const updateCount = available?.changes.length ?? 0;
   const stateOf = (f: ModFile) => r.mods.find((m) => m.file_name === f.file_name);
 
   return (
     <>
       {running && <div className="alert warn"><span className="small">Игра запущена — менять моды можно после её закрытия.</span></div>}
+      {dragging && <div className="alert info"><div className="h">Отпустите, чтобы добавить моды в «{inst.name}»</div><span className="small">Перед добавлением будет создан снимок.</span></div>}
       <div className="findings">
         {r.findings.map((f, i) => <FindingCard key={i} f={f} files={data.files} onToggle={toggle} onSearch={(q) => setCatalog(q)} />)}
       </div>
@@ -180,15 +236,18 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
       <div className="modbar">
         <input className="field" style={{ maxWidth: 260 }} placeholder="Найти мод…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span style={{ flex: 1 }} />
-        <button className="btn" disabled={running || checking} onClick={updates}>{checking ? "Проверяем…" : "Проверить обновления"}</button>
+        <span className="muted small">{available === null ? "обновления проверяются…" : updateCount ? `обновления есть у ${updateCount}` : "обновлений нет"}</span>
+        <button className="btn" disabled={running || checking || updateCount === 0} onClick={updates}>
+          {checking ? "Проверяем…" : picked.size ? `Обновить выбранные (${picked.size})… (предпросмотр)` : "Обновить всё… (предпросмотр)"}
+        </button>
         <button className="btn pri" disabled={running} onClick={() => setCatalog("")}>+ Добавить мод</button>
       </div>
       {data.files.length === 0 ? (
-        <div className="card empty"><p>Модов пока нет. Добавьте их из каталога Modrinth или положите JAR в папку mods.</p></div>
+        <div className="card empty"><p>Модов пока нет. Добавьте их из каталога Modrinth или перетащите JAR-файлы в окно.</p></div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "auto" }}>
           <table className="modtable">
-            <thead><tr><th style={{ width: 44 }} /><th>Мод</th><th>Версия</th><th>Сторона</th><th>Источник</th><th>Слой</th><th>Состояние</th><th /></tr></thead>
+            <thead><tr><th style={{ width: 44 }} /><th>Мод</th><th>Версия</th><th>Доступна версия</th><th>Сторона</th><th>Источник</th><th>Слой</th><th>Состояние</th><th /></tr></thead>
             <tbody>
               {shown.map((f) => {
                 const st = stateOf(f);
@@ -197,12 +256,25 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
                   <tr key={f.rel_path} className={f.enabled ? "" : "off"}>
                     <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={f.enabled ? "Выключить" : "Включить"} onClick={() => toggle(f.file_name, !f.enabled)} /></td>
                     <td><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <small>{st!.notes[0]}</small>}{!m && <small>{f.file_name}</small>}</td>
-                    <td>{m?.version ?? "?"}</td>
+                    <td>{m?.version ?? "?"}{f.source?.pinned && <small style={{ color: "var(--warn)" }}>закреплена</small>}</td>
+                    <td>{(() => {
+                      const u = updateFor(f);
+                      if (!u) return <span className="muted">—</span>;
+                      return (
+                        <label className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                          <input type="checkbox" checked={picked.has(f.file_name)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(f.file_name); else n.delete(f.file_name); setPicked(n); }} />
+                          <span className="upd" style={{ color: "var(--blue)" }}>→ {u.new_version}</span>
+                        </label>
+                      );
+                    })()}</td>
                     <td>{sideName[m?.side ?? "unknown"]}</td>
                     <td>{f.source ? sourceName[f.source.source] : "вручную"}</td>
                     <td className="layer">{f.source?.layer === "base" ? "сборка" : "мои моды"}</td>
                     <td>{st && <span className={`badge ${stateCls[st.state]}`}>{st.state_label}</span>}</td>
-                    <td><button className="btn link small" disabled={running} onClick={() => remove(f)}>Удалить</button></td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button className="btn link small" disabled={running} onClick={() => pin(f)} title="Закреплённая версия не обновляется">{f.source?.pinned ? "Открепить" : "Закрепить"}</button>{" · "}
+                      <button className="btn link small" disabled={running} onClick={() => remove(f)}>Удалить</button>
+                    </td>
                   </tr>
                 );
               })}
@@ -221,7 +293,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
       )}
       {catalog !== null && <CatalogDialog inst={inst} initial={catalog} onClose={() => setCatalog(null)} onPlan={(title, p) => { setCatalog(null); setPlan({ title, plan: p, reason: `Перед: ${title.toLowerCase()}` }); }} />}
       {plan && (
-        <PlanDialog title={plan.title} plan={plan.plan} onClose={() => setPlan(null)} onApply={async (p) => { await mods.apply(inst.id, p, plan.reason); setPlan(null); load(); }} />
+        <PlanDialog title={plan.title} plan={plan.plan} onClose={() => setPlan(null)} onApply={async (p) => { await mods.apply(inst.id, p, plan.reason); setPlan(null); setPicked(new Set()); load(); refreshUpdates(); }} />
       )}
     </>
   );

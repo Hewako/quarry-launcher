@@ -577,6 +577,29 @@ fn mods_remove(
 }
 
 #[tauri::command]
+fn mods_pin(state: State<AppState>, id: String, file: String, pinned: bool) -> CmdResult<()> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::set_pinned(&store, &id, &file, pinned).map_err(err)
+}
+
+#[tauri::command]
+async fn mods_add_files(
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> CmdResult<Vec<quarry_core::mods::manage::AddedFile>> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    let paths: Vec<std::path::PathBuf> = paths.into_iter().map(std::path::PathBuf::from).collect();
+    quarry_core::mods::manage::add_files(&store, &id, &paths)
+        .await
+        .map(|(_, added)| added)
+        .map_err(err)
+}
+
+#[tauri::command]
 async fn catalog_search(
     state: State<'_, AppState>,
     id: String,
@@ -846,6 +869,8 @@ pub fn run() {
             mods_view,
             mods_toggle,
             mods_remove,
+            mods_pin,
+            mods_add_files,
             catalog_search,
             mods_plan_install,
             mods_check_updates,

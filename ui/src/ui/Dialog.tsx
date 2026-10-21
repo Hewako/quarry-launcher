@@ -1,5 +1,5 @@
 // Собственные диалоги вместо confirm()/alert(): с фокусом, Esc и понятными кнопками.
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 interface ConfirmOptions {
   title: string;
@@ -50,13 +50,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const confirm = useCallback((o: ConfirmOptions) => new Promise<boolean>((resolve) => setPending({ kind: "confirm", o, resolve })), []);
   const alert = useCallback((title: string, body: ReactNode) => new Promise<void>((resolve) => setPending({ kind: "alert", title, body, resolve })), []);
+  const api = useMemo(() => ({ confirm, alert }), [confirm, alert]);
   const close = (v: boolean) => {
     if (!pending) return;
     if (pending.kind === "confirm") pending.resolve(v); else pending.resolve();
     setPending(null);
   };
   return (
-    <Ctx.Provider value={{ confirm, alert }}>
+    <Ctx.Provider value={api}>
       {children}
       {pending && (
         <Modal title={pending.kind === "confirm" ? pending.o.title : pending.title} onClose={() => close(false)}>

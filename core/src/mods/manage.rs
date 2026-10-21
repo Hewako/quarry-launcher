@@ -212,7 +212,12 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
         changes: Vec::new(),
         notes: Vec::new(),
     };
+    let mut pinned = 0;
     for f in &files {
+        if f.source.as_ref().is_some_and(|s| s.pinned) {
+            pinned += 1;
+            continue;
+        }
         let Some(v) = updates.get(&f.sha1) else {
             continue;
         };
@@ -250,10 +255,152 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
             version: Some(v.clone()),
         });
     }
+    if pinned > 0 {
+        plan.notes
+            .push(format!("Закреплённые версии не обновляются: {pinned}"));
+    }
     if files.iter().any(|f| f.source.is_none()) {
         plan.notes.push("Моды, которых нет на Modrinth, проверить на обновления нельзя — их нужно обновлять вручную".into());
     }
     Ok(plan)
+}
+
+/// Закрепить или открепить версию мода (закреплённые не предлагаются к обновлению).
+pub fn set_pinned(store: &InstanceStore, id: &str, file_name: &str, pinned: bool) -> Result<()> {
+    let (game_dir, instance_dir) = (store.game_dir(id)?, store.dir(id)?);
+    let files = inventory(&game_dir, &instance_dir)?;
+    let f = files
+        .iter()
+        .find(|f| f.file_name == file_name.trim_end_matches(".disabled"))
+        .ok_or_else(|| Error::NotFound(format!("Мод {file_name} не найден")))?;
+    let mut lock = PackLock::load(&instance_dir)?;
+    let mut entry = f.source.clone().unwrap_or(LockEntry {
+        path: format!("mods/{}", f.file_name),
+        sha1: f.sha1.clone(),
+        sha512: None,
+        source: Source::Manual,
+        project_id: None,
+        version_id: None,
+        version_number: f.primary().map(|m| m.version.clone()),
+        title: f.primary().map(|m| m.name.clone()),
+        layer: Layer::User,
+        installed_at: now(),
+        pinned: false,
+    });
+    entry.pinned = pinned;
+    lock.upsert(entry);
+    lock.save(&instance_dir)?;
+    journal_append(
+        &instance_dir,
+        &JournalEntry {
+            at: now(),
+            action: if pinned {
+                "Закреплено"
+            } else {
+                "Откреплено"
+            }
+            .into(),
+            what: f.display_name(),
+            reason: "вручную".into(),
+            snapshot: None,
+        },
+    )
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AddedFile {
+    pub file_name: String,
+    pub title: String,
+    /// Опознан ли файл в каталоге Modrinth по хэшу.
+    pub known: bool,
+}
+
+/// Добавить JAR-файлы, перетащенные в окно. Перед этим — снимок. Файлы, которые не удалось
+/// опознать в Modrinth по хэшу, помечаются как «вручную»: их происхождение неизвестно
+/// (так распространялся Fractureiser — план, 6.1).
+pub async fn add_files(
+    store: &InstanceStore,
+    id: &str,
+    paths: &[std::path::PathBuf],
+) -> Result<(SnapshotInfo, Vec<AddedFile>)> {
+    let c = ctx(store, id)?;
+    let mut checked = Vec::new();
+    for p in paths {
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        safe_file_name(&name)
+            .map_err(|_| Error::invalid(format!("{name}: можно добавлять только .jar")))?;
+        let metas = super::meta::read_jar(p)?;
+        if metas.is_empty() {
+            return Err(Error::invalid(format!(
+                "{name} — не мод: в файле нет метаданных Fabric, Quilt или NeoForge"
+            )));
+        }
+        let sha1 = crate::download::hash_file::<sha1::Sha1>(p)?;
+        checked.push((p.clone(), name, metas, sha1));
+    }
+    if checked.is_empty() {
+        return Err(Error::invalid("Нечего добавлять"));
+    }
+    let known = catalog::versions_by_hash(&checked.iter().map(|c| c.3.clone()).collect::<Vec<_>>())
+        .await
+        .unwrap_or_default();
+    let snap = snapshot::create(
+        &c.instance_dir,
+        &c.game_dir,
+        "Перед добавлением файлов модов",
+        true,
+    )?;
+    let mods_dir = c.game_dir.join("mods");
+    std::fs::create_dir_all(&mods_dir).at(&mods_dir)?;
+    let mut lock = PackLock::load(&c.instance_dir)?;
+    let mut out = Vec::new();
+    for (src, name, metas, sha1) in checked {
+        let dest = mods_dir.join(&name);
+        std::fs::copy(&src, &dest).at(&dest)?;
+        let v = known.get(&sha1);
+        let title = metas[0].name.clone();
+        lock.upsert(LockEntry {
+            path: format!("mods/{name}"),
+            sha1: sha1.clone(),
+            sha512: None,
+            source: if v.is_some() {
+                Source::Modrinth
+            } else {
+                Source::Manual
+            },
+            project_id: v.map(|v| v.project_id.clone()),
+            version_id: v.map(|v| v.id.clone()),
+            version_number: Some(metas[0].version.clone()),
+            title: Some(title.clone()),
+            layer: Layer::User,
+            installed_at: now(),
+            pinned: false,
+        });
+        journal_append(
+            &c.instance_dir,
+            &JournalEntry {
+                at: now(),
+                action: "Добавлено".into(),
+                what: format!("{title} {}", metas[0].version),
+                reason: if v.is_some() {
+                    "файл, опознан на Modrinth".into()
+                } else {
+                    "файл неизвестного происхождения".into()
+                },
+                snapshot: Some(snap.id.clone()),
+            },
+        )?;
+        out.push(AddedFile {
+            file_name: name,
+            title,
+            known: v.is_some(),
+        });
+    }
+    lock.save(&c.instance_dir)?;
+    Ok((snap, out))
 }
 
 /// 0 — release, 1 — beta, 2 — alpha.
@@ -344,6 +491,7 @@ pub async fn apply(
                 title: Some(ch.title.clone()),
                 layer: Layer::User,
                 installed_at: now(),
+                pinned: false,
             });
         }
         journal_append(
@@ -476,6 +624,47 @@ mod tests {
         snapshot::restore(&store.dir(&inst.id).unwrap(), &game, &snap.id).unwrap();
         assert!(game.join("mods/indium.jar").exists());
         assert!(remove(&store, &inst.id, "../x.jar", "").is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pin_and_add_files() {
+        let root = std::env::temp_dir().join(format!("quarry-manage-pin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = InstanceStore::new(DataDir::open(&root).unwrap());
+        let inst = store
+            .create("Pin", "1.21.11", LoaderKind::Fabric, Some("0.17".into()))
+            .unwrap();
+        let game = store.game_dir(&inst.id).unwrap();
+        std::fs::create_dir_all(game.join("mods")).unwrap();
+        crate::mods::meta::tests::make_jar(
+            &game.join("mods/a.jar"),
+            &[("fabric.mod.json", br#"{"id":"a","name":"A","version":"1"}"#)],
+        );
+        set_pinned(&store, &inst.id, "a.jar", true).unwrap();
+        let inv = inventory(&game, &store.dir(&inst.id).unwrap()).unwrap();
+        assert!(inv[0].source.as_ref().unwrap().pinned);
+
+        let outside = root.join("downloads");
+        std::fs::create_dir_all(&outside).unwrap();
+        let not_mod = outside.join("lib.jar");
+        crate::mods::meta::tests::make_jar(&not_mod, &[("x/Y.class", b"x")]);
+        assert!(
+            add_files(&store, &inst.id, &[not_mod]).await.is_err(),
+            "не мод — не добавляется"
+        );
+        let txt = outside.join("readme.txt");
+        std::fs::write(&txt, b"x").unwrap();
+        assert!(add_files(&store, &inst.id, &[txt]).await.is_err());
+        let good = outside.join("b.jar");
+        crate::mods::meta::tests::make_jar(
+            &good,
+            &[("fabric.mod.json", br#"{"id":"b","name":"B","version":"2"}"#)],
+        );
+        let (_, added) = add_files(&store, &inst.id, &[good]).await.unwrap();
+        assert_eq!(added[0].title, "B");
+        assert!(!added[0].known, "тестового файла нет в Modrinth");
+        assert!(game.join("mods/b.jar").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

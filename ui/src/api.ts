@@ -175,7 +175,7 @@ export function statusOf(i: Instance, phase?: "preparing" | "running" | "done" |
 
 export type Side = "client" | "server" | "both" | "unknown";
 export interface ModMeta { loader: string; id: string; name: string; version: string; side: Side; dependencies: { id: string; range: string; kind: string }[]; mixins: string[] }
-export interface LockEntry { path: string; sha1: string; source: "modrinth" | "curseforge" | "import" | "manual"; project_id?: string; version_number?: string; title?: string; layer: "base" | "user" }
+export interface LockEntry { path: string; sha1: string; source: "modrinth" | "curseforge" | "import" | "manual"; project_id?: string; version_number?: string; title?: string; layer: "base" | "user"; pinned?: boolean }
 export interface ModFile { file_name: string; rel_path: string; enabled: boolean; size: number; sha1: string; mods: ModMeta[]; read_error?: string; source?: LockEntry }
 export type ModState = "ok" | "warning" | "blocked" | "disabled" | "unknown";
 export type Fix = { kind: "install"; mod_id: string } | { kind: "disable"; file_name: string } | { kind: "keep_one"; file_names: string[] };
@@ -196,6 +196,8 @@ export const mods = {
   view: (id: string) => invoke<{ files: ModFile[]; report: DoctorReport; journal: JournalEntry[] }>("mods_view", { id }),
   toggle: (id: string, file: string, enabled: boolean) => invoke<void>("mods_toggle", { id, file, enabled }),
   remove: (id: string, file: string) => invoke<SnapshotInfo>("mods_remove", { id, file }),
+  pin: (id: string, file: string, pinned: boolean) => invoke<void>("mods_pin", { id, file, pinned }),
+  addFiles: (id: string, paths: string[]) => invoke<{ file_name: string; title: string; known: boolean }[]>("mods_add_files", { id, paths }),
   search: (id: string, query: string, kind: ProjectKind, offset = 0) => invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset }),
   planInstall: (id: string, project: string) => invoke<Plan>("mods_plan_install", { id, project }),
   checkUpdates: (id: string) => invoke<Plan>("mods_check_updates", { id }),
