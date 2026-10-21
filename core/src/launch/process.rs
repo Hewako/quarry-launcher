@@ -44,9 +44,12 @@ pub struct ExitInfo {
     /// Разбор причины краша (заполняет сценарий запуска).
     #[serde(default)]
     pub analysis: Option<crate::mods::crash::Analysis>,
-    /// Пик памяти процесса игры, МБ (замер раз в 5 секунд; на Windows пока нет).
+    /// Пик памяти процесса игры, МБ (замер раз в 5 секунд).
     #[serde(default)]
     pub peak_ram_mb: Option<u64>,
+    /// Загрузка процессора в среднем, % (100 — одно ядро целиком).
+    #[serde(default)]
+    pub cpu_percent: Option<u32>,
     /// Сколько секунд заняла подготовка до старта игры (заполняет сценарий запуска).
     #[serde(default)]
     pub prepare_secs: Option<u64>,
@@ -72,17 +75,45 @@ impl GameProcess {
 
 const TAIL_LINES: usize = 400;
 
-/// Память процесса (RSS), МБ. Только macOS и Linux: через `ps`.
-pub fn rss_mb(pid: u32) -> Option<u64> {
+/// Время процессора из `ps`: `[[дд-]чч:]мм:сс[.сс]` → секунды.
+pub fn parse_cpu_time(s: &str) -> Option<f64> {
+    let (days, rest) = s
+        .trim()
+        .split_once('-')
+        .map_or((0.0, s.trim()), |(d, r)| (d.parse().unwrap_or(f64::NAN), r));
+    let parts: Vec<f64> = rest
+        .split(':')
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
+    let secs = parts.iter().fold(0.0, |acc, p| acc * 60.0 + p);
+    (parts.len() >= 2 && !days.is_nan()).then_some(days * 86_400.0 + secs)
+}
+
+/// Память (RSS, МБ) и затраченное время процессора (секунды) процесса.
+/// macOS и Linux — через `ps`, Windows — через PowerShell.
+pub fn usage(pid: u32) -> Option<(u64, f64)> {
     if cfg!(windows) {
-        return None;
+        // Целые числа, чтобы не зависеть от десятичного разделителя локали.
+        let script = format!(
+            "$p = Get-Process -Id {pid}; \"{{0}} {{1}}\" -f $p.WorkingSet64, [long]$p.TotalProcessorTime.TotalMilliseconds"
+        );
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut it = text.split_whitespace().map(|x| x.parse::<u64>().ok());
+        let (bytes, ms) = (it.next()??, it.next()??);
+        return Some((bytes / 1_048_576, ms as f64 / 1000.0));
     }
     let out = std::process::Command::new("ps")
-        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .args(["-o", "rss=,time=", "-p", &pid.to_string()])
         .output()
         .ok()?;
-    let kb: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
-    Some(kb / 1024)
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut it = text.split_whitespace();
+    let kb: u64 = it.next()?.parse().ok()?;
+    Some((kb / 1024, parse_cpu_time(it.next()?)?))
 }
 
 pub async fn spawn(
@@ -185,18 +216,21 @@ pub async fn spawn(
         }));
     }
 
-    // Пик памяти: замер раз в 5 секунд, пока игра работает.
+    // Пик памяти и время ЦП: замер раз в 5 секунд, пока игра работает (после выхода
+    // процесс уже не спросить — храним последнее значение).
     let peak = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let cpu_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let sampler = pid.map(|pid| {
-        let peak = peak.clone();
+        let (peak, cpu_ms) = (peak.clone(), cpu_ms.clone());
         tokio::spawn(async move {
             loop {
-                if let Some(mb) = tokio::task::spawn_blocking(move || rss_mb(pid))
+                if let Some((mb, cpu)) = tokio::task::spawn_blocking(move || usage(pid))
                     .await
                     .ok()
                     .flatten()
                 {
                     peak.fetch_max(mb, std::sync::atomic::Ordering::Relaxed);
+                    cpu_ms.store((cpu * 1000.0) as u64, std::sync::atomic::Ordering::Relaxed);
                 }
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
@@ -250,6 +284,13 @@ pub async fn spawn(
             tail,
             analysis: None,
             peak_ram_mb: Some(peak.load(std::sync::atomic::Ordering::Relaxed)).filter(|m| *m > 0),
+            cpu_percent: {
+                let (cpu, secs) = (
+                    cpu_ms.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.0,
+                    started.elapsed().as_secs_f64(),
+                );
+                (cpu > 0.0 && secs >= 1.0).then(|| (cpu / secs * 100.0).round() as u32)
+            },
             prepare_secs: None,
         })
     });
@@ -357,9 +398,19 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn rss_of_own_process() {
-        let mb = rss_mb(std::process::id()).expect("ps доступен");
+    fn usage_of_own_process() {
+        let (mb, cpu) = usage(std::process::id()).expect("ps доступен");
         assert!(mb > 0 && mb < 100_000, "{mb}");
-        assert!(rss_mb(u32::MAX - 7).is_none(), "нет такого процесса");
+        assert!(cpu >= 0.0);
+        assert!(usage(u32::MAX - 7).is_none(), "нет такого процесса");
+    }
+
+    #[test]
+    fn cpu_time_formats() {
+        assert_eq!(parse_cpu_time("0:00.02"), Some(0.02)); // macOS: мм:сс.сс
+        assert_eq!(parse_cpu_time("00:01:02"), Some(62.0)); // Linux: чч:мм:сс
+        assert_eq!(parse_cpu_time("1-02:03:04"), Some(93_784.0)); // дни-чч:мм:сс
+        assert_eq!(parse_cpu_time("12:34"), Some(754.0));
+        assert_eq!(parse_cpu_time("мусор"), None);
     }
 }

@@ -21,6 +21,7 @@ export interface LaunchOverrides {
 export interface LastLaunch {
   prepare_secs?: number;
   peak_ram_mb?: number;
+  cpu_percent?: number;
   at: number;
   outcome: Outcome;
   exit_code?: number;

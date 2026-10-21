@@ -365,6 +365,7 @@ pub async fn launch(
             log_file: Some(info.log_file.clone()),
             prepare_secs: info.prepare_secs,
             peak_ram_mb: info.peak_ram_mb,
+            cpu_percent: info.cpu_percent,
         },
         Err(Error::Cancelled) => return result,
         Err(e) => LastLaunch {
@@ -376,6 +377,7 @@ pub async fn launch(
             log_file: None,
             prepare_secs: None,
             peak_ram_mb: None,
+            cpu_percent: None,
         },
     };
     if let Ok(mut fresh) = store.get(instance_id) {

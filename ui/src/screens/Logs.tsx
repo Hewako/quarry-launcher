@@ -40,7 +40,7 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
           <h2>{t("Логи и краши")}</h2>
           <p className="sub">
             {last ? <>{t("Профиль «")}{inst.name}{t("» · запуск")} {relTime(last.at)}{last.duration_secs ? ` · ${duration(last.duration_secs)}` : ""}
-              {last.prepare_secs !== undefined ? t(" · подготовка {0}", duration(last.prepare_secs)) : ""}{last.peak_ram_mb ? t(" · память до {0} ГБ", (last.peak_ram_mb / 1024).toFixed(1)) : ""}</> : <>{t("Профиль «")}{inst.name}{t("» ещё не запускался")}</>}
+              {last.prepare_secs !== undefined ? t(" · подготовка {0}", duration(last.prepare_secs)) : ""}{last.peak_ram_mb ? t(" · память до {0} ГБ", (last.peak_ram_mb / 1024).toFixed(1)) : ""}{last.cpu_percent ? t(" · процессор в среднем {0} %", last.cpu_percent) : ""}</> : <>{t("Профиль «")}{inst.name}{t("» ещё не запускался")}</>}
           </p>
         </div>
         <button className="btn" onClick={openReport}>{t("Отчёт для поддержки…")}</button>

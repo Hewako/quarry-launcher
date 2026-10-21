@@ -41,6 +41,9 @@ pub struct LastLaunch {
     /// Пик памяти игры, МБ.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peak_ram_mb: Option<u64>,
+    /// Загрузка процессора в среднем, % (100 — одно ядро целиком).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_percent: Option<u32>,
 }
 
 /// Как профиль входит в игру.

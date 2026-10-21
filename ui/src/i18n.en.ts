@@ -890,4 +890,5 @@ export const EN: Record<string, string> = {
   "центр уведомлений · без всплывающих окон": "notification center · no pop-ups",
   "Аккаунты и скины": "Accounts & skins",
   "{0} на диске": "{0} on disk",
+  " · процессор в среднем {0} %": " · CPU {0} % on average",
 };

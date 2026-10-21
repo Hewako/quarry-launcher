@@ -137,10 +137,12 @@ pub fn support_report(
     );
     if let Some(l) = &inst.last_launch {
         summary.push_str(&format!(
-            "\nПоследний запуск: {:?}, код {:?}, {} с\n{}\n",
+            "\nПоследний запуск: {:?}, код {:?}, {} с, память до {:?} МБ, ЦП в среднем {:?} %\n{}\n",
             l.outcome,
             l.exit_code,
             l.duration_secs,
+            l.peak_ram_mb,
+            l.cpu_percent,
             l.message.as_deref().unwrap_or("")
         ));
     }
