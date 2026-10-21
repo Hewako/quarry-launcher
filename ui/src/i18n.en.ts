@@ -811,4 +811,9 @@ export const EN: Record<string, string> = {
   "Игра работает": "The game works",
   "Прекратить поиск": "Stop searching",
   "Найти виновника краша…": "Find the crash culprit…",
+  "Связей между модами нет: каждый работает сам по себе.": "No links between mods: each one works on its own.",
+  "нужны:": "needs:",
+  "нет в профиле": "not in profile",
+  "нужен для:": "needed by:",
+  "Зависимости между модами": "Dependencies between mods",
 };

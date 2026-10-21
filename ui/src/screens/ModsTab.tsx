@@ -63,6 +63,37 @@ const CHANNELS: [Channel, string][] = [["auto", t("Стабильная, есл�
 
 const KINDS: [ProjectKind, string][] = [["mod", t("Моды")], ["resourcepack", t("Ресурспаки")], ["shader", t("Шейдеры")], ["datapack", t("Датапаки")]];
 
+/** Загрузчик и игра — не моды профиля, в зависимостях их не показываем. */
+const BUILTIN_DEPS = new Set(["minecraft", "java", "fabricloader", "quilt_loader", "neoforge", "forge", "fml"]);
+
+/** Кто кому нужен: обязательные зависимости между модами профиля. */
+function DepsView({ files }: { files: ModFile[] }) {
+  const owner = new Map<string, string>();
+  for (const f of files) for (const m of f.mods) owner.set(m.id, m.name || f.file_name);
+  const rows = files.filter((f) => f.mods.length > 0).map((f) => {
+    const ids = new Set(f.mods.map((m) => m.id));
+    const needs = [...new Set(f.mods.flatMap((m) => m.dependencies.filter((d) => d.kind === "required" && !BUILTIN_DEPS.has(d.id)).map((d) => d.id)))];
+    const usedBy = files.filter((g) => g !== f && g.mods.some((m) => m.dependencies.some((d) => d.kind === "required" && ids.has(d.id)))).map((g) => g.mods[0]?.name ?? g.file_name);
+    return { name: f.mods[0].name || f.file_name, needs, usedBy };
+  }).filter((r) => r.needs.length || r.usedBy.length);
+  if (rows.length === 0) return <p className="muted small">{t("Связей между модами нет: каждый работает сам по себе.")}</p>;
+  return (
+    <table className="servers">
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.name}>
+            <td><b>{r.name}</b></td>
+            <td className="small">
+              {r.needs.length > 0 && <div>{t("нужны:")} {r.needs.map((id, i) => <span key={id}>{i > 0 && ", "}{owner.has(id) ? owner.get(id) : <span style={{ color: "var(--err)" }}>{id} ({t("нет в профиле")})</span>}</span>)}</div>}
+              {r.usedBy.length > 0 && <div className="muted">{t("нужен для:")} {r.usedBy.join(", ")}</div>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", "resourcepack", "shader"], onInstalled, world }: {
   world?: string;
   inst: Instance;
@@ -408,6 +439,12 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
             </tbody>
           </table>
         </div>
+      )}
+      {data.files.length > 0 && (
+        <details className="card" style={{ marginTop: 12 }}>
+          <summary>{t("Зависимости между модами")}</summary>
+          <DepsView files={data.files} />
+        </details>
       )}
       <p className="muted small">{t("Состояние — по метаданным модов (fabric.mod.json, quilt.mod.json, mods.toml), а не по имени файла. «Конфликтов не найдено» не гарантирует, что игра запустится: настоящую проверку даёт запуск.")}</p>
       {data.journal.length > 0 && (
