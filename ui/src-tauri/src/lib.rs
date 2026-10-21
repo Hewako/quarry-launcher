@@ -1544,25 +1544,115 @@ async fn import_path(
     state: State<'_, AppState>,
     path: String,
     skip_optional: Option<Vec<String>>,
+    // Сборка из каталога Modrinth: запомнить проект и версию для обновлений.
+    project_id: Option<String>,
+    version_id: Option<String>,
 ) -> CmdResult<quarry_core::import::ImportResult> {
     let store = InstanceStore::new(state.data.clone());
     let p = std::path::PathBuf::from(&path);
     if p.is_dir() {
         quarry_core::import::import_mmc(&store, &p).map_err(err)
     } else if p.extension().is_some_and(|e| e == "mrpack") {
-        quarry_core::import::import_mrpack(
+        let mut r = quarry_core::import::import_mrpack(
             &store,
             &p,
             &skip_optional.unwrap_or_default(),
             &Cancel::new(),
         )
         .await
-        .map_err(err)
+        .map_err(err)?;
+        if let Some(pack) = r.instance.pack.as_mut()
+            && project_id.is_some()
+        {
+            pack.project_id = project_id;
+            pack.version_id = version_id;
+            store.save(&r.instance).map_err(err)?;
+        }
+        Ok(r)
     } else if p.extension().is_some_and(|e| e == "zip") {
         quarry_core::import::import_curseforge(&store, &p).map_err(err)
     } else {
         Err("Поддерживаются папка инстанса Prism/MultiMC, .mrpack и .zip CurseForge".into())
     }
+}
+
+#[derive(Serialize)]
+struct PackVersion {
+    path: Option<String>,
+    version_id: String,
+    version_number: String,
+    changelog: Option<String>,
+}
+
+#[tauri::command]
+async fn modpack_search(
+    query: String,
+    offset: u32,
+) -> CmdResult<quarry_core::catalog::SearchResult> {
+    quarry_core::catalog::search(
+        &query,
+        quarry_core::catalog::ProjectType::Modpack,
+        &[],
+        "",
+        offset,
+        None,
+    )
+    .await
+    .map_err(err)
+}
+
+/// Скачать .mrpack сборки (версию или новейшую по каналу) во временную папку.
+#[tauri::command]
+async fn pack_download(
+    state: State<'_, AppState>,
+    project_id: String,
+    version_id: Option<String>,
+    channel: Option<quarry_core::catalog::Channel>,
+) -> CmdResult<PackVersion> {
+    let (path, v) = quarry_core::import::download_pack(
+        &state.data,
+        &project_id,
+        version_id.as_deref(),
+        channel.unwrap_or_default(),
+        &Cancel::new(),
+    )
+    .await
+    .map_err(err)?;
+    Ok(PackVersion {
+        path: Some(path.display().to_string()),
+        version_id: v.id,
+        version_number: v.version_number,
+        changelog: v.changelog,
+    })
+}
+
+#[tauri::command]
+async fn pack_check(state: State<'_, AppState>, id: String) -> CmdResult<Option<PackVersion>> {
+    let v = quarry_core::import::pack_update_check(&InstanceStore::new(state.data.clone()), &id)
+        .await
+        .map_err(err)?;
+    Ok(v.map(|v| PackVersion {
+        path: None,
+        version_id: v.id,
+        version_number: v.version_number,
+        changelog: v.changelog,
+    }))
+}
+
+#[tauri::command]
+fn pack_settings(
+    state: State<AppState>,
+    id: String,
+    channel: quarry_core::catalog::Channel,
+    pinned: bool,
+) -> CmdResult<Instance> {
+    let store = InstanceStore::new(state.data.clone());
+    let mut inst = store.get(&id).map_err(err)?;
+    let pack = inst.pack.as_mut().ok_or("Профиль сделан не из сборки")?;
+    pack.channel = channel;
+    pack.pinned = pinned;
+    store.save(&inst).map_err(err)?;
+    Ok(inst)
 }
 
 #[tauri::command]
@@ -1590,6 +1680,7 @@ async fn pack_update_apply(
     id: String,
     path: String,
     skip_optional: Vec<String>,
+    version_id: Option<String>,
 ) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
     if state.registry.is_running(&id) {
         return Err("Сначала закройте игру в этом профиле".into());
@@ -1599,6 +1690,7 @@ async fn pack_update_apply(
         &id,
         std::path::Path::new(&path),
         &skip_optional,
+        version_id.as_deref(),
         &Cancel::new(),
     )
     .await
@@ -1742,6 +1834,10 @@ pub fn run() {
             bisect_status,
             bisect_step,
             mrpack_preview,
+            modpack_search,
+            pack_download,
+            pack_check,
+            pack_settings,
             export_mrpack,
             pack_update_plan,
             pack_update_apply,

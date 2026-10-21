@@ -63,6 +63,7 @@ pub fn class_id(kind: ProjectType) -> u32 {
         ProjectType::Resourcepack => 12,
         ProjectType::Shader => 6552,
         ProjectType::Datapack => 6945,
+        ProjectType::Modpack => 4471,
     }
 }
 

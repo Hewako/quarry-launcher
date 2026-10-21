@@ -2,7 +2,7 @@
 // Исходные файлы только читаются.
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { api, errText, importer, type ImportResult, type Instance, type LoaderKind } from "../api";
+import { api, errText, importer, type ImportResult, type Instance, type LoaderKind, type SearchHit } from "../api";
 import { Modal } from "../ui/Dialog";
 import { t } from "../i18n";
 
@@ -12,7 +12,25 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
   const [error, setError] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [link, setLink] = useState<{ path: string; name: string; version: string; loader: LoaderKind } | null>(null);
-  const [optional, setOptional] = useState<{ path: string; files: string[]; off: string[] } | null>(null);
+  const [optional, setOptional] = useState<{ path: string; files: string[]; off: string[]; projectId?: string; versionId?: string } | null>(null);
+  const [packQuery, setPackQuery] = useState("");
+  const [packs, setPacks] = useState<SearchHit[]>([]);
+  useEffect(() => {
+    if (packQuery.trim().length < 2) { setPacks([]); return; }
+    const timer = setTimeout(() => importer.searchPacks(packQuery).then((r) => setPacks(r.hits.slice(0, 6))).catch(() => setPacks([])), 300);
+    return () => clearTimeout(timer);
+  }, [packQuery]);
+  /** Сборка из каталога: скачать .mrpack, спросить про необязательные файлы, импортировать. */
+  const installPack = async (h: SearchHit) => {
+    setBusy(h.project_id);
+    setError("");
+    try {
+      const v = await importer.download(h.project_id);
+      const files = (await importer.preview(v.path!)).optional;
+      if (files.length) setOptional({ path: v.path!, files, off: [], projectId: h.project_id, versionId: v.version_id });
+      else setResult(await importer.path(v.path!, [], h.project_id, v.version_id));
+    } catch (e) { setError(errText(e)); } finally { setBusy(""); }
+  };
 
   useEffect(() => { importer.sources().then(setSources).catch(() => setSources({ prism: [] })); }, []);
 
@@ -47,7 +65,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
         ))}
         <div className="acts">
           <button className="btn" onClick={() => setOptional(null)}>{t("Отмена")}</button>
-          <button className="btn pri" disabled={busy !== ""} onClick={async () => { setOptional(null); await run("file", () => importer.path(o.path, o.off)); }}>{t("Импортировать")}</button>
+          <button className="btn pri" disabled={busy !== ""} onClick={async () => { setOptional(null); await run("file", () => importer.path(o.path, o.off, o.projectId, o.versionId)); }}>{t("Импортировать")}</button>
         </div>
       </Modal>
     );
@@ -75,6 +93,15 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
 
   return (
     <Modal title={t("Импорт")} onClose={onClose} wide>
+      <h4 style={{ margin: 0 }}>{t("Сборка из каталога Modrinth")}</h4>
+      <input className="field" type="search" aria-label={t("Найти сборку")} placeholder={t("Найти сборку…")} value={packQuery} onChange={(e) => setPackQuery(e.target.value)} />
+      {packs.map((h) => (
+        <div className="hit" key={h.project_id}>
+          {h.icon_url ? <img src={h.icon_url} alt="" /> : <div className="noicon" />}
+          <div className="grow"><b>{h.title}</b> <span className="muted small">· {h.author}</span><small>{h.description}</small></div>
+          <button className="btn" disabled={busy !== ""} onClick={() => installPack(h)}>{busy === h.project_id ? t("Скачиваем…") : t("Установить")}</button>
+        </div>
+      ))}
       <span className="muted small">{t("Исходные файлы не меняются: Quarry делает свою копию. Если импорт не удастся, недоделанный профиль убирается.")}</span>
       <h4 style={{ margin: 0 }}>{t("Из Prism Launcher или MultiMC")}</h4>
       {sources === null ? <span className="muted small"><span className="spinner" /> {t("Ищем инстансы…")}</span> : sources.prism.length === 0 ? (

@@ -77,6 +77,9 @@ pub struct Version {
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
     pub files: Vec<VersionFile>,
+    /// Что нового в версии (Markdown от автора).
+    #[serde(default)]
+    pub changelog: Option<String>,
 }
 
 impl Version {
@@ -174,6 +177,7 @@ pub enum ProjectType {
     Resourcepack,
     Shader,
     Datapack,
+    Modpack,
 }
 
 impl ProjectType {
@@ -183,6 +187,7 @@ impl ProjectType {
             ProjectType::Resourcepack => "resourcepack",
             ProjectType::Shader => "shader",
             ProjectType::Datapack => "datapack",
+            ProjectType::Modpack => "modpack",
         }
     }
 }
@@ -196,10 +201,11 @@ pub fn search_url(
     offset: u32,
     category: Option<&str>,
 ) -> String {
-    let mut facets: Vec<Vec<String>> = vec![
-        vec![format!("project_type:{}", kind.as_str())],
-        vec![format!("versions:{game_version}")],
-    ];
+    let mut facets: Vec<Vec<String>> = vec![vec![format!("project_type:{}", kind.as_str())]];
+    // Сборки ищутся без версии игры: профиля ещё нет.
+    if !game_version.is_empty() {
+        facets.push(vec![format!("versions:{game_version}")]);
+    }
     if kind == ProjectType::Mod && !loaders.is_empty() {
         facets.push(loaders.iter().map(|l| format!("categories:{l}")).collect());
     }
@@ -261,6 +267,15 @@ pub async fn projects(ids: &[String]) -> Result<Vec<Project>> {
     get(&format!(
         "{API}/projects?ids={}",
         urlencoding::encode(&list)
+    ))
+    .await
+}
+
+/// Все версии проекта, новые первыми (для сборок: без фильтра по версии игры).
+pub async fn project_versions(project: &str) -> Result<Vec<Version>> {
+    get(&format!(
+        "{API}/project/{}/version",
+        urlencoding::encode(project)
     ))
     .await
 }
@@ -347,6 +362,7 @@ mod tests {
             loaders: vec![],
             dependencies: vec![],
             files: vec![],
+            changelog: None,
         }
     }
 

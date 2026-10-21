@@ -1,7 +1,7 @@
 // Вкладка «Профиль»: оформление, место на диске, копия профиля и перенос настроек из другого.
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { api, errText, importer, metaOf, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
+import { api, errText, importer, metaOf, type Channel, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { path, useStreamer } from "../streamer";
 import { t } from "../i18n";
@@ -90,7 +90,20 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
   const [usage, setUsage] = useState<{ parts: { label: string; size: number }[]; total: number } | null>(null);
   const [modal, setModal] = useState<"" | "clone" | "copy">("");
   const [moving, setMoving] = useState(false);
-  const [update, setUpdate] = useState<{ path: string; plan: PackUpdatePlan; off: string[] } | null>(null);
+  const [update, setUpdate] = useState<{ path: string; plan: PackUpdatePlan; off: string[]; versionId?: string; changelog?: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkPack = async () => {
+    setChecking(true);
+    try {
+      const v = await importer.check(inst.id);
+      if (!v) { await dialog.alert(t("Обновлений нет"), t("Установлена последняя версия сборки в выбранном канале.")); return; }
+      const d = await importer.download(inst.pack!.project_id!, v.version_id);
+      setUpdate({ path: d.path!, plan: await importer.updatePlan(inst.id, d.path!), off: [], versionId: v.version_id, changelog: v.changelog });
+    } catch (e) { await dialog.alert(t("Сборку не обновить"), errText(e)); } finally { setChecking(false); }
+  };
+  const packSettings = async (channel: Channel, pinned: boolean) => {
+    try { onChanged(await importer.settings(inst.id, channel, pinned)); } catch (e) { await dialog.alert(t("Не сохранено"), errText(e)); }
+  };
   const [updating, setUpdating] = useState(false);
   const exportPack = async () => {
     const path = await saveDialog({ title: t("Экспорт в .mrpack"), defaultPath: `${inst.name}.mrpack`, filters: [{ name: ".mrpack", extensions: ["mrpack"] }] }).catch(() => null);
@@ -112,9 +125,9 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
     if (!update) return;
     setUpdating(true);
     try {
-      await importer.updateApply(inst.id, update.path, update.off);
+      await importer.updateApply(inst.id, update.path, update.off, update.versionId);
       setUpdate(null);
-      onChanged({ ...inst, pack: inst.pack && { ...inst.pack, version: update.plan.to } });
+      onChanged({ ...inst, pack: inst.pack && { ...inst.pack, version: update.plan.to, version_id: update.versionId ?? inst.pack.version_id } });
       await dialog.alert(t("Сборка обновлена"), t("Перед обновлением сохранён снимок — вернуть как было можно на вкладке «Снимки и миры»."));
     } catch (e) { await dialog.alert(t("Сборку не обновить"), errText(e)); } finally { setUpdating(false); }
   };
@@ -218,6 +231,17 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
           <div className="card row">
             <span><b>{inst.pack.name}</b> {inst.pack.version}</span>
             <span style={{ flex: 1 }} />
+            {inst.pack.project_id && (
+              <>
+                <select className="field auto" aria-label={t("Какие версии сборки предлагать")} value={inst.pack.channel ?? "auto"} onChange={(e) => packSettings(e.target.value as Channel, !!inst.pack?.pinned)}>
+                  <option value="auto">{t("Стабильная, если есть")}</option>
+                  <option value="release">{t("Только стабильные")}</option>
+                  <option value="beta">{t("Бета и стабильные")}</option>
+                </select>
+                <label className="row small"><input type="checkbox" checked={!!inst.pack.pinned} onChange={(e) => packSettings(inst.pack?.channel ?? "auto", e.target.checked)} /> {t("закрепить версию")}</label>
+                <button className="btn" disabled={running || checking || !!inst.pack.pinned} onClick={checkPack}>{checking ? t("Проверяем…") : t("Проверить обновление")}</button>
+              </>
+            )}
             <button className="btn" disabled={running} onClick={pickUpdate}>{t("Обновить из файла .mrpack…")}</button>
           </div>
         </>
@@ -240,6 +264,9 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
       </div>
       {update && (
         <Modal title={t("Обновить сборку {0} → {1}?", update.plan.from || "?", update.plan.to)} onClose={() => setUpdate(null)} wide>
+          {update.changelog && (
+            <details open><summary>{t("Что нового в версии")}</summary><pre className="cfgdiff" style={{ whiteSpace: "pre-wrap", userSelect: "text" }}>{update.changelog}</pre></details>
+          )}
           {update.plan.game_change && <div className="alert warn"><span>{t("Сборка меняет версию:")} {update.plan.game_change}</span></div>}
           <div className="diff cfgdiff">
             {update.plan.add.map((f) => <span key={f} className="add">+ {f}</span>)}

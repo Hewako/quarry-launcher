@@ -121,10 +121,21 @@ struct LegacyProfile {
 }
 
 /// Сборка, из которой сделан профиль: по ней предлагается обновление.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackRef {
     pub name: String,
     pub version: String,
+    /// Проект и версия на Modrinth (если сборка из каталога).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    /// Какие версии сборки предлагать: стабильные, бета, любые.
+    #[serde(default)]
+    pub channel: crate::catalog::Channel,
+    /// Версия закреплена: обновления не предлагаются.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 /// Профиль, который не удалось прочитать — показывается в списке с причиной.

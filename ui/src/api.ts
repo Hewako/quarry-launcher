@@ -47,7 +47,7 @@ export interface Instance {
   pack_settings: LaunchOverrides;
   last_launch?: LastLaunch;
   external_game_dir?: string;
-  pack?: { name: string; version: string };
+  pack?: { name: string; version: string; project_id?: string; version_id?: string; channel?: Channel; pinned?: boolean };
   hooks?: Hooks;
 }
 export interface Hooks { pre?: string; post_exit?: string; post_crash?: string; wrapper?: string; approved?: string }
@@ -104,6 +104,7 @@ export const diagnostics = {
   cleanCache: () => invoke<number>("cache_clean"),
 };
 
+export interface PackVersion { path?: string; version_id: string; version_number: string; changelog?: string }
 export interface PackUpdatePlan { from: string; to: string; add: string[]; update: string[]; remove: string[]; kept_mods: string[]; kept_configs: string[]; optional: string[]; game_change?: string }
 
 export interface Bisect { suspects: string[]; disabled: string[]; half: string[]; round: number; snapshot: string }
@@ -325,12 +326,19 @@ export const snapshots = {
 
 export const importer = {
   sources: () => invoke<{ prism: [string, string][]; official?: string }>("import_sources"),
-  path: (path: string, skipOptional: string[] = []) => invoke<ImportResult>("import_path", { path, skipOptional }),
+  path: (path: string, skipOptional: string[] = [], projectId?: string, versionId?: string) =>
+    invoke<ImportResult>("import_path", { path, skipOptional, projectId: projectId ?? null, versionId: versionId ?? null }),
+  searchPacks: (query: string) => invoke<{ hits: SearchHit[]; total_hits: number }>("modpack_search", { query, offset: 0 }),
+  download: (projectId: string, versionId?: string, channel?: Channel) =>
+    invoke<PackVersion>("pack_download", { projectId, versionId: versionId ?? null, channel: channel ?? null }),
+  check: (id: string) => invoke<PackVersion | null>("pack_check", { id }),
+  settings: (id: string, channel: Channel, pinned: boolean) => invoke<Instance>("pack_settings", { id, channel, pinned }),
   preview: (path: string) => invoke<{ name: string; version: string; game: string; loader: string; optional: string[] }>("mrpack_preview", { path }),
   updatePlan: (id: string, path: string) => invoke<PackUpdatePlan>("pack_update_plan", { id, path }),
   exportMrpack: (id: string, path: string, name: string, version: string) =>
     invoke<{ linked: number; bundled: string[]; report_path: string }>("export_mrpack", { id, path, name, version }),
-  updateApply: (id: string, path: string, skipOptional: string[]) => invoke<SnapshotInfo>("pack_update_apply", { id, path, skipOptional }),
+  updateApply: (id: string, path: string, skipOptional: string[], versionId?: string) =>
+    invoke<SnapshotInfo>("pack_update_apply", { id, path, skipOptional, versionId: versionId ?? null }),
   link: (path: string, name: string, gameVersion: string, loader: LoaderKind) => invoke<ImportResult>("link_minecraft", { path, name, gameVersion, loader }),
 };
 

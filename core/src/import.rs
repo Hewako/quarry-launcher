@@ -465,6 +465,7 @@ pub async fn import_mrpack(
     inst.pack = Some(crate::instance::PackRef {
         name: index.name.clone(),
         version: index.version_id.clone(),
+        ..Default::default()
     });
     store.save(&inst)?;
     let id = inst.id.clone();
@@ -635,6 +636,7 @@ pub async fn apply_pack_update(
     id: &str,
     path: &Path,
     skip_optional: &[String],
+    version_id: Option<&str>,
     cancel: &Cancel,
 ) -> Result<crate::snapshot::SnapshotInfo> {
     let (plan, index) = plan_with(store, id, path, skip_optional)?;
@@ -680,10 +682,11 @@ pub async fn apply_pack_update(
     let (game, _, loader_version) = loader_from_deps(&index.dependencies)?;
     inst.game_version = game;
     inst.loader_version = loader_version;
-    inst.pack = Some(crate::instance::PackRef {
-        name: index.name.clone(),
-        version: plan.to.clone(),
-    });
+    let mut pack = inst.pack.take().unwrap_or_default();
+    pack.name = index.name.clone();
+    pack.version = plan.to.clone();
+    pack.version_id = version_id.map(str::to_string);
+    inst.pack = Some(pack);
     store.save(&inst)?;
     crate::mods::manage::journal_append(
         &dir,
@@ -701,6 +704,79 @@ pub async fn apply_pack_update(
         },
     )?;
     Ok(snap)
+}
+
+// ---------- Сборки из каталога Modrinth ----------
+
+/// Скачать .mrpack версии сборки во временную папку (только CDN Modrinth, с проверкой SHA-1).
+/// `version_id = None` — новейшая версия по каналу `channel`.
+pub async fn download_pack(
+    data: &DataDir,
+    project_id: &str,
+    version_id: Option<&str>,
+    channel: crate::catalog::Channel,
+    cancel: &Cancel,
+) -> Result<(PathBuf, crate::catalog::Version)> {
+    let v = match version_id {
+        Some(id) => crate::catalog::version(id).await?,
+        None => {
+            let list = crate::catalog::project_versions(project_id).await?;
+            crate::catalog::pick(&list, channel)
+                .cloned()
+                .ok_or_else(|| {
+                    Error::invalid("У сборки нет подходящей версии в выбранном канале")
+                })?
+        }
+    };
+    let f = v
+        .primary_file()
+        .ok_or_else(|| Error::invalid("У версии сборки нет файла"))?;
+    if !f.url.starts_with("https://")
+        || crate::net::host_of(&f.url) != "cdn.modrinth.com"
+        || !f.filename.ends_with(".mrpack")
+    {
+        return Err(Error::invalid("Файл сборки не с CDN Modrinth — отменено"));
+    }
+    let sha1 = f
+        .hashes
+        .get("sha1")
+        .ok_or_else(|| Error::invalid("Modrinth не прислал хэш файла"))?;
+    std::fs::create_dir_all(data.tmp()).at(data.tmp())?;
+    let dest = data.tmp().join(format!(
+        "pack-{}.mrpack",
+        v.id.replace(|c: char| !c.is_ascii_alphanumeric(), "")
+    ));
+    download::download_all(
+        vec![Task {
+            url: f.url.clone(),
+            dest: dest.clone(),
+            expected: Expected::Sha1(sha1.to_ascii_lowercase()),
+            size: Some(f.size),
+        }],
+        1,
+        Verify::Full,
+        None,
+        cancel,
+    )
+    .await?;
+    Ok((dest, v))
+}
+
+/// Новая версия сборки для профиля по его каналу; `None` — обновлений нет или версия закреплена.
+pub async fn pack_update_check(
+    store: &InstanceStore,
+    id: &str,
+) -> Result<Option<crate::catalog::Version>> {
+    let Some(pack) = store.get(id)?.pack.filter(|p| !p.pinned) else {
+        return Ok(None);
+    };
+    let Some(project) = pack.project_id.as_deref() else {
+        return Ok(None);
+    };
+    let list = crate::catalog::project_versions(project).await?;
+    Ok(crate::catalog::pick(&list, pack.channel)
+        .filter(|v| pack.version_id.as_deref() != Some(v.id.as_str()))
+        .cloned())
 }
 
 // ---------- Экспорт .mrpack ----------
@@ -1278,6 +1354,8 @@ mod tests {
         inst.pack = Some(crate::instance::PackRef {
             name: "Пак".into(),
             version: "1.0".into(),
+            project_id: Some("PACK".into()),
+            ..Default::default()
         });
         store.save(&inst).unwrap();
         let game = store.game_dir(&inst.id).unwrap();
@@ -1352,7 +1430,7 @@ mod tests {
             &index("2.0", &[mr_file("mods/a.jar", "a1", "required")]),
             &[("config/x.toml", "сборка = 2"), ("config/y.toml", "y")],
         );
-        apply_pack_update(&store, &id, &p, &[], &Cancel::new())
+        apply_pack_update(&store, &id, &p, &[], Some("NEWVER"), &Cancel::new())
             .await
             .unwrap();
         let game = store.game_dir(&id).unwrap();
@@ -1367,7 +1445,19 @@ mod tests {
             std::fs::read_to_string(game.join("config/y.toml")).unwrap(),
             "y"
         );
-        assert_eq!(store.get(&id).unwrap().pack.unwrap().version, "2.0");
+        let pack = store.get(&id).unwrap().pack.unwrap();
+        assert_eq!(
+            (
+                pack.version.as_str(),
+                pack.version_id.as_deref(),
+                pack.project_id.as_deref()
+            ),
+            ("2.0", Some("NEWVER"), Some("PACK"))
+        );
+        // Старый формат ссылки на сборку тоже читается.
+        let old: crate::instance::PackRef =
+            toml::from_str("name = \"Пак\"\nversion = \"1.0\"").unwrap();
+        assert!(!old.pinned && old.project_id.is_none());
         assert!(
             !crate::snapshot::list(&store.dir(&id).unwrap())
                 .unwrap()
