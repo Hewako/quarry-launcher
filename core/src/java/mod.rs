@@ -270,10 +270,10 @@ pub async fn discover(data: Option<&DataDir>) -> Vec<JavaInstall> {
         if !seen.insert(canonical) {
             continue;
         }
-        if let Ok(install) = probe(&path, source).await {
-            if install.home.is_empty() || homes.insert(install.home.clone()) {
-                found.push(install);
-            }
+        if let Ok(install) = probe(&path, source).await
+            && (install.home.is_empty() || homes.insert(install.home.clone()))
+        {
+            found.push(install);
         }
     }
     found
