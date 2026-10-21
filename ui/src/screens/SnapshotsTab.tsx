@@ -95,7 +95,7 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
                 <Fragment key={w.folder}>
                   <tr>
                     <td>
-                      <b>{w.name}</b>{w.hardcore && <span className="badge crashed" style={{ marginLeft: 6 }}>хардкор</span>}
+                      <b>{w.name}</b>{w.hardcore && <span className="badge err" style={{ marginLeft: 6 }}>хардкор</span>}
                       <div className="muted small">
                         {w.version_name ?? "версия неизвестна"} · {w.game_mode} · {sizeText(w.size)}{w.last_played ? ` · играли ${relTime(w.last_played)}` : ""}
                         {w.folder !== w.name && <> · папка <span className="mono">{w.folder}</span></>}

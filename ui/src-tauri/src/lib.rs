@@ -879,6 +879,142 @@ async fn move_game_dir(
     .map_err(err)
 }
 
+#[derive(Serialize)]
+struct ResourcesView {
+    packs: Vec<quarry_core::resources::PackInfo>,
+    /// Формат ресурспаков игры; `None` — игра ещё не скачана.
+    game_format: Option<i64>,
+    /// Установлен Iris или Oculus — без них шейдеры не работают.
+    shader_loader: bool,
+}
+
+/// Форматы ресурспаков и датапаков игры (из скачанного клиента); `None` — ещё не скачан.
+fn game_pack_format(
+    state: &AppState,
+    game_version: &str,
+    kind: quarry_core::resources::Kind,
+) -> Option<i64> {
+    let jar = state
+        .data
+        .versions()
+        .join(game_version)
+        .join(format!("{game_version}.jar"));
+    let info = quarry_core::worlds::game_jar_info(&jar).ok()?;
+    match kind {
+        quarry_core::resources::Kind::Datapack => info.data_pack_format,
+        _ => info.resource_pack_format,
+    }
+}
+
+#[tauri::command]
+fn resources_list(
+    state: State<AppState>,
+    id: String,
+    kind: quarry_core::resources::Kind,
+    world: Option<String>,
+) -> CmdResult<ResourcesView> {
+    let store = InstanceStore::new(state.data.clone());
+    let inst = store.get(&id).map_err(err)?;
+    let game = store.game_dir(&id).map_err(err)?;
+    let game_format = game_pack_format(&state, &inst.game_version, kind);
+    // Список ищет папку вида внутри: для датапаков это папка мира.
+    let base = match kind {
+        quarry_core::resources::Kind::Datapack => {
+            quarry_core::resources::target_dir(&game, kind, world.as_deref())
+                .map_err(err)?
+                .parent()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_default()
+        }
+        _ => game.clone(),
+    };
+    let shader_loader = quarry_core::mods::inventory(&game, &store.dir(&id).map_err(err)?)
+        .unwrap_or_default()
+        .iter()
+        .any(|f| f.enabled && f.mods.iter().any(|m| m.id == "iris" || m.id == "oculus"));
+    Ok(ResourcesView {
+        packs: quarry_core::resources::list(&base, kind, game_format),
+        game_format,
+        shader_loader,
+    })
+}
+
+#[tauri::command]
+fn resources_set_enabled(
+    state: State<AppState>,
+    id: String,
+    enabled: Vec<String>,
+) -> CmdResult<()> {
+    // Игра перезаписывает options.txt при выходе.
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру: она перезапишет настройки при выходе".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    let inst = store.get(&id).map_err(err)?;
+    let game = store.game_dir(&id).map_err(err)?;
+    quarry_core::resources::set_enabled(
+        &game,
+        &enabled,
+        game_pack_format(
+            &state,
+            &inst.game_version,
+            quarry_core::resources::Kind::Resourcepack,
+        ),
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn shader_set(state: State<AppState>, id: String, shader: Option<String>) -> CmdResult<()> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру: шейдер меняется в самой игре или после выхода".into());
+    }
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    quarry_core::resources::set_shader(&game, shader.as_deref()).map_err(err)
+}
+
+#[tauri::command]
+fn resource_remove(
+    state: State<AppState>,
+    id: String,
+    kind: quarry_core::resources::Kind,
+    world: Option<String>,
+    file: String,
+) -> CmdResult<()> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    quarry_core::resources::remove(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        kind,
+        world.as_deref(),
+        &file,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+async fn resource_install(
+    state: State<'_, AppState>,
+    id: String,
+    project: String,
+    kind: quarry_core::resources::Kind,
+    world: Option<String>,
+) -> CmdResult<String> {
+    quarry_core::resources::install(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        &project,
+        kind,
+        world.as_deref(),
+    )
+    .await
+    .map_err(err)
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1043,6 +1179,11 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            resources_list,
+            resources_set_enabled,
+            shader_set,
+            resource_remove,
+            resource_install,
             move_game_dir,
             servers_save,
             server_ping,

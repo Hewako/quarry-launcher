@@ -164,6 +164,7 @@ pub enum ProjectType {
     Mod,
     Resourcepack,
     Shader,
+    Datapack,
 }
 
 impl ProjectType {
@@ -172,6 +173,7 @@ impl ProjectType {
             ProjectType::Mod => "mod",
             ProjectType::Resourcepack => "resourcepack",
             ProjectType::Shader => "shader",
+            ProjectType::Datapack => "datapack",
         }
     }
 }

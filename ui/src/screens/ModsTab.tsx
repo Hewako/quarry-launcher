@@ -2,7 +2,7 @@
 // Любое изменение модов — через предпросмотр и автоматический снимок.
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { errText, mods, sizeText, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
+import { api, errText, mods, sizeText, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
@@ -50,9 +50,20 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
   );
 }
 
-function CatalogDialog({ inst, initial, onClose, onPlan }: { inst: Instance; initial: string; onClose: () => void; onPlan: (title: string, p: Plan) => void }) {
+const KINDS: [ProjectKind, string][] = [["mod", "Моды"], ["resourcepack", "Ресурспаки"], ["shader", "Шейдеры"], ["datapack", "Датапаки"]];
+
+export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", "resourcepack", "shader"], onInstalled, world }: {
+  world?: string;
+  inst: Instance;
+  initial: string;
+  onClose: () => void;
+  onPlan?: (title: string, p: Plan) => void;
+  kinds?: ProjectKind[];
+  onInstalled?: () => void;
+}) {
   const [query, setQuery] = useState(initial);
-  const [kind, setKind] = useState<ProjectKind>("mod");
+  const [kind, setKind] = useState<ProjectKind>(kinds[0]);
+  const [done, setDone] = useState<string[]>([]);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -66,22 +77,24 @@ function CatalogDialog({ inst, initial, onClose, onPlan }: { inst: Instance; ini
   const pick = async (h: SearchHit) => {
     setBusy(h.project_id);
     setError("");
-    try { onPlan(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id)); }
-    catch (e) { setError(errText(e)); }
+    try {
+      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id));
+      else { await api.installResource(inst.id, h.project_id, kind, world); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
+    } catch (e) { setError(errText(e)); }
     finally { setBusy(null); }
   };
   return (
     <Modal title="Каталог Modrinth" onClose={onClose} wide>
       <div className="row">
-        <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти мод…" data-autofocus />
+        <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={{ mod: "Найти мод…", shader: "Найти шейдер…", resourcepack: "Найти ресурспак…", datapack: "Найти датапак…" }[kind]} data-autofocus />
         <div className="seg">
-          {([["mod", "Моды"], ["resourcepack", "Ресурспаки"], ["shader", "Шейдеры"]] as const).map(([k, l]) => (
+          {KINDS.filter(([k]) => kinds.includes(k)).map(([k, l]) => (
             <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>
           ))}
         </div>
       </div>
       <span className="muted small">Показано то, что подходит к Minecraft {inst.game_version}{kind === "mod" ? ` и ${inst.loader}` : ""}. Ставится только по вашему нажатию.</span>
-      {kind !== "mod" && <span className="small" style={{ color: "var(--warn)" }}>Ресурспаки и шейдеры пока можно только найти — установка появится позже. Сейчас ставятся моды.</span>}
+      {kind === "shader" && <span className="muted small">Шейдеры работают с модом Iris (Fabric/Quilt) или Oculus (NeoForge). После установки шейдер можно выбрать на вкладке «Ресурсы».</span>}
       {error && <div className="alert err"><span>{error}</span></div>}
       <div className="hits">
         {hits === null && <p className="muted"><span className="spinner" /> Ищем…</p>}
@@ -93,7 +106,7 @@ function CatalogDialog({ inst, initial, onClose, onPlan }: { inst: Instance; ini
               <b>{h.title}</b> <span className="muted small">· {h.author} · {h.downloads.toLocaleString("ru-RU")} скачиваний</span>
               <small>{h.description}</small>
             </div>
-            <button className="btn" disabled={kind !== "mod" || busy !== null} onClick={() => pick(h)}>{busy === h.project_id ? "…" : "Установить"}</button>
+            <button className="btn" disabled={busy !== null || done.includes(h.project_id)} onClick={() => pick(h)}>{busy === h.project_id ? "…" : done.includes(h.project_id) ? "Установлено" : "Установить"}</button>
           </div>
         ))}
       </div>

@@ -237,3 +237,4 @@ select.field { padding: 6px 8px; }
 .ok-text { color: var(--accent); }
 .servers td:first-child { vertical-align: top; }
 .sacts { gap: 14px; margin-top: 4px; }
+.servers td:last-child > * + * { margin-left: 10px; }

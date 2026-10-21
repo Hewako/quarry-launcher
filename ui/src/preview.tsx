@@ -26,6 +26,17 @@ mockIPC((cmd, args) => {
     case "app_info": return { version: "0.1.0", dev_launch: params.has("dev"), data_dir: "/Users/player/.quarry", microsoft_configured: params.has("ms"), os: "macos" };
     case "list_instances": return { instances, broken: [], running: [] };
     case "update_instance": return { ...instances.find((i) => i.id === a.id)!, ...((a.meta as object) ?? {}) };
+    case "resources_list": if (a.kind === "datapack") return { game_format: 61, shader_loader: true, packs: [{ file_name: "Towers.zip", description: "Башни в мире", size: 340_000, is_dir: false, enabled: false, formats: [61, 61], compatible: true }] };
+      return a.kind === "resourcepack"
+      ? { game_format: 75, shader_loader: true, packs: [
+        { file_name: "Faithful 32x.zip", description: "Те же текстуры, в два раза чётче", size: 9_400_000, is_dir: false, enabled: true, formats: [75, 75], compatible: true },
+        { file_name: "Fresh Animations.zip", description: "Живые анимации мобов", size: 2_100_000, is_dir: false, enabled: true, formats: [70, 75], compatible: true },
+        { file_name: "Old Pack.zip", description: "Для 1.20", size: 800_000, is_dir: false, enabled: false, formats: [15, 15], compatible: false },
+      ] }
+      : { shader_loader: true, packs: [
+        { file_name: "ComplementaryReimagined.zip", description: "", size: 1_200_000, is_dir: false, enabled: true },
+        { file_name: "BSL.zip", description: "", size: 900_000, is_dir: false, enabled: false },
+      ] };
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

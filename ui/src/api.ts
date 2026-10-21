@@ -60,6 +60,9 @@ export const SHARABLE: [string, string][] = [
 export interface Server { name: string; ip: string; icon?: string; accept_textures?: boolean }
 export interface ServerStatus { version: string; protocol: number; online: number; max: number; motd: string; latency_ms: number; favicon?: string }
 
+export interface PackInfo { file_name: string; description: string; size: number; is_dir: boolean; enabled: boolean; formats?: [number, number]; compatible?: boolean }
+export type ResKind = "resourcepack" | "shader" | "datapack";
+
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
   max_memory_mb: Resolved<number>;
@@ -130,6 +133,11 @@ export const api = {
   diskUsage: (id: string) => invoke<{ parts: { label: string; size: number }[]; total: number }>("disk_usage", { id }),
   copyBetween: (from: string, to: string, items: string[]) => invoke<void>("copy_between", { from, to, items }),
   moveGameDir: (id: string, target: string | null) => invoke<string>("move_game_dir", { id, target }),
+  resources: (id: string, kind: ResKind, world?: string) => invoke<{ packs: PackInfo[]; game_format?: number; shader_loader: boolean }>("resources_list", { id, kind, world: world ?? null }),
+  setResourcePacks: (id: string, enabled: string[]) => invoke<void>("resources_set_enabled", { id, enabled }),
+  setShader: (id: string, shader: string | null) => invoke<void>("shader_set", { id, shader }),
+  removeResource: (id: string, kind: ResKind, file: string, world?: string) => invoke<void>("resource_remove", { id, kind, file, world: world ?? null }),
+  installResource: (id: string, project: string, kind: ResKind, world?: string) => invoke<string>("resource_install", { id, project, kind, world: world ?? null }),
   servers: (id: string) => invoke<Server[]>("servers_list", { id }),
   saveServers: (id: string, servers: Server[]) => invoke<void>("servers_save", { id, servers }),
   pingServer: (address: string) => invoke<ServerStatus>("server_ping", { address }),
@@ -225,7 +233,7 @@ export interface Plan { changes: Change[]; notes: string[] }
 export interface SnapshotInfo { id: string; reason: string; created_at: number; pinned: boolean; auto: boolean; mods: number; configs: number }
 export interface SnapshotDiff { added: string[]; removed: string[]; changed: string[]; options: [string, string, string][] }
 export interface SearchHit { project_id: string; slug: string; title: string; description: string; downloads: number; icon_url?: string; author: string; client_side: string; categories: string[] }
-export type ProjectKind = "mod" | "resourcepack" | "shader";
+export type ProjectKind = "mod" | "resourcepack" | "shader" | "datapack";
 export interface ImportResult { instance: Instance; manual: { project_id: number; file_id: number; url: string }[]; notes: string[] }
 export type CrashAction = { kind: "disable_mod"; file_name: string } | { kind: "increase_memory" } | { kind: "update_drivers" } | { kind: "open_mod_doctor" } | { kind: "safe_launch" };
 export interface CrashAnalysis { title: string; explanation: string; confidence: "high" | "medium" | "low"; confidence_label: string; evidence: string[]; suspects: string[]; actions: CrashAction[] }
