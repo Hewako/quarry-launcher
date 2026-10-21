@@ -8,8 +8,9 @@ import { t } from "../i18n";
 
 type Ping = ServerStatus | { error: string } | "loading";
 
-function ServerForm({ initial, onClose, onSave }: { initial: Server; onClose: () => void; onSave: (s: Server) => Promise<void> }) {
+function ServerForm({ initial, initialTags, onClose, onSave }: { initial: Server; initialTags: string[]; onClose: () => void; onSave: (s: Server, tags: string[]) => Promise<void> }) {
   const [s, setS] = useState(initial);
+  const [tags, setTags] = useState(initialTags.join(", "));
   const [busy, setBusy] = useState(false);
   return (
     <Modal title={initial.ip ? t("Изменить сервер") : t("Добавить сервер")} onClose={onClose}>
@@ -24,9 +25,11 @@ function ServerForm({ initial, onClose, onSave }: { initial: Server; onClose: ()
         <option value="yes">{t("Принимать")}</option>
         <option value="no">{t("Отклонять")}</option>
       </select>
+      <label className="small muted" htmlFor="srv-tags">{t("Теги через запятую")}</label>
+      <input id="srv-tags" className="field" value={tags} onChange={(e) => setTags(e.target.value)} placeholder={t("друзья, выживание")} />
       <div className="acts">
         <button className="btn" onClick={onClose}>{t("Отмена")}</button>
-        <button className="btn pri" disabled={busy || !s.name.trim() || !s.ip} onClick={async () => { setBusy(true); try { await onSave(s); } finally { setBusy(false); } }}>
+        <button className="btn pri" disabled={busy || !s.name.trim() || !s.ip} onClick={async () => { setBusy(true); try { await onSave(s, tags.split(",").map((x) => x.trim()).filter(Boolean)); } finally { setBusy(false); } }}>
           {busy ? t("Сохраняем…") : t("Сохранить")}
         </button>
       </div>
@@ -39,6 +42,10 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
   const [list, setList] = useState<Server[] | null>(null);
   const [pings, setPings] = useState<Record<string, Ping>>({});
   const [edit, setEdit] = useState<number | "new" | null>(null);
+  const [tags, setTagsMap] = useState<Record<string, string[]>>({});
+  const [tagFilter, setTagFilter] = useState("");
+  useEffect(() => { api.serverTags(inst.id).then(setTagsMap).catch(() => setTagsMap({})); }, [inst.id]);
+  const allTags = [...new Set(Object.values(tags).flat())].sort();
   const streamer = useStreamer();
 
   const ping = useCallback((ip: string) => {
@@ -76,6 +83,12 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
         <p className="muted small" style={{ margin: 0, maxWidth: 680 }}>
           {t("Тот же список, что в игре в «Сетевой игре». «Играть» запускает игру и сразу подключает к серверу. Менять список можно, только пока игра закрыта.")}
         </p>
+        {allTags.length > 0 && (
+          <select className="field auto" aria-label={t("Показывать серверы с тегом")} value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+            <option value="">{t("Все серверы")}</option>
+            {allTags.map((tg) => <option key={tg} value={tg}>{tg}</option>)}
+          </select>
+        )}
         <button className="btn" disabled={running} onClick={() => setEdit("new")}>{t("+ Добавить сервер")}</button>
       </div>
       <div className="card" style={{ padding: 0 }}>
@@ -85,6 +98,7 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
           <table className="servers">
             <tbody>
               {list.map((s, i) => {
+                if (tagFilter && !(tags[s.ip] ?? []).includes(tagFilter)) return null;
                 const p = pings[s.ip];
                 const st = p && p !== "loading" && !("error" in p) ? p : null;
                 const icon = st?.favicon ?? (s.icon ? `data:image/png;base64,${s.icon}` : undefined);
@@ -93,6 +107,7 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
                     <td style={{ width: 48 }}>{icon ? <img className="sicon" src={icon} alt="" /> : <div className="sicon" aria-hidden />}</td>
                     <td>
                       <b>{s.name}</b> <span className="muted small mono">{address(s.ip, streamer)}</span>
+                      {(tags[s.ip] ?? []).map((tg) => <span key={tg} className="badge" style={{ marginLeft: 6 }}>{tg}</span>)}
                       <div className="small">
                         {p === "loading" || !p ? <span className="muted"><span className="spinner" /> {t("Проверяем…")}</span>
                           : "error" in p ? <span className="muted" title={p.error}>{t("Не отвечает")}</span>
@@ -121,10 +136,13 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
       {edit !== null && (
         <ServerForm
           initial={edit === "new" ? { name: "", ip: "" } : list![edit]}
+          initialTags={edit === "new" ? [] : tags[list![edit].ip] ?? []}
           onClose={() => setEdit(null)}
-          onSave={async (s) => {
+          onSave={async (s, newTags) => {
             const next = edit === "new" ? [...list!, s] : list!.map((x, j) => (j === edit ? s : x));
             await save(next);
+            await api.setServerTags(inst.id, s.ip, newTags).catch(() => {});
+            api.serverTags(inst.id).then(setTagsMap).catch(() => {});
             setEdit(null);
             ping(s.ip);
           }}

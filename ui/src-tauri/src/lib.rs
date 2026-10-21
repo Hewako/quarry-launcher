@@ -1558,6 +1558,31 @@ fn servers_save(
 }
 
 #[tauri::command]
+fn server_tags(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<std::collections::BTreeMap<String, Vec<String>>> {
+    Ok(quarry_core::servers::load_tags(
+        &InstanceStore::new(state.data.clone())
+            .dir(&id)
+            .map_err(err)?,
+    ))
+}
+
+#[tauri::command]
+fn server_set_tags(
+    state: State<AppState>,
+    id: String,
+    ip: String,
+    tags: Vec<String>,
+) -> CmdResult<()> {
+    let dir = InstanceStore::new(state.data.clone())
+        .dir(&id)
+        .map_err(err)?;
+    quarry_core::servers::set_tags(&dir, &ip, &tags).map_err(err)
+}
+
+#[tauri::command]
 async fn server_ping(address: String) -> CmdResult<quarry_core::servers::Status> {
     quarry_core::servers::ping(&address).await.map_err(err)
 }
@@ -1880,6 +1905,8 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            server_tags,
+            server_set_tags,
             account_skin,
             launcher_update,
             bisect_status,

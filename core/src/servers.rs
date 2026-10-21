@@ -98,6 +98,33 @@ pub fn write(game_dir: &Path, servers: &[Server]) -> Result<()> {
     write_atomic(&path, &nbt::write(&root))
 }
 
+const TAGS: &str = "server-tags.toml";
+
+/// Теги серверов профиля (адрес → теги). Хранятся отдельно: игра перезаписывает servers.dat.
+pub fn load_tags(instance_dir: &Path) -> BTreeMap<String, Vec<String>> {
+    std::fs::read_to_string(instance_dir.join(TAGS))
+        .ok()
+        .and_then(|t| toml::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+pub fn set_tags(instance_dir: &Path, ip: &str, tags: &[String]) -> Result<()> {
+    let mut all = load_tags(instance_dir);
+    let clean: Vec<String> = tags
+        .iter()
+        .map(|t| t.trim().chars().take(32).collect::<String>())
+        .filter(|t| !t.is_empty())
+        .take(10)
+        .collect();
+    if clean.is_empty() {
+        all.remove(ip);
+    } else {
+        all.insert(ip.to_string(), clean);
+    }
+    let text = toml::to_string_pretty(&all).map_err(|e| Error::parse(TAGS, e))?;
+    write_atomic(&instance_dir.join(TAGS), text.as_bytes())
+}
+
 /// Разобрать адрес сервера на хост и порт (по умолчанию 25565).
 pub fn parse_address(addr: &str) -> Result<(String, u16)> {
     let addr = addr.trim();
@@ -363,5 +390,23 @@ mod tests {
         let port = l.local_addr().unwrap().port();
         drop(l);
         assert!(ping(&format!("127.0.0.1:{port}")).await.is_err());
+    }
+
+    #[test]
+    fn tags_live_next_to_servers_dat() {
+        let d = std::env::temp_dir().join(format!("quarry-srvtags-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert!(load_tags(&d).is_empty());
+        set_tags(
+            &d,
+            "mc.example.org",
+            &[" друзья ".into(), "".into(), "выживание".into()],
+        )
+        .unwrap();
+        assert_eq!(load_tags(&d)["mc.example.org"], ["друзья", "выживание"]);
+        set_tags(&d, "mc.example.org", &[]).unwrap();
+        assert!(load_tags(&d).is_empty(), "пустые теги не хранятся");
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

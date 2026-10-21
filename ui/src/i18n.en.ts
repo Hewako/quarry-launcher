@@ -895,4 +895,8 @@ export const EN: Record<string, string> = {
   "Системный": "System",
   "Разборчивый (шире буквы)": "Readable (wider letters)",
   "С засечками": "Serif",
+  "Теги через запятую": "Tags, comma-separated",
+  "друзья, выживание": "friends, survival",
+  "Показывать серверы с тегом": "Show servers with tag",
+  "Все серверы": "All servers",
 };
