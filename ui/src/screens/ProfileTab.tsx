@@ -4,35 +4,36 @@ import { useEffect, useState } from "react";
 import { api, errText, metaOf, sizeText, SHARABLE, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { path, useStreamer } from "../streamer";
+import { t } from "../i18n";
 
 const COLORS = ["#4f8a5b", "#3b7dd8", "#8b5cf6", "#d0703a", "#c2415d", "#2a9d8f", "#a3a3a3"];
 
 function CloneDialog({ inst, onClose, onDone }: { inst: Instance; onClose: () => void; onDone: (i: Instance) => void }) {
   const dialog = useDialog();
-  const [name, setName] = useState(`${inst.name} (копия)`);
+  const [name, setName] = useState(t("{0} (копия)", inst.name));
   const [parts, setParts] = useState<CloneParts>({ mods: true, configs: true, resources: true, worlds: false });
   const [busy, setBusy] = useState(false);
   const opts: [keyof CloneParts, string][] = [
-    ["mods", "Моды"],
-    ["configs", "Настройки модов и игры, список серверов"],
-    ["resources", "Ресурспаки и шейдеры"],
-    ["worlds", "Миры (займёт больше места)"],
+    ["mods", t("Моды")],
+    ["configs", t("Настройки модов и игры, список серверов")],
+    ["resources", t("Ресурспаки и шейдеры")],
+    ["worlds", t("Миры (займёт больше места)")],
   ];
   const go = async () => {
     setBusy(true);
-    try { onDone(await api.cloneInstance(inst.id, name, parts)); } catch (e) { await dialog.alert("Копия не создана", errText(e)); } finally { setBusy(false); }
+    try { onDone(await api.cloneInstance(inst.id, name, parts)); } catch (e) { await dialog.alert(t("Копия не создана"), errText(e)); } finally { setBusy(false); }
   };
   return (
-    <Modal title="Копия профиля" onClose={onClose}>
-      <label className="small muted" htmlFor="clone-name">Имя новой копии</label>
+    <Modal title={t("Копия профиля")} onClose={onClose}>
+      <label className="small muted" htmlFor="clone-name">{t("Имя новой копии")}</label>
       <input id="clone-name" className="field" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} />
-      <p className="small muted">Версия игры, загрузчик и настройки запуска копируются всегда. Что ещё взять:</p>
+      <p className="small muted">{t("Версия игры, загрузчик и настройки запуска копируются всегда. Что ещё взять:")}</p>
       {opts.map(([k, label]) => (
         <label key={k} className="row"><input type="checkbox" checked={parts[k]} onChange={(e) => setParts({ ...parts, [k]: e.target.checked })} /> {label}</label>
       ))}
       <div className="acts">
-        <button className="btn" onClick={onClose}>Отмена</button>
-        <button className="btn pri" disabled={busy || !name.trim()} onClick={go}>{busy ? "Копируем…" : "Создать копию"}</button>
+        <button className="btn" onClick={onClose}>{t("Отмена")}</button>
+        <button className="btn pri" disabled={busy || !name.trim()} onClick={go}>{busy ? t("Копируем…") : t("Создать копию")}</button>
       </div>
     </Modal>
   );
@@ -49,18 +50,18 @@ function CopyFromDialog({ inst, instances, onClose }: { inst: Instance; instance
     try {
       await api.copyBetween(from, inst.id, items);
       onClose();
-      await dialog.alert("Перенесено", "Перед переносом сохранён снимок — вернуть как было можно на вкладке «Снимки».");
-    } catch (e) { await dialog.alert("Не перенесено", errText(e)); } finally { setBusy(false); }
+      await dialog.alert(t("Перенесено"), t("Перед переносом сохранён снимок — вернуть как было можно на вкладке «Снимки»."));
+    } catch (e) { await dialog.alert(t("Не перенесено"), errText(e)); } finally { setBusy(false); }
   };
   return (
-    <Modal title={`Перенести в «${inst.name}»`} onClose={onClose}>
-      {others.length === 0 ? <p className="muted">Других профилей нет.</p> : (
+    <Modal title={t("Перенести в «{0}»", inst.name)} onClose={onClose}>
+      {others.length === 0 ? <p className="muted">{t("Других профилей нет.")}</p> : (
         <>
-          <label className="small muted" htmlFor="copy-from">Из профиля</label>
+          <label className="small muted" htmlFor="copy-from">{t("Из профиля")}</label>
           <select id="copy-from" className="field" style={{ width: "100%" }} value={from} onChange={(e) => setFrom(e.target.value)}>
             {others.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.game_version}</option>)}
           </select>
-          <p className="small muted">Файлы с такими же именами заменятся. Ресурспаки, шейдеры и настройки модов добавятся к уже имеющимся.</p>
+          <p className="small muted">{t("Файлы с такими же именами заменятся. Ресурспаки, шейдеры и настройки модов добавятся к уже имеющимся.")}</p>
           {SHARABLE.map(([k, label]) => (
             <label key={k} className="row">
               <input type="checkbox" checked={items.includes(k)} onChange={(e) => setItems(e.target.checked ? [...items, k] : items.filter((x) => x !== k))} /> {label}
@@ -69,8 +70,8 @@ function CopyFromDialog({ inst, instances, onClose }: { inst: Instance; instance
         </>
       )}
       <div className="acts">
-        <button className="btn" onClick={onClose}>Отмена</button>
-        <button className="btn pri" disabled={busy || !from || items.length === 0} onClick={go}>{busy ? "Переносим…" : "Перенести"}</button>
+        <button className="btn" onClick={onClose}>{t("Отмена")}</button>
+        <button className="btn pri" disabled={busy || !from || items.length === 0} onClick={go}>{busy ? t("Переносим…") : t("Перенести")}</button>
       </div>
     </Modal>
   );
@@ -99,57 +100,57 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
     try {
       onChanged(await api.updateInstance(inst.id, { name: newName, meta: next }));
       setMeta(next);
-    } catch (e) { await dialog.alert("Не сохранено", errText(e)); }
+    } catch (e) { await dialog.alert(t("Не сохранено"), errText(e)); }
   };
 
   const move = async (toQuarry: boolean) => {
     let target: string | null = null;
     if (!toQuarry) {
-      const picked = await open({ directory: true, title: "Куда перенести папку игры" }).catch(() => null);
+      const picked = await open({ directory: true, title: t("Куда перенести папку игры") }).catch(() => null);
       if (typeof picked !== "string") return;
       target = picked;
     }
     const ok = await dialog.confirm({
-      title: toQuarry ? "Вернуть папку игры в Quarry?" : "Перенести папку игры?",
+      title: toQuarry ? t("Вернуть папку игры в Quarry?") : t("Перенести папку игры?"),
       body: toQuarry
-        ? "Миры, моды и настройки переедут обратно в папку данных Quarry."
-        : <>Миры, моды и настройки переедут в <span className="mono">{target}</span>. На другой диск это займёт время; исходная папка удалится только после полной проверки копии.</>,
-      confirm: "Перенести",
+        ? t("Миры, моды и настройки переедут обратно в папку данных Quarry.")
+        : <>{t("Миры, моды и настройки переедут в")} <span className="mono">{target}</span>{t(". На другой диск это займёт время; исходная папка удалится только после полной проверки копии.")}</>,
+      confirm: t("Перенести"),
     });
     if (!ok) return;
     setMoving(true);
     try {
       const path = await api.moveGameDir(inst.id, target);
       onChanged({ ...inst, external_game_dir: toQuarry ? undefined : path });
-      await dialog.alert("Перенесено", <>Папка игры теперь здесь: <span className="mono">{path}</span></>);
-    } catch (e) { await dialog.alert("Не перенесено", errText(e)); } finally { setMoving(false); }
+      await dialog.alert(t("Перенесено"), <>{t("Папка игры теперь здесь:")} <span className="mono">{path}</span></>);
+    } catch (e) { await dialog.alert(t("Не перенесено"), errText(e)); } finally { setMoving(false); }
   };
 
   return (
     <>
       <div className="card">
         <div className="setting">
-          <div className="lbl">Название</div>
+          <div className="lbl">{t("Название")}</div>
           <input className="field" value={name} maxLength={64} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== inst.name && save()} />
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Группа<span className="hint">для фильтра на главной</span></div>
-          <input className="field" list="groups" placeholder="Без группы" value={meta.group ?? ""} maxLength={40}
+          <div className="lbl">{t("Группа")}<span className="hint">{t("для фильтра на главной")}</span></div>
+          <input className="field" list="groups" placeholder={t("Без группы")} value={meta.group ?? ""} maxLength={40}
             onChange={(e) => setMeta({ ...meta, group: e.target.value })} onBlur={() => save()} />
           <datalist id="groups">{groups.map((g) => <option key={g} value={g} />)}</datalist>
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Заметка</div>
-          <input className="field" placeholder="Например: сервер с друзьями" value={meta.description ?? ""} maxLength={300}
+          <div className="lbl">{t("Заметка")}</div>
+          <input className="field" placeholder={t("Например: сервер с друзьями")} value={meta.description ?? ""} maxLength={300}
             onChange={(e) => setMeta({ ...meta, description: e.target.value })} onBlur={() => save()} />
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Цвет значка</div>
-          <div className="row" role="radiogroup" aria-label="Цвет значка">
-            <button className={`swatch auto ${!meta.color ? "on" : ""}`} role="radio" aria-checked={!meta.color} title="Автоматически" onClick={() => save({ color: undefined })}>A</button>
+          <div className="lbl">{t("Цвет значка")}</div>
+          <div className="row" role="radiogroup" aria-label={t("Цвет значка")}>
+            <button className={`swatch auto ${!meta.color ? "on" : ""}`} role="radio" aria-checked={!meta.color} title={t("Автоматически")} onClick={() => save({ color: undefined })}>A</button>
             {COLORS.map((c) => (
               <button key={c} className={`swatch ${meta.color === c ? "on" : ""}`} role="radio" aria-checked={meta.color === c} aria-label={c} style={{ background: c }} onClick={() => save({ color: c })} />
             ))}
@@ -157,20 +158,20 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Избранное<span className="hint">показывается первым</span></div>
-          <label className="row"><input type="checkbox" checked={meta.favorite} onChange={(e) => save({ favorite: e.target.checked })} /> в избранном</label>
+          <div className="lbl">{t("Избранное")}<span className="hint">{t("показывается первым")}</span></div>
+          <label className="row"><input type="checkbox" checked={meta.favorite} onChange={(e) => save({ favorite: e.target.checked })} /> {t("в избранном")}</label>
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Архив<span className="hint">скрыть с главной, файлы останутся на месте</span></div>
-          <label className="row"><input type="checkbox" checked={meta.archived} onChange={(e) => save({ archived: e.target.checked })} /> в архиве</label>
+          <div className="lbl">{t("Архив")}<span className="hint">{t("скрыть с главной, файлы останутся на месте")}</span></div>
+          <label className="row"><input type="checkbox" checked={meta.archived} onChange={(e) => save({ archived: e.target.checked })} /> {t("в архиве")}</label>
           <span />
         </div>
       </div>
 
-      <h4 style={{ margin: "22px 0 10px" }}>Место на диске{usage ? ` · ${sizeText(usage.total)}` : ""}</h4>
+      <h4 style={{ margin: "22px 0 10px" }}>{t("Место на диске")}{usage ? ` · ${sizeText(usage.total)}` : ""}</h4>
       <div className="card">
-        {!usage ? <p className="muted" style={{ margin: 0 }}><span className="spinner" /> Считаем…</p> : usage.parts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Профиль пока пустой.</p> : (
+        {!usage ? <p className="muted" style={{ margin: 0 }}><span className="spinner" /> {t("Считаем…")}</p> : usage.parts.length === 0 ? <p className="muted" style={{ margin: 0 }}>{t("Профиль пока пустой.")}</p> : (
           <div className="usage">
             {usage.parts.map((p) => (
               <div key={p.label} className="urow">
@@ -183,20 +184,20 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
         )}
       </div>
 
-      <h4 style={{ margin: "22px 0 10px" }}>Где лежит папка игры</h4>
+      <h4 style={{ margin: "22px 0 10px" }}>{t("Где лежит папка игры")}</h4>
       <div className="card">
         <p className="small" style={{ marginTop: 0 }}>
-          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : "В папке данных Quarry."}
+          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : t("В папке данных Quarry.")}
         </p>
         <div className="row">
-          <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? "Переносим…" : "Перенести в другую папку или на другой диск…"}</button>
-          {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>Вернуть в Quarry</button>}
+          <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? t("Переносим…") : t("Перенести в другую папку или на другой диск…")}</button>
+          {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>{t("Вернуть в Quarry")}</button>}
         </div>
       </div>
 
       <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn" onClick={() => setModal("clone")}>Сделать копию профиля…</button>
-        <button className="btn" disabled={running} onClick={() => setModal("copy")}>Перенести настройки из другого профиля…</button>
+        <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
+        <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
       </div>
       {modal === "clone" && <CloneDialog inst={inst} onClose={() => setModal("")} onDone={(i) => { setModal(""); onCloned(i); }} />}
       {modal === "copy" && <CopyFromDialog inst={inst} instances={instances} onClose={() => setModal("")} />}

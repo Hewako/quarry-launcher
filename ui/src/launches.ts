@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import type { ExitInfo, LaunchEvent, Progress } from "./api";
 import { pushNote } from "./notify";
+import { t } from "./i18n";
 
 export interface LaunchState {
   phase: "preparing" | "running" | "done" | "failed";
@@ -37,12 +38,12 @@ class LaunchStore {
   }
 
   begin(id: string) {
-    this.states.set(id, { phase: "preparing", stageLabel: "Подготовка", warnings: [], logs: [], startedAt: Date.now() });
+    this.states.set(id, { phase: "preparing", stageLabel: t("Подготовка"), warnings: [], logs: [], startedAt: Date.now() });
     this.notify();
   }
 
   private update(id: string, f: (s: LaunchState) => LaunchState) {
-    const cur = this.states.get(id) ?? { phase: "preparing", stageLabel: "Подготовка", warnings: [], logs: [], startedAt: Date.now() };
+    const cur = this.states.get(id) ?? { phase: "preparing", stageLabel: t("Подготовка"), warnings: [], logs: [], startedAt: Date.now() };
     this.states.set(id, f(cur));
   }
 
@@ -65,21 +66,21 @@ class LaunchStore {
           case "account": return { ...s, account: `${e.name} (${e.provider})` };
           case "java": return { ...s, javaLabel: e.label, javaReason: e.reason };
           case "warning": pushNote({ kind: "warn", title: e.message, profile: id }); return { ...s, warnings: [...s.warnings, e.message] };
-          case "started": return { ...s, phase: "running", stageLabel: "Игра запущена", command: e.command, progress: undefined };
+          case "started": return { ...s, phase: "running", stageLabel: t("Игра запущена"), command: e.command, progress: undefined };
           case "log": {
             const logs = s.logs.length >= MAX_LOG_LINES ? s.logs.slice(-MAX_LOG_LINES + 1) : s.logs.slice();
             logs.push(e.line);
             return { ...s, logs };
           }
           case "exited":
-            if (e.info.crashed) pushNote({ kind: "err", title: "Игра упала", body: e.info.analysis?.title, profile: id });
-            return { ...s, exit: e.info, phase: "done", stageLabel: e.info.crashed ? "Игра упала" : "Игра закрыта" };
+            if (e.info.crashed) pushNote({ kind: "err", title: t("Игра упала"), body: e.info.analysis?.title, profile: id });
+            return { ...s, exit: e.info, phase: "done", stageLabel: e.info.crashed ? t("Игра упала") : t("Игра закрыта") };
         }
       });
       schedule();
     });
     await listen<{ id: string; error?: string }>("launch-finished", ({ payload }) => {
-      if (payload.error) pushNote({ kind: "err", title: "Запуск не удался", body: payload.error, profile: payload.id });
+      if (payload.error) pushNote({ kind: "err", title: t("Запуск не удался"), body: payload.error, profile: payload.id });
       this.update(payload.id, (s) =>
         payload.error ? { ...s, phase: "failed", error: payload.error } : { ...s, phase: "done" },
       );

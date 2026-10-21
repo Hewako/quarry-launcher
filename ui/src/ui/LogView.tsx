@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { t } from "../i18n";
 
 type Filter = "all" | "errors" | "warnings" | "loader";
 
@@ -45,28 +46,28 @@ export function LogView({ lines, follow = true }: { lines: string[]; follow?: bo
   return (
     <>
       <div className="filters">
-        {([["all", "Всё"], ["errors", `Ошибки${errors ? ` (${errors})` : ""}`], ["warnings", "Предупреждения"], ["loader", "Только загрузчик"]] as const).map(([k, label]) => (
+        {([["all", t("Всё")], ["errors", t("Ошибки{0}", errors ? ` (${errors})` : "")], ["warnings", t("Предупреждения")], ["loader", t("Только загрузчик")]] as const).map(([k, label]) => (
           <button key={k} className={`btn ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{label}</button>
         ))}
-        <input className="field" style={{ maxWidth: 240 }} placeholder="Поиск в логе…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input className="field" style={{ maxWidth: 240 }} placeholder={t("Поиск в логе…")} value={query} onChange={(e) => setQuery(e.target.value)} />
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={copy}>{copied ? "Скопировано" : "Копировать фрагмент"}</button>
+        <button className="btn" onClick={copy}>{copied ? t("Скопировано") : t("Копировать фрагмент")}</button>
       </div>
       <div
         className="logbox"
         ref={box}
         tabIndex={0}
-        aria-label="Лог игры"
+        aria-label={t("Лог игры")}
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
-        {shown.length === 0 ? <span className="i">Строк нет.</span> : shown.map((l, i) => (
+        {shown.length === 0 ? <span className="i">{t("Строк нет.")}</span> : shown.map((l, i) => (
           <div key={i} className={isErr(l) ? "e" : isWarn(l) ? "w" : undefined}>{renderLine(l)}</div>
         ))}
       </div>
-      <p className="muted small">Токены, путь к домашней папке и IP-адреса маскируются ещё при записи лога: в файл, на экран и в отчёт они не попадают.</p>
+      <p className="muted small">{t("Токены, путь к домашней папке и IP-адреса маскируются ещё при записи лога: в файл, на экран и в отчёт они не попадают.")}</p>
     </>
   );
 }

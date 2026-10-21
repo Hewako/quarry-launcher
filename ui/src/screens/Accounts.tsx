@@ -3,6 +3,7 @@ import { accountKey, api, errText, type AccountRef, type AppInfo, type DeviceCod
 import { Avatar } from "../ui/Avatar";
 import { Modal, useDialog } from "../ui/Dialog";
 import { nick, useStreamer } from "../streamer";
+import { t } from "../i18n";
 
 function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: AccountRef) => void }) {
   const [code, setCode] = useState<DeviceCode | null>(null);
@@ -30,23 +31,23 @@ function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: 
 
   const close = () => { api.cancelLogin().catch(() => {}); onClose(); };
   return (
-    <Modal title="Вход через Microsoft" onClose={close}>
+    <Modal title={t("Вход через Microsoft")} onClose={close}>
       {error ? (
         <div className="alert err"><span style={{ userSelect: "text" }}>{error}</span></div>
       ) : !code ? (
-        <p className="muted"><span className="spinner" /> Получаем код входа…</p>
+        <p className="muted"><span className="spinner" /> {t("Получаем код входа…")}</p>
       ) : (
         <div className="form">
-          <p style={{ margin: 0 }}>Откройте страницу Microsoft в браузере и введите код. Пароль вводится только на сайте Microsoft — лаунчер его не видит.</p>
+          <p style={{ margin: 0 }}>{t("Откройте страницу Microsoft в браузере и введите код. Пароль вводится только на сайте Microsoft — лаунчер его не видит.")}</p>
           <div className="row">
             <span className="code">{code.user_code}</span>
-            <button className="btn" onClick={async () => { await navigator.clipboard.writeText(code.user_code); setCopied(true); }}>{copied ? "Скопирован" : "Копировать код"}</button>
+            <button className="btn" onClick={async () => { await navigator.clipboard.writeText(code.user_code); setCopied(true); }}>{copied ? t("Скопирован") : t("Копировать код")}</button>
           </div>
-          <button className="btn pri" onClick={() => api.openLink(code.verification_uri).catch((e) => setError(errText(e)))}>Открыть {code.verification_uri.replace("https://", "")}</button>
-          <p className="muted small" style={{ margin: 0 }}><span className="spinner" /> Ждём подтверждения… Код действует {Math.round(code.expires_in / 60)} мин.</p>
+          <button className="btn pri" onClick={() => api.openLink(code.verification_uri).catch((e) => setError(errText(e)))}>{t("Открыть")} {code.verification_uri.replace("https://", "")}</button>
+          <p className="muted small" style={{ margin: 0 }}><span className="spinner" /> {t("Ждём подтверждения… Код действует")} {Math.round(code.expires_in / 60)} {t("мин.")}</p>
         </div>
       )}
-      <div className="acts"><button className="btn" onClick={close}>{error ? "Закрыть" : "Отмена"}</button></div>
+      <div className="acts"><button className="btn" onClick={close}>{error ? t("Закрыть") : t("Отмена")}</button></div>
     </Modal>
   );
 }
@@ -73,18 +74,18 @@ function ElyLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: Accoun
     }
   };
   return (
-    <Modal title="Вход через Ely.by" onClose={onClose}>
+    <Modal title={t("Вход через Ely.by")} onClose={onClose}>
       <form className="form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <label><span>Ник или e-mail</span><input className="field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" data-autofocus /></label>
-        <label><span>Пароль</span><input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
+        <label><span>{t("Ник или e-mail")}</span><input className="field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" data-autofocus /></label>
+        <label><span>{t("Пароль")}</span><input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
         {needTotp && (
-          <label><span>Код двухфакторной защиты</span><input className="field" inputMode="numeric" value={totp} onChange={(e) => setTotp(e.target.value)} autoFocus /></label>
+          <label><span>{t("Код двухфакторной защиты")}</span><input className="field" inputMode="numeric" value={totp} onChange={(e) => setTotp(e.target.value)} autoFocus /></label>
         )}
-        <span className="muted small">Пароль отправляется только на authserver.ely.by и не сохраняется: в хранилище секретов ОС попадает только токен сессии. Ely.by-аккаунт работает лишь на совместимых серверах.</span>
+        <span className="muted small">{t("Пароль отправляется только на authserver.ely.by и не сохраняется: в хранилище секретов ОС попадает только токен сессии. Ely.by-аккаунт работает лишь на совместимых серверах.")}</span>
         {error && <div className="alert err"><span style={{ userSelect: "text" }}>{error}</span></div>}
         <div className="acts">
-          <button type="button" className="btn" onClick={onClose}>Отмена</button>
-          <button className="btn pri" disabled={busy || !login || !password || (needTotp && !totp)}>{busy ? "Входим…" : "Войти"}</button>
+          <button type="button" className="btn" onClick={onClose}>{t("Отмена")}</button>
+          <button className="btn pri" disabled={busy || !login || !password || (needTotp && !totp)}>{busy ? t("Входим…") : t("Войти")}</button>
         </div>
       </form>
     </Modal>
@@ -101,13 +102,13 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
 
   const remove = async (a: AccountRef) => {
     const ok = await dialog.confirm({
-      title: `Выйти из ${a.name}?`,
-      body: "Токены аккаунта будут удалены из хранилища секретов ОС. Профили и миры не затрагиваются.",
-      confirm: "Выйти",
+      title: t("Выйти из {0}?", a.name),
+      body: t("Токены аккаунта будут удалены из хранилища секретов ОС. Профили и миры не затрагиваются."),
+      confirm: t("Выйти"),
     });
     if (!ok) return;
     try { await api.removeAccount(accountKey(a)); onChanged(); }
-    catch (e) { await dialog.alert("Не удалось выйти", errText(e)); }
+    catch (e) { await dialog.alert(t("Не удалось выйти"), errText(e)); }
   };
 
   const ely = async () => {
@@ -115,9 +116,9 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
     try {
       const a = await api.elyLogin();
       onChanged();
-      await dialog.alert("Ely.by подключён", `${a.name}: доступен в профилях, переключённых на Ely.by. Официальные серверы с ним недоступны.`);
+      await dialog.alert(t("Ely.by подключён"), t("{0}: доступен в профилях, переключённых на Ely.by. Официальные серверы с ним недоступны.", a.name));
     } catch (e) {
-      await dialog.alert("Вход через Ely.by не удался", errText(e));
+      await dialog.alert(t("Вход через Ely.by не удался"), errText(e));
     } finally {
       setElyBusy(false);
     }
@@ -125,12 +126,12 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
 
   return (
     <>
-      <h2>Аккаунты</h2>
-      <p className="sub">Провайдеры не смешиваются: у каждого аккаунта свой UUID и токены. Токены лежат только в хранилище секретов ОС.</p>
+      <h2>{t("Аккаунты")}</h2>
+      <p className="sub">{t("Провайдеры не смешиваются: у каждого аккаунта свой UUID и токены. Токены лежат только в хранилище секретов ОС.")}</p>
       {accounts.length === 0 && (
         <div className="alert info">
-          <div className="h">Аккаунтов пока нет</div>
-          <span className="small">Для игры нужен аккаунт Microsoft с купленной Minecraft: Java Edition. Лаунчер проверяет покупку при входе.</span>
+          <div className="h">{t("Аккаунтов пока нет")}</div>
+          <span className="small">{t("Для игры нужен аккаунт Microsoft с купленной Minecraft: Java Edition. Лаунчер проверяет покупку при входе.")}</span>
         </div>
       )}
       {accounts.map((a) => (
@@ -142,42 +143,42 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
               {a.provider === "microsoft" ? (
                 <>
                   <span className="badge ms">Microsoft</span>
-                  {a.owns_java_edition ? <span className="badge ok">Java Edition куплена</span> : <span className="badge err">Java Edition не куплена</span>}
-                  {(defaultKey === accountKey(a) || (!defaultKey && a === accounts.find((x) => x.provider === "microsoft"))) && <span className="badge">по умолчанию</span>}
+                  {a.owns_java_edition ? <span className="badge ok">{t("Java Edition куплена")}</span> : <span className="badge err">{t("Java Edition не куплена")}</span>}
+                  {(defaultKey === accountKey(a) || (!defaultKey && a === accounts.find((x) => x.provider === "microsoft"))) && <span className="badge">{t("по умолчанию")}</span>}
                 </>
               ) : (
                 <>
                   <span className="badge ely">Ely.by</span>
-                  <span className="badge warn">только совместимые серверы</span>
+                  <span className="badge warn">{t("только совместимые серверы")}</span>
                 </>
               )}
             </div>
-            {a.provider === "elyby" && <p className="muted small" style={{ margin: "6px 0 0" }}>Не подтверждает покупку игры и не открывает официальные серверы. Используется в профилях с входом Ely.by через authlib-injector.</p>}
+            {a.provider === "elyby" && <p className="muted small" style={{ margin: "6px 0 0" }}>{t("Не подтверждает покупку игры и не открывает официальные серверы. Используется в профилях с входом Ely.by через authlib-injector.")}</p>}
           </div>
           {a.provider === "microsoft" && defaultKey !== accountKey(a) && accounts.filter((x) => x.provider === "microsoft").length > 1 && (
-            <button className="btn" onClick={() => api.setDefaultAccount(accountKey(a)).then(onChanged)}>Сделать основным</button>
+            <button className="btn" onClick={() => api.setDefaultAccount(accountKey(a)).then(onChanged)}>{t("Сделать основным")}</button>
           )}
-          <button className="btn" onClick={() => remove(a)}>Выйти</button>
+          <button className="btn" onClick={() => remove(a)}>{t("Выйти")}</button>
         </div>
       ))}
       <div className="row" style={{ marginTop: 6 }}>
-        <button className="btn pri" disabled={!info.microsoft_configured} onClick={() => setMsLogin(true)}>Войти через Microsoft</button>
-        <button className="btn" disabled={!verified} onClick={() => setElyPassword(true)}>Войти через Ely.by</button>
-        {verified && <button className="btn link small" disabled={elyBusy} onClick={ely}>{elyBusy ? "Ждём браузер…" : "или через браузер (OAuth)"}</button>}
+        <button className="btn pri" disabled={!info.microsoft_configured} onClick={() => setMsLogin(true)}>{t("Войти через Microsoft")}</button>
+        <button className="btn" disabled={!verified} onClick={() => setElyPassword(true)}>{t("Войти через Ely.by")}</button>
+        {verified && <button className="btn link small" disabled={elyBusy} onClick={ely}>{elyBusy ? t("Ждём браузер…") : t("или через браузер (OAuth)")}</button>}
       </div>
       {!info.microsoft_configured && (
         <div className="alert warn" style={{ marginTop: 14 }}>
-          <div className="h">Вход Microsoft не настроен в этой сборке</div>
-          <span className="small">Нужен client ID приложения в Microsoft Azure, одобренный Mojang. Пошаговая инструкция — docs/MICROSOFT_SETUP.md в репозитории. До одобрения Minecraft Services отвечает 403 — это ожидаемо.</span>
+          <div className="h">{t("Вход Microsoft не настроен в этой сборке")}</div>
+          <span className="small">{t("Нужен client ID приложения в Microsoft Azure, одобренный Mojang. Пошаговая инструкция — docs/MICROSOFT_SETUP.md в репозитории. До одобрения Minecraft Services отвечает 403 — это ожидаемо.")}</span>
         </div>
       )}
-      {!verified && <p className="muted small">Ely.by станет доступен после входа в Microsoft-аккаунт с купленной игрой.</p>}
-      <p className="muted small">Вход открывается в системном браузере. Пароль в лаунчер не вводится.</p>
+      {!verified && <p className="muted small">{t("Ely.by станет доступен после входа в Microsoft-аккаунт с купленной игрой.")}</p>}
+      <p className="muted small">{t("Вход открывается в системном браузере. Пароль в лаунчер не вводится.")}</p>
       {elyPassword && (
         <ElyLogin onClose={() => setElyPassword(false)} onDone={async (a) => {
           setElyPassword(false);
           onChanged();
-          await dialog.alert("Ely.by подключён", `${a.name}: доступен в профилях, переключённых на Ely.by. Официальные серверы с ним недоступны.`);
+          await dialog.alert(t("Ely.by подключён"), t("{0}: доступен в профилях, переключённых на Ely.by. Официальные серверы с ним недоступны.", a.name));
         }} />
       )}
       {msLogin && <MicrosoftLogin onClose={() => setMsLogin(false)} onDone={() => { setMsLogin(false); onChanged(); }} />}

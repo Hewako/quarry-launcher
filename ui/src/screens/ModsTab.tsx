@@ -4,10 +4,11 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, errText, mods, sizeText, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
+import { t } from "../i18n";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
-const sideName: Record<string, string> = { client: "клиент", server: "сервер", both: "обе", unknown: "—" };
-const sourceName: Record<string, string> = { modrinth: "Modrinth", curseforge: "CurseForge", import: "импорт", manual: "вручную" };
+const sideName: Record<string, string> = { client: t("клиент"), server: t("сервер"), both: t("обе"), unknown: "—" };
+const sourceName: Record<string, string> = { modrinth: "Modrinth", curseforge: "CurseForge", import: t("импорт"), manual: t("вручную") };
 
 /** Предпросмотр изменений с галочками. Перед применением создаётся снимок. */
 export function PlanDialog({ title, plan, onClose, onApply }: { title: string; plan: Plan; onClose: () => void; onApply: (p: Plan) => Promise<void> }) {
@@ -23,7 +24,7 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
   };
   return (
     <Modal title={title} onClose={onClose} wide>
-      {plan.changes.length === 0 ? <p className="muted">Изменений нет.</p> : (
+      {plan.changes.length === 0 ? <p className="muted">{t("Изменений нет.")}</p> : (
         <div className="planlist">
           {plan.changes.map((c, i) => (
             <label key={i}>
@@ -38,12 +39,12 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
         </div>
       )}
       {plan.notes.map((n, i) => <span key={i} className="muted small">• {n}</span>)}
-      <span className="muted small">Перед изменением будет создан снимок — отменить можно на вкладке «Снимки». Файлы скачиваются с Modrinth и проверяются по хэшу.</span>
+      <span className="muted small">{t("Перед изменением будет создан снимок — отменить можно на вкладке «Снимки». Файлы скачиваются с Modrinth и проверяются по хэшу.")}</span>
       {error && <div className="alert err"><span>{error}</span></div>}
       <div className="acts">
-        <button className="btn" onClick={onClose}>Отмена</button>
+        <button className="btn" onClick={onClose}>{t("Отмена")}</button>
         <button className="btn pri" disabled={busy || chosen.length === 0} onClick={apply}>
-          {busy ? "Применяем…" : `Применить${chosen.length ? ` (${chosen.length}${total ? `, ${sizeText(total)}` : ""})` : ""}`}
+          {busy ? t("Применяем…") : t("Применить{0}", chosen.length ? ` (${chosen.length}${total ? `, ${sizeText(total)}` : ""})` : "")}
         </button>
       </div>
     </Modal>
@@ -51,16 +52,16 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
 }
 
 /** Категории Modrinth для фильтра каталога (подписи — для игрока). */
-const MOD_CATS: [string, string][] = [["optimization", "Оптимизация"], ["utility", "Удобство"], ["decoration", "Декор"], ["worldgen", "Генерация мира"], ["technology", "Техника"], ["magic", "Магия"], ["adventure", "Приключения"], ["storage", "Хранение"], ["mobs", "Мобы"], ["equipment", "Снаряжение"], ["food", "Еда"], ["transportation", "Транспорт"], ["game-mechanics", "Механики"], ["management", "Управление"], ["library", "Библиотеки"]];
+const MOD_CATS: [string, string][] = [["optimization", t("Оптимизация")], ["utility", t("Удобство")], ["decoration", t("Декор")], ["worldgen", t("Генерация мира")], ["technology", t("Техника")], ["magic", t("Магия")], ["adventure", t("Приключения")], ["storage", t("Хранение")], ["mobs", t("Мобы")], ["equipment", t("Снаряжение")], ["food", t("Еда")], ["transportation", t("Транспорт")], ["game-mechanics", t("Механики")], ["management", t("Управление")], ["library", t("Библиотеки")]];
 const CATS: Record<ProjectKind, [string, string][]> = {
   mod: MOD_CATS,
   datapack: MOD_CATS,
-  resourcepack: [["vanilla-like", "Как ванилла"], ["realistic", "Реалистичные"], ["simplistic", "Простые"], ["themed", "Тематические"], ["tweaks", "Мелкие правки"], ["16x", "16x"], ["32x", "32x"], ["64x", "64x"]],
-  shader: [["vanilla-like", "Как ванилла"], ["semi-realistic", "Полуреалистичные"], ["realistic", "Реалистичные"], ["fantasy", "Сказочные"], ["potato", "Для слабых ПК"], ["low", "Лёгкие"], ["high", "Тяжёлые"]],
+  resourcepack: [["vanilla-like", t("Как ванилла")], ["realistic", t("Реалистичные")], ["simplistic", t("Простые")], ["themed", t("Тематические")], ["tweaks", t("Мелкие правки")], ["16x", "16x"], ["32x", "32x"], ["64x", "64x"]],
+  shader: [["vanilla-like", t("Как ванилла")], ["semi-realistic", t("Полуреалистичные")], ["realistic", t("Реалистичные")], ["fantasy", t("Сказочные")], ["potato", t("Для слабых ПК")], ["low", t("Лёгкие")], ["high", t("Тяжёлые")]],
 };
-const CHANNELS: [Channel, string][] = [["auto", "Стабильная, если есть"], ["release", "Только стабильные"], ["beta", "Бета и стабильные"], ["alpha", "Любые, включая альфа"]];
+const CHANNELS: [Channel, string][] = [["auto", t("Стабильная, если есть")], ["release", t("Только стабильные")], ["beta", t("Бета и стабильные")], ["alpha", t("Любые, включая альфа")]];
 
-const KINDS: [ProjectKind, string][] = [["mod", "Моды"], ["resourcepack", "Ресурспаки"], ["shader", "Шейдеры"], ["datapack", "Датапаки"]];
+const KINDS: [ProjectKind, string][] = [["mod", t("Моды")], ["resourcepack", t("Ресурспаки")], ["shader", t("Шейдеры")], ["datapack", t("Датапаки")]];
 
 export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", "resourcepack", "shader"], onInstalled, world }: {
   world?: string;
@@ -85,25 +86,25 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setError("");
       mods.search(inst.id, query, kind, 0, src === "modrinth" ? category : "", src).then((r) => setHits(r.hits)).catch((e) => { setHits([]); setError(errText(e)); });
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [inst.id, query, kind, category, src]);
   const pick = async (h: SearchHit) => {
     setBusy(h.project_id);
     setError("");
     try {
-      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id, channel, src));
+      if (kind === "mod") onPlan?.(t("Установить {0}", h.title), await mods.planInstall(inst.id, h.project_id, channel, src));
       else { await api.installResource(inst.id, h.project_id, kind, world); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
     } catch (e) { setError(errText(e)); }
     finally { setBusy(null); }
   };
   return (
-    <Modal title={src === "curseforge" ? "Каталог CurseForge" : "Каталог Modrinth"} onClose={onClose} wide>
+    <Modal title={src === "curseforge" ? t("Каталог CurseForge") : t("Каталог Modrinth")} onClose={onClose} wide>
       <div className="row">
-        <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={{ mod: "Найти мод…", shader: "Найти шейдер…", resourcepack: "Найти ресурспак…", datapack: "Найти датапак…" }[kind]} data-autofocus />
+        <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={{ mod: t("Найти мод…"), shader: t("Найти шейдер…"), resourcepack: t("Найти ресурспак…"), datapack: t("Найти датапак…") }[kind]} data-autofocus />
         <div className="seg">
           {KINDS.filter(([k]) => kinds.includes(k)).map(([k, l]) => (
             <button key={k} className={kind === k ? "on" : ""} onClick={() => { setKind(k); setCategory(""); }}>{l}</button>
@@ -112,35 +113,35 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
       </div>
       <div className="row">
         {cf && kind === "mod" && (
-          <div className="seg" role="group" aria-label="Источник">
+          <div className="seg" role="group" aria-label={t("Источник")}>
             <button className={source === "modrinth" ? "on" : ""} onClick={() => setSource("modrinth")}>Modrinth</button>
             <button className={source === "curseforge" ? "on" : ""} onClick={() => { setSource("curseforge"); setCategory(""); }}>CurseForge</button>
           </div>
         )}
-        {src === "modrinth" && <select className="field auto" aria-label="Категория" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">Все категории</option>
+        {src === "modrinth" && <select className="field auto" aria-label={t("Категория")} value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">{t("Все категории")}</option>
           {CATS[kind].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>}
         {kind === "mod" && (
-          <select className="field auto" aria-label="Какие версии ставить" value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
-            {CHANNELS.map(([v, l]) => <option key={v} value={v}>Версии: {l.toLowerCase()}</option>)}
+          <select className="field auto" aria-label={t("Какие версии ставить")} value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
+            {CHANNELS.map(([v, l]) => <option key={v} value={v}>{t("Версии:")} {l.toLowerCase()}</option>)}
           </select>
         )}
       </div>
-      <span className="muted small">Показано то, что подходит к Minecraft {inst.game_version}{kind === "mod" ? ` и ${inst.loader}` : ""}. Ставится только по вашему нажатию.</span>
-      {kind === "shader" && <span className="muted small">Шейдеры работают с модом Iris (Fabric/Quilt) или Oculus (NeoForge). После установки шейдер можно выбрать на вкладке «Ресурсы».</span>}
+      <span className="muted small">{t("Показано то, что подходит к Minecraft")} {inst.game_version}{kind === "mod" ? t(" и {0}", inst.loader) : ""}{t(". Ставится только по вашему нажатию.")}</span>
+      {kind === "shader" && <span className="muted small">{t("Шейдеры работают с модом Iris (Fabric/Quilt) или Oculus (NeoForge). После установки шейдер можно выбрать на вкладке «Ресурсы».")}</span>}
       {error && <div className="alert err"><span>{error}</span></div>}
       <div className="hits">
-        {hits === null && <p className="muted"><span className="spinner" /> Ищем…</p>}
-        {hits?.length === 0 && !error && <p className="muted">Ничего не нашлось.</p>}
+        {hits === null && <p className="muted"><span className="spinner" /> {t("Ищем…")}</p>}
+        {hits?.length === 0 && !error && <p className="muted">{t("Ничего не нашлось.")}</p>}
         {hits?.map((h) => (
           <div className="hit" key={h.project_id}>
             {h.icon_url ? <img src={h.icon_url} alt="" /> : <div className="noicon" />}
             <div className="grow">
-              <b>{h.title}</b> <span className="muted small">· {h.author} · {h.downloads.toLocaleString("ru-RU")} скачиваний</span>
+              <b>{h.title}</b> <span className="muted small">· {h.author} · {h.downloads.toLocaleString("ru-RU")} {t("скачиваний")}</span>
               <small>{h.description}</small>
             </div>
-            <button className="btn" disabled={busy !== null || done.includes(h.project_id)} onClick={() => pick(h)}>{busy === h.project_id ? "…" : done.includes(h.project_id) ? "Установлено" : "Установить"}</button>
+            <button className="btn" disabled={busy !== null || done.includes(h.project_id)} onClick={() => pick(h)}>{busy === h.project_id ? "…" : done.includes(h.project_id) ? t("Установлено") : t("Установить")}</button>
           </div>
         ))}
       </div>
@@ -154,23 +155,23 @@ function FindingCard({ f, files, onToggle, onSearch }: { f: Finding; files: ModF
     <div className={`alert ${f.severity === "blocking" ? "err" : "warn"}`}>
       <div className="h">{f.severity === "blocking" ? "✖" : "⚠"} {f.title}</div>
       <span className="small">{f.detail}</span>
-      <span className="muted small">Основание: {f.evidence}</span>
+      <span className="muted small">{t("Основание:")} {f.evidence}</span>
       {f.fixes.length > 0 && (
         <div className="acts">
           {f.fixes.map((x, i) =>
             x.kind === "install" ? (
-              <button key={i} className="btn pri" onClick={() => onSearch(x.mod_id)}>Найти «{x.mod_id}» в каталоге</button>
+              <button key={i} className="btn pri" onClick={() => onSearch(x.mod_id)}>{t("Найти «")}{x.mod_id}{t("» в каталоге")}</button>
             ) : x.kind === "disable" ? (
-              <button key={i} className="btn" onClick={() => onToggle(x.file_name, false)}>Выключить {name(x.file_name)}</button>
+              <button key={i} className="btn" onClick={() => onToggle(x.file_name, false)}>{t("Выключить")} {name(x.file_name)}</button>
             ) : (
               x.file_names.map((keep) => (
-                <button key={keep} className="btn" onClick={() => x.file_names.filter((o) => o !== keep).forEach((o) => onToggle(o, false))}>Оставить {keep}</button>
+                <button key={keep} className="btn" onClick={() => x.file_names.filter((o) => o !== keep).forEach((o) => onToggle(o, false))}>{t("Оставить")} {keep}</button>
               ))
             ),
           )}
         </div>
       )}
-      {f.fixes.some((x) => x.kind === "disable" || x.kind === "keep_one") && <span className="muted small">Выключенный мод остаётся в профиле, запись попадает в журнал.</span>}
+      {f.fixes.some((x) => x.kind === "disable" || x.kind === "keep_one") && <span className="muted small">{t("Выключенный мод остаётся в профиле, запись попадает в журнал.")}</span>}
     </div>
   );
 }
@@ -215,20 +216,20 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         else if (e.payload.type === "drop") {
           setDragging(false);
           const jars = e.payload.paths.filter((p) => p.toLowerCase().endsWith(".jar"));
-          if (jars.length === 0) { await dialog.alert("Не JAR-файлы", "Перетащите файлы модов с расширением .jar."); return; }
+          if (jars.length === 0) { await dialog.alert(t("Не JAR-файлы"), t("Перетащите файлы модов с расширением .jar.")); return; }
           try {
             const added = await mods.addFiles(inst.id, jars);
             load();
             refreshUpdates();
             const unknown = added.filter((a) => !a.known);
             await dialog.alert(
-              `Добавлено модов: ${added.length}`,
+              t("Добавлено модов: {0}", added.length),
               unknown.length === 0
-                ? "Все файлы опознаны в каталоге Modrinth. Перед добавлением создан снимок."
-                : `Не найдены в каталоге Modrinth: ${unknown.map((u) => u.title).join(", ")}. Происхождение этих файлов неизвестно — ставьте моды только из надёжных источников (через заражённые моды распространялся вирус Fractureiser). Перед добавлением создан снимок.`,
+                ? t("Все файлы опознаны в каталоге Modrinth. Перед добавлением создан снимок.")
+                : t("Не найдены в каталоге Modrinth: {0}. Происхождение этих файлов неизвестно — ставьте моды только из надёжных источников (через заражённые моды распространялся вирус Fractureiser). Перед добавлением создан снимок.", unknown.map((u) => u.title).join(", ")),
             );
           } catch (err) {
-            await dialog.alert("Файлы не добавлены", errText(err));
+            await dialog.alert(t("Файлы не добавлены"), errText(err));
           }
         }
       })
@@ -242,31 +243,31 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
     return (data?.files ?? []).filter((f) => !q || f.file_name.toLowerCase().includes(q) || f.mods.some((m) => m.name.toLowerCase().includes(q) || m.id.includes(q)));
   }, [data, filter]);
 
-  if (inst.loader === "vanilla") return <div className="card empty"><p>В профиле без загрузчика моды не работают. Создайте профиль с Fabric, Quilt или NeoForge.</p></div>;
+  if (inst.loader === "vanilla") return <div className="card empty"><p>{t("В профиле без загрузчика моды не работают. Создайте профиль с Fabric, Quilt или NeoForge.")}</p></div>;
   if (error) return <div className="alert err"><span>{error}</span></div>;
-  if (!data) return <p className="muted"><span className="spinner" /> Проверяем моды…</p>;
+  if (!data) return <p className="muted"><span className="spinner" /> {t("Проверяем моды…")}</p>;
 
   const toggleGroup = async (g: string, enabled: boolean) => {
-    try { await mods.toggleGroup(inst.id, g, enabled); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+    try { await mods.toggleGroup(inst.id, g, enabled); load(); } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); }
   };
   const autoGroups = async () => {
     setGrouping(true);
     try {
       const n = await mods.autoGroups(inst.id);
       load();
-      await dialog.alert("Готово", n ? `Разложено по группам: ${n}. Остальные можно отнести к группе вручную в колонке «Группа».` : "Новых модов, которые можно разложить автоматически, нет. Отнесите их к группе вручную в колонке «Группа».");
-    } catch (e) { await dialog.alert("Не получилось", errText(e)); } finally { setGrouping(false); }
+      await dialog.alert(t("Готово"), n ? t("Разложено по группам: {0}. Остальные можно отнести к группе вручную в колонке «Группа».", n) : t("Новых модов, которые можно разложить автоматически, нет. Отнесите их к группе вручную в колонке «Группа»."));
+    } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); } finally { setGrouping(false); }
   };
   const toggle = async (file: string, enabled: boolean) => {
-    try { await mods.toggle(inst.id, file, enabled); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+    try { await mods.toggle(inst.id, file, enabled); load(); } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); }
   };
   const remove = async (f: ModFile) => {
     const world = f.world_content
-      ? " Этот мод добавляет в мир блоки, измерения или генерацию: без него часть построек и чанков может пропасть. Quarry сначала сделает бэкап последнего мира."
+      ? t(" Этот мод добавляет в мир блоки, измерения или генерацию: без него часть построек и чанков может пропасть. Quarry сначала сделает бэкап последнего мира.")
       : "";
-    const ok = await dialog.confirm({ title: `Удалить ${f.mods[0]?.name ?? f.file_name}?`, body: "Перед удалением будет создан снимок — вернуть мод можно на вкладке «Снимки». Если сомневаетесь, лучше выключите мод." + world, confirm: "Удалить", danger: true });
+    const ok = await dialog.confirm({ title: t("Удалить {0}?", f.mods[0]?.name ?? f.file_name), body: t("Перед удалением будет создан снимок — вернуть мод можно на вкладке «Снимки». Если сомневаетесь, лучше выключите мод.") + world, confirm: t("Удалить"), danger: true });
     if (!ok) return;
-    try { await mods.remove(inst.id, f.file_name); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+    try { await mods.remove(inst.id, f.file_name); load(); } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); }
   };
   const updates = async () => {
     setChecking(true);
@@ -274,13 +275,13 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
       const p = await mods.checkUpdates(inst.id);
       setAvailable(p);
       const chosen = picked.size ? p.changes.filter((c) => picked.has(base(c.old_file ?? ""))) : p.changes;
-      setPlan({ title: picked.size ? "Обновить выбранные" : "Обновления модов", plan: { ...p, changes: chosen }, reason: "Перед обновлением модов" });
+      setPlan({ title: picked.size ? t("Обновить выбранные") : t("Обновления модов"), plan: { ...p, changes: chosen }, reason: t("Перед обновлением модов") });
     }
-    catch (e) { await dialog.alert("Не удалось проверить обновления", errText(e)); }
+    catch (e) { await dialog.alert(t("Не удалось проверить обновления"), errText(e)); }
     finally { setChecking(false); }
   };
   const pin = async (f: ModFile) => {
-    try { await mods.pin(inst.id, f.file_name, !f.source?.pinned); load(); refreshUpdates(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+    try { await mods.pin(inst.id, f.file_name, !f.source?.pinned); load(); refreshUpdates(); } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); }
   };
   const r = data.report;
   const base = (name: string) => name.replace(/\.disabled$/, "");
@@ -290,58 +291,58 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
 
   return (
     <>
-      {running && <div className="alert warn"><span className="small">Игра запущена — менять моды можно после её закрытия.</span></div>}
-      {dragging && <div className="alert info"><div className="h">Отпустите, чтобы добавить моды в «{inst.name}»</div><span className="small">Перед добавлением будет создан снимок.</span></div>}
+      {running && <div className="alert warn"><span className="small">{t("Игра запущена — менять моды можно после её закрытия.")}</span></div>}
+      {dragging && <div className="alert info"><div className="h">{t("Отпустите, чтобы добавить моды в «")}{inst.name}»</div><span className="small">{t("Перед добавлением будет создан снимок.")}</span></div>}
       <div className="findings">
         {r.findings.map((f, i) => <FindingCard key={i} f={f} files={data.files} onToggle={toggle} onSearch={(q) => setCatalog(q)} />)}
       </div>
       <div className="summary">
-        <div className="kpi"><b>{r.total}</b><span>модов в профиле</span></div>
-        <div className="kpi ok"><b>{r.ok}</b><span>конфликтов не найдено</span></div>
-        <div className="kpi warn"><b>{r.warnings}</b><span>есть предупреждение</span></div>
-        <div className="kpi err"><b>{r.blocked}</b><span>блокирует запуск</span></div>
+        <div className="kpi"><b>{r.total}</b><span>{t("модов в профиле")}</span></div>
+        <div className="kpi ok"><b>{r.ok}</b><span>{t("конфликтов не найдено")}</span></div>
+        <div className="kpi warn"><b>{r.warnings}</b><span>{t("есть предупреждение")}</span></div>
+        <div className="kpi err"><b>{r.blocked}</b><span>{t("блокирует запуск")}</span></div>
       </div>
       {data.files.length > 0 && (
-        <div className="groupbar" role="group" aria-label="Наборы модов">
-          <span className="muted small">Наборы:</span>
+        <div className="groupbar" role="group" aria-label={t("Наборы модов")}>
+          <span className="muted small">{t("Наборы:")}</span>
           {groups.names.map((g) => {
             const files = data.files.filter((f) => groups.groups[f.file_name] === g);
             if (files.length === 0) return null;
             const on = files.filter((f) => f.enabled).length;
             return (
-              <label key={g} className="chip" title={`Включено ${on} из ${files.length}`}>
+              <label key={g} className="chip" title={t("Включено {0} из {1}", on, files.length)}>
                 <input type="checkbox" checked={on === files.length} ref={(el) => { if (el) el.indeterminate = on > 0 && on < files.length; }}
-                  disabled={running} onChange={(e) => toggleGroup(g, e.target.checked)} /> {g} <span className="muted">{on}/{files.length}</span>
+                  disabled={running} onChange={(e) => toggleGroup(g, e.target.checked)} /> {t(g)} <span className="muted">{on}/{files.length}</span>
               </label>
             );
           })}
-          <button className="btn link small" disabled={grouping} onClick={autoGroups}>{grouping ? "Раскладываем…" : "Разложить автоматически"}</button>
+          <button className="btn link small" disabled={grouping} onClick={autoGroups}>{grouping ? t("Раскладываем…") : t("Разложить автоматически")}</button>
         </div>
       )}
       <div className="modbar">
-        <input className="field" style={{ maxWidth: 260 }} placeholder="Найти мод…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className="field" style={{ maxWidth: 260 }} placeholder={t("Найти мод…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span style={{ flex: 1 }} />
-        <span className="muted small">{available === null ? "обновления проверяются…" : updateCount ? `обновления есть у ${updateCount}` : "обновлений нет"}</span>
+        <span className="muted small">{available === null ? t("обновления проверяются…") : updateCount ? t("обновления есть у {0}", updateCount) : t("обновлений нет")}</span>
         <button className="btn" disabled={running || checking || updateCount === 0} onClick={updates}>
-          {checking ? "Проверяем…" : picked.size ? `Обновить выбранные (${picked.size})… (предпросмотр)` : "Обновить всё… (предпросмотр)"}
+          {checking ? t("Проверяем…") : picked.size ? t("Обновить выбранные ({0})… (предпросмотр)", picked.size) : t("Обновить всё… (предпросмотр)")}
         </button>
-        <button className="btn pri" disabled={running} onClick={() => setCatalog("")}>+ Добавить мод</button>
+        <button className="btn pri" disabled={running} onClick={() => setCatalog("")}>{t("+ Добавить мод")}</button>
       </div>
       {data.files.length === 0 ? (
-        <div className="card empty"><p>Модов пока нет. Добавьте их из каталога Modrinth или перетащите JAR-файлы в окно.</p></div>
+        <div className="card empty"><p>{t("Модов пока нет. Добавьте их из каталога Modrinth или перетащите JAR-файлы в окно.")}</p></div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "auto" }}>
           <table className="modtable">
-            <thead><tr><th style={{ width: 44 }} /><th>Мод</th><th>Версия</th><th>Доступна версия</th><th>Группа</th><th>Сторона</th><th>Источник</th><th>Слой</th><th>Состояние</th><th /></tr></thead>
+            <thead><tr><th style={{ width: 44 }} /><th>{t("Мод")}</th><th>{t("Версия")}</th><th>{t("Доступна версия")}</th><th>{t("Группа")}</th><th>{t("Сторона")}</th><th>{t("Источник")}</th><th>{t("Слой")}</th><th>{t("Состояние")}</th><th /></tr></thead>
             <tbody>
               {shown.map((f) => {
                 const st = stateOf(f);
                 const m = f.mods[0];
                 return (
                   <tr key={f.rel_path} className={f.enabled ? "" : "off"}>
-                    <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={f.enabled ? "Выключить" : "Включить"} onClick={() => toggle(f.file_name, !f.enabled)} /></td>
+                    <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={f.enabled ? t("Выключить") : t("Включить")} onClick={() => toggle(f.file_name, !f.enabled)} /></td>
                     <td><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <small>{st!.notes[0]}</small>}{!m && <small>{f.file_name}</small>}</td>
-                    <td>{m?.version ?? "?"}{f.source?.pinned && <small style={{ color: "var(--warn)" }}>закреплена</small>}</td>
+                    <td>{m?.version ?? "?"}{f.source?.pinned && <small style={{ color: "var(--warn)" }}>{t("закреплена")}</small>}</td>
                     <td>{(() => {
                       const u = updateFor(f);
                       if (!u) return <span className="muted">—</span>;
@@ -353,19 +354,19 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
                       );
                     })()}</td>
                     <td>
-                      <select className="field auto mini" aria-label={`Группа для ${m?.name ?? f.file_name}`} value={groups.groups[f.file_name] ?? ""}
-                        onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert("Не получилось", errText(er)))}>
+                      <select className="field auto mini" aria-label={t("Группа для {0}", m?.name ?? f.file_name)} value={groups.groups[f.file_name] ?? ""}
+                        onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert(t("Не получилось"), errText(er)))}>
                         <option value="">—</option>
-                        {groups.names.map((g) => <option key={g} value={g}>{g}</option>)}
+                        {groups.names.map((g) => <option key={g} value={g}>{t(g)}</option>)}
                       </select>
                     </td>
                     <td>{sideName[m?.side ?? "unknown"]}</td>
-                    <td>{f.source ? sourceName[f.source.source] : "вручную"}</td>
-                    <td className="layer">{f.source?.layer === "base" ? "сборка" : "мои моды"}</td>
-                    <td>{st && <span className={`badge ${stateCls[st.state]}`}>{st.state_label}</span>}</td>
+                    <td>{f.source ? sourceName[f.source.source] : t("вручную")}</td>
+                    <td className="layer">{f.source?.layer === "base" ? t("сборка") : t("мои моды")}</td>
+                    <td>{st && <span className={`badge ${stateCls[st.state]}`}>{t(st.state_label)}</span>}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
-                      <button className="btn link small" disabled={running} onClick={() => pin(f)} title="Закреплённая версия не обновляется">{f.source?.pinned ? "Открепить" : "Закрепить"}</button>{" · "}
-                      <button className="btn link small" disabled={running} onClick={() => remove(f)}>Удалить</button>
+                      <button className="btn link small" disabled={running} onClick={() => pin(f)} title={t("Закреплённая версия не обновляется")}>{f.source?.pinned ? t("Открепить") : t("Закрепить")}</button>{" · "}
+                      <button className="btn link small" disabled={running} onClick={() => remove(f)}>{t("Удалить")}</button>
                     </td>
                   </tr>
                 );
@@ -374,16 +375,16 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
           </table>
         </div>
       )}
-      <p className="muted small">Состояние — по метаданным модов (fabric.mod.json, quilt.mod.json, mods.toml), а не по имени файла. «Конфликтов не найдено» не гарантирует, что игра запустится: настоящую проверку даёт запуск.</p>
+      <p className="muted small">{t("Состояние — по метаданным модов (fabric.mod.json, quilt.mod.json, mods.toml), а не по имени файла. «Конфликтов не найдено» не гарантирует, что игра запустится: настоящую проверку даёт запуск.")}</p>
       {data.journal.length > 0 && (
         <details>
-          <summary className="muted small" style={{ cursor: "pointer" }}>Журнал изменений ({data.journal.length})</summary>
+          <summary className="muted small" style={{ cursor: "pointer" }}>{t("Журнал изменений (")}{data.journal.length})</summary>
           <ul className="small" style={{ margin: "8px 0", paddingLeft: 18 }}>
             {data.journal.map((j, i) => <li key={i}>{new Date(j.at * 1000).toLocaleString("ru-RU")} · <b>{j.action}</b> {j.what} <span className="muted">— {j.reason}</span></li>)}
           </ul>
         </details>
       )}
-      {catalog !== null && <CatalogDialog inst={inst} initial={catalog} onClose={() => setCatalog(null)} onPlan={(title, p) => { setCatalog(null); setPlan({ title, plan: p, reason: `Перед: ${title.toLowerCase()}` }); }} />}
+      {catalog !== null && <CatalogDialog inst={inst} initial={catalog} onClose={() => setCatalog(null)} onPlan={(title, p) => { setCatalog(null); setPlan({ title, plan: p, reason: t("Перед: {0}", title.toLowerCase()) }); }} />}
       {plan && (
         <PlanDialog title={plan.title} plan={plan.plan} onClose={() => setPlan(null)} onApply={async (p) => { await mods.apply(inst.id, p, plan.reason); setPlan(null); setPicked(new Set()); load(); refreshUpdates(); }} />
       )}

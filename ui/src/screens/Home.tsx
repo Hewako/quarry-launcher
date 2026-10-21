@@ -5,6 +5,7 @@ import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/comm
 import { CrashCard } from "../ui/CrashCard";
 import type { Tab } from "./InstancePage";
 import { nick, useStreamer } from "../streamer";
+import { t } from "../i18n";
 
 type Sort = "recent" | "name" | "version" | "created";
 
@@ -28,15 +29,15 @@ function remarks(inst: Instance, accounts: AccountRef[], info: AppInfo) {
   const out: { cls: "warn" | "err"; text: string; hint?: string }[] = [];
   const ms = accounts.filter((a) => a.provider === "microsoft");
   if (inst.auth_mode === "microsoft") {
-    if (ms.length === 0 && !info.dev_launch) out.push({ cls: "err", text: "Нет аккаунта Microsoft", hint: "Войдите на экране «Аккаунты»" });
-    else if (ms.length > 0 && !ms.some((a) => a.owns_java_edition)) out.push({ cls: "err", text: "На аккаунте не куплена Java Edition" });
-    if (ms.length === 0 && info.dev_launch) out.push({ cls: "warn", text: "Режим разработчика: запуск без входа", hint: "только для отладки на своей копии игры" });
+    if (ms.length === 0 && !info.dev_launch) out.push({ cls: "err", text: t("Нет аккаунта Microsoft"), hint: t("Войдите на экране «Аккаунты»") });
+    else if (ms.length > 0 && !ms.some((a) => a.owns_java_edition)) out.push({ cls: "err", text: t("На аккаунте не куплена Java Edition") });
+    if (ms.length === 0 && info.dev_launch) out.push({ cls: "warn", text: t("Режим разработчика: запуск без входа"), hint: t("только для отладки на своей копии игры") });
   } else {
-    out.push({ cls: "warn", text: "Профиль входит через Ely.by", hint: "только совместимые серверы; официальные недоступны" });
+    out.push({ cls: "warn", text: t("Профиль входит через Ely.by"), hint: t("только совместимые серверы; официальные недоступны") });
   }
   const l = inst.last_launch;
   if (l && (l.outcome === "crashed" || l.outcome === "failed_to_start")) {
-    out.push({ cls: "err", text: l.outcome === "crashed" ? `Последний запуск упал (${relTime(l.at)})` : "Последний запуск не начался", hint: l.message });
+    out.push({ cls: "err", text: l.outcome === "crashed" ? t("Последний запуск упал ({0})", relTime(l.at)) : t("Последний запуск не начался"), hint: l.message });
   }
   return out;
 }
@@ -78,13 +79,13 @@ export function Home(p: Props) {
   if (p.instances.length === 0) {
     return (
       <div className="card empty">
-        <h2>Профилей пока нет</h2>
-        <p>Профиль — отдельная папка игры со своей версией, загрузчиком, модами и мирами. Профили не мешают друг другу.</p>
+        <h2>{t("Профилей пока нет")}</h2>
+        <p>{t("Профиль — отдельная папка игры со своей версией, загрузчиком, модами и мирами. Профили не мешают друг другу.")}</p>
         <div className="row" style={{ justifyContent: "center" }}>
-          <button className="btn pri" onClick={p.onCreate}>+ Новый профиль</button>
-          <button className="btn" onClick={p.onImport}>Импорт из Prism, .mrpack или CurseForge</button>
+          <button className="btn pri" onClick={p.onCreate}>{t("+ Новый профиль")}</button>
+          <button className="btn" onClick={p.onImport}>{t("Импорт из Prism, .mrpack или CurseForge")}</button>
         </div>
-        {p.broken.length > 0 && <p className="small" style={{ color: "var(--warn)" }}>Не удалось прочитать профилей: {p.broken.length}</p>}
+        {p.broken.length > 0 && <p className="small" style={{ color: "var(--warn)" }}>{t("Не удалось прочитать профилей:")} {p.broken.length}</p>}
       </div>
     );
   }
@@ -103,19 +104,19 @@ export function Home(p: Props) {
               <div className="chips">
                 <span className="chip">Minecraft {inst.game_version}</span>
                 <span className="chip">{loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""}</span>
-                {inst.last_launch && <span className="chip">последний запуск {relTime(inst.last_launch.at)}{inst.last_launch.duration_secs ? `, ${duration(inst.last_launch.duration_secs)}` : ""}</span>}
+                {inst.last_launch && <span className="chip">{t("последний запуск")} {relTime(inst.last_launch.at)}{inst.last_launch.duration_secs ? `, ${duration(inst.last_launch.duration_secs)}` : ""}</span>}
               </div>
               <div className="play-wrap">
                 <PlayButton inst={inst} state={state} />
                 <StatusBadge inst={inst} state={state} />
                 <span className="muted small">
-                  {inst.auth_mode === "ely_by" ? "Вход: Ely.by (совместимые серверы)" : ms ? `Аккаунт: ${nick(ms.name, streamer)} (Microsoft)` : p.info.dev_launch ? "Без входа (dev-launch)" : "Нет аккаунта"}
+                  {inst.auth_mode === "ely_by" ? t("Вход: Ely.by (совместимые серверы)") : ms ? t("Аккаунт: {0} (Microsoft)", nick(ms.name, streamer)) : p.info.dev_launch ? t("Без входа (dev-launch)") : t("Нет аккаунта")}
                 </span>
               </div>
               {state && isActive(state) && <LaunchProgress state={state} />}
               {state?.phase === "failed" && state.error && (
                 <div className="alert err" style={{ marginTop: 12 }}>
-                  <div className="h">Запуск не удался</div>
+                  <div className="h">{t("Запуск не удался")}</div>
                   <span style={{ userSelect: "text" }}>{state.error}</span>
                 </div>
               )}
@@ -124,25 +125,25 @@ export function Home(p: Props) {
                   {state.exit.analysis ? (
                     <CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={(t) => p.onOpen(inst.id, t)} />
                   ) : (
-                    <div className="alert err"><div className="h">Игра упала{state.exit.code != null ? ` (код ${state.exit.code})` : ""}</div></div>
+                    <div className="alert err"><div className="h">{t("Игра упала")}{state.exit.code != null ? t(" (код {0})", state.exit.code) : ""}</div></div>
                   )}
-                  <button className="btn link small" style={{ marginTop: 6 }} onClick={() => p.onLogs(inst.id)}>Открыть полный лог</button>
+                  <button className="btn link small" style={{ marginTop: 6 }} onClick={() => p.onLogs(inst.id)}>{t("Открыть полный лог")}</button>
                 </div>
               )}
               <div className="row" style={{ marginTop: 14 }}>
-                <span className="muted small">Быстро:</span>
-                {inst.loader !== "vanilla" && <button className="btn" onClick={() => p.onOpen(inst.id, "mods")}>Моды</button>}
-                <button className="btn" onClick={() => p.onOpen(inst.id, "launch")}>Настройки профиля</button>
-                <button className="btn" onClick={() => p.onOpen(inst.id, "snapshots")}>Снимки</button>
-                <button className="btn" onClick={() => p.onLogs(inst.id)}>Логи</button>
+                <span className="muted small">{t("Быстро:")}</span>
+                {inst.loader !== "vanilla" && <button className="btn" onClick={() => p.onOpen(inst.id, "mods")}>{t("Моды")}</button>}
+                <button className="btn" onClick={() => p.onOpen(inst.id, "launch")}>{t("Настройки профиля")}</button>
+                <button className="btn" onClick={() => p.onOpen(inst.id, "snapshots")}>{t("Снимки")}</button>
+                <button className="btn" onClick={() => p.onLogs(inst.id)}>{t("Логи")}</button>
               </div>
             </div>
           </div>
           <div className="card">
-            <h4 style={{ margin: "0 0 10px" }}>Проверка перед запуском</h4>
+            <h4 style={{ margin: "0 0 10px" }}>{t("Проверка перед запуском")}</h4>
             {(() => {
               const r = remarks(inst, p.accounts, p.info);
-              if (r.length === 0) return <p className="muted small" style={{ margin: 0 }}><span className="s ok" style={{ display: "inline-grid", width: 18, height: 18, borderRadius: "50%", placeItems: "center", marginRight: 6 }}>✓</span>Замечаний нет. Файлы и Java проверяются при каждом запуске.</p>;
+              if (r.length === 0) return <p className="muted small" style={{ margin: 0 }}><span className="s ok" style={{ display: "inline-grid", width: 18, height: 18, borderRadius: "50%", placeItems: "center", marginRight: 6 }}>✓</span>{t("Замечаний нет. Файлы и Java проверяются при каждом запуске.")}</p>;
               return (
                 <ul className="pre">
                   {r.map((x, i) => (
@@ -154,33 +155,33 @@ export function Home(p: Props) {
                 </ul>
               );
             })()}
-            {!ms && !p.info.dev_launch && <button className="btn pri" style={{ marginTop: 12 }} onClick={p.onAccounts}>Войти через Microsoft</button>}
+            {!ms && !p.info.dev_launch && <button className="btn pri" style={{ marginTop: 12 }} onClick={p.onAccounts}>{t("Войти через Microsoft")}</button>}
           </div>
         </div>
       )}
 
       <div className="sect">
-        <h4>Профили · {p.instances.length - archived}</h4>
+        <h4>{t("Профили ·")} {p.instances.length - archived}</h4>
         <div className="row">
-          <input className="field" type="search" placeholder="Поиск профиля…" aria-label="Поиск профиля" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 170 }} />
-          <select className="field auto" aria-label="Показывать" value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="all">Все</option>
-            <option value="fav">Избранные</option>
-            {groups.map((g) => <option key={g} value={`g:${g}`}>Группа: {g}</option>)}
-            {archived > 0 && <option value="archive">Архив ({archived})</option>}
+          <input className="field" type="search" placeholder={t("Поиск профиля…")} aria-label={t("Поиск профиля")} value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 170 }} />
+          <select className="field auto" aria-label={t("Показывать")} value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">{t("Все")}</option>
+            <option value="fav">{t("Избранные")}</option>
+            {groups.map((g) => <option key={g} value={`g:${g}`}>{t("Группа:")} {g}</option>)}
+            {archived > 0 && <option value="archive">{t("Архив (")}{archived})</option>}
           </select>
-          <select className="field auto" aria-label="Сортировка" value={sort} onChange={(e) => setSortSaved(e.target.value as Sort)}>
-            <option value="recent">Недавние</option>
-            <option value="name">По имени</option>
-            <option value="version">По версии</option>
-            <option value="created">Новые</option>
+          <select className="field auto" aria-label={t("Сортировка")} value={sort} onChange={(e) => setSortSaved(e.target.value as Sort)}>
+            <option value="recent">{t("Недавние")}</option>
+            <option value="name">{t("По имени")}</option>
+            <option value="version">{t("По версии")}</option>
+            <option value="created">{t("Новые")}</option>
           </select>
-          <div className="seg" role="group" aria-label="Вид списка">
-            <button className={view === "cards" ? "on" : ""} onClick={() => setViewSaved("cards")}>Карточки</button>
-            <button className={view === "list" ? "on" : ""} onClick={() => setViewSaved("list")}>Список</button>
+          <div className="seg" role="group" aria-label={t("Вид списка")}>
+            <button className={view === "cards" ? "on" : ""} onClick={() => setViewSaved("cards")}>{t("Карточки")}</button>
+            <button className={view === "list" ? "on" : ""} onClick={() => setViewSaved("list")}>{t("Список")}</button>
           </div>
-          <button className="btn" onClick={p.onCreate}>+ Новый профиль</button>
-          <button className="btn" onClick={p.onImport}>Импорт .mrpack / zip / Prism</button>
+          <button className="btn" onClick={p.onCreate}>{t("+ Новый профиль")}</button>
+          <button className="btn" onClick={p.onImport}>{t("Импорт .mrpack / zip / Prism")}</button>
         </div>
       </div>
 
@@ -194,7 +195,7 @@ export function Home(p: Props) {
                 <div className="t">
                   <ProfileIcon id={i.id} color={i.color} />
                   <div style={{ minWidth: 0 }}>
-                    <b>{i.favorite && <span className="star" aria-label="в избранном">★ </span>}{i.name}</b>
+                    <b>{i.favorite && <span className="star" aria-label={t("в избранном")}>★ </span>}{i.name}</b>
                     <span className="muted small">{i.game_version} · {loaderName[i.loader]}{i.group ? ` · ${i.group}` : ""}</span>
                   </div>
                 </div>
@@ -206,7 +207,7 @@ export function Home(p: Props) {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table className="plist">
-            <thead><tr><th>Профиль</th><th>Версия</th><th>Загрузчик</th><th>Последний запуск</th></tr></thead>
+            <thead><tr><th>{t("Профиль")}</th><th>{t("Версия")}</th><th>{t("Загрузчик")}</th><th>{t("Последний запуск")}</th></tr></thead>
             <tbody>
               {shown.map((i) => (
                 <tr key={i.id} className={i.id === inst?.id ? "sel" : ""} tabIndex={0} aria-selected={i.id === inst?.id} onClick={() => p.onSelect(i.id)} onDoubleClick={() => p.onOpen(i.id)}
@@ -221,12 +222,12 @@ export function Home(p: Props) {
           </table>
         </div>
       )}
-      {shown.length === 0 && <p className="muted">Ничего не найдено{query ? ` по запросу «${query}»` : ""}.</p>}
+      {shown.length === 0 && <p className="muted">{t("Ничего не найдено")}{query ? t(" по запросу «{0}»", query) : ""}.</p>}
       {p.broken.length > 0 && (
         <div className="alert warn" style={{ marginTop: 14 }}>
-          <div className="h">Не удалось прочитать профили: {p.broken.length}</div>
+          <div className="h">{t("Не удалось прочитать профили:")} {p.broken.length}</div>
           {p.broken.map((b) => <span key={b.dir} className="small mono">{b.dir}: {b.reason}</span>)}
-          <span className="small muted">Файлы не изменены. Исправьте instance.toml или уберите папку из instances/.</span>
+          <span className="small muted">{t("Файлы не изменены. Исправьте instance.toml или уберите папку из instances/.")}</span>
         </div>
       )}
     </>

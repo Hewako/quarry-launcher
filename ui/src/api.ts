@@ -1,5 +1,6 @@
 // Типизированные обёртки над командами Tauri. Формы данных совпадают с serde в quarry-core.
 import { invoke } from "@tauri-apps/api/core";
+import { t } from "./i18n";
 
 export type LoaderKind = "vanilla" | "fabric" | "quilt" | "neoforge" | "forge";
 export type AuthMode = "microsoft" | "ely_by";
@@ -53,13 +54,13 @@ export interface CloneParts { mods: boolean; configs: boolean; resources: boolea
 export const metaOf = (i: Instance): ProfileMeta => ({ group: i.group, description: i.description, color: i.color, favorite: !!i.favorite, archived: !!i.archived });
 /** Что можно перенести между профилями (совпадает с ядром, instance::ops::SHARABLE). */
 export const SHARABLE: [string, string][] = [
-  ["options.txt", "Настройки игры (управление, графика, звук)"],
-  ["servers.dat", "Список серверов"],
-  ["resourcepacks", "Ресурспаки"],
-  ["shaderpacks", "Шейдеры"],
-  ["config", "Настройки модов"],
-  ["saves", "Миры (копией, свои миры не заменяются)"],
-  ["screenshots", "Скриншоты"],
+  ["options.txt", t("Настройки игры (управление, графика, звук)")],
+  ["servers.dat", t("Список серверов")],
+  ["resourcepacks", t("Ресурспаки")],
+  ["shaderpacks", t("Шейдеры")],
+  ["config", t("Настройки модов")],
+  ["saves", t("Миры (копией, свои миры не заменяются)")],
+  ["screenshots", t("Скриншоты")],
 ];
 
 export interface Server { name: string; ip: string; icon?: string; accept_textures?: boolean }
@@ -219,7 +220,7 @@ export const loaderName: Record<LoaderKind, string> = {
 };
 
 export const sourceName: Record<Source, string> = {
-  profile: "профиль", pack: "сборка", global: "глобально", default: "по умолчанию",
+  profile: t("профиль"), pack: t("сборка"), global: t("глобально"), default: t("по умолчанию"),
 };
 
 export function relTime(unix: number): string {
@@ -228,17 +229,17 @@ export function relTime(unix: number): string {
   const now = new Date();
   const days = Math.floor((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   const hm = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  if (days === 0) return `сегодня, ${hm}`;
-  if (days === 1) return `вчера, ${hm}`;
-  if (days < 7) return `${days} дн. назад`;
+  if (days === 0) return t("сегодня, {0}", hm);
+  if (days === 1) return t("вчера, {0}", hm);
+  if (days < 7) return t("{0} дн. назад", days);
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
 export function duration(secs: number): string {
-  if (secs < 60) return `${secs} с`;
+  if (secs < 60) return t("{0} с", secs);
   const m = Math.floor(secs / 60);
-  if (m < 60) return `${m} мин`;
-  return `${Math.floor(m / 60)} ч ${m % 60} мин`;
+  if (m < 60) return t("{0} мин", m);
+  return t("{0} ч {1} мин", Math.floor(m / 60), m % 60);
 }
 
 export function mb(bytes: number): string {
@@ -247,15 +248,15 @@ export function mb(bytes: number): string {
 
 /** Статус сборки по последнему настоящему запуску (разбор игрока, п. 4). */
 export function statusOf(i: Instance, phase?: "preparing" | "running" | "done" | "failed"): { text: string; cls: "ok" | "warn" | "err" | "" } {
-  if (phase === "preparing") return { text: "подготовка…", cls: "warn" };
-  if (phase === "running") return { text: "игра запущена", cls: "ok" };
+  if (phase === "preparing") return { text: t("подготовка…"), cls: "warn" };
+  if (phase === "running") return { text: t("игра запущена"), cls: "ok" };
   const l = i.last_launch;
-  if (!l) return { text: "ещё не запускался", cls: "warn" };
+  if (!l) return { text: t("ещё не запускался"), cls: "warn" };
   switch (l.outcome) {
-    case "success": return { text: `запуск успешен · ${relTime(l.at)}`, cls: "ok" };
-    case "killed": return { text: `остановлен · ${relTime(l.at)}`, cls: "" };
-    case "crashed": return { text: `упал · ${relTime(l.at)}`, cls: "err" };
-    case "failed_to_start": return { text: `не запустился · ${relTime(l.at)}`, cls: "err" };
+    case "success": return { text: t("запуск успешен · {0}", relTime(l.at)), cls: "ok" };
+    case "killed": return { text: t("остановлен · {0}", relTime(l.at)), cls: "" };
+    case "crashed": return { text: t("упал · {0}", relTime(l.at)), cls: "err" };
+    case "failed_to_start": return { text: t("не запустился · {0}", relTime(l.at)), cls: "err" };
   }
 }
 
@@ -317,4 +318,4 @@ export const importer = {
   link: (path: string, name: string, gameVersion: string, loader: LoaderKind) => invoke<ImportResult>("link_minecraft", { path, name, gameVersion, loader }),
 };
 
-export const sizeText = (b: number) => (b > 1_048_576 ? `${mb(b)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`);
+export const sizeText = (b: number) => (b > 1_048_576 ? t("{0} МБ", mb(b)) : t("{0} КБ", Math.max(1, Math.round(b / 1024))));

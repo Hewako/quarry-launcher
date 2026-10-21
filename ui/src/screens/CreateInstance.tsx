@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errText, loaderName, type Instance, type LoaderKind, type LoaderVersion, type VersionEntry } from "../api";
 import { Modal } from "../ui/Dialog";
+import { t } from "../i18n";
 
 const LOADERS: { kind: LoaderKind; ready: boolean; note?: string }[] = [
   { kind: "vanilla", ready: true },
   { kind: "fabric", ready: true },
   { kind: "quilt", ready: true },
-  { kind: "neoforge", ready: false, note: "скоро: нужен запуск установщика" },
-  { kind: "forge", ready: false, note: "позже" },
+  { kind: "neoforge", ready: false, note: t("скоро: нужен запуск установщика") },
+  { kind: "forge", ready: false, note: t("позже") },
 ];
 
 export function CreateInstance({ onClose, onCreated }: { onClose: () => void; onCreated: (i: Instance) => void }) {
@@ -40,7 +41,7 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
   useEffect(() => {
     if (!version) return;
     setJava("");
-    api.versionInfo(version).then((i) => setJava(`нужна Java ${i.java_major} (${i.java_reason})`)).catch(() => setJava(""));
+    api.versionInfo(version).then((i) => setJava(t("нужна Java {0} ({1})", i.java_major, i.java_reason))).catch(() => setJava(""));
   }, [version]);
 
   useEffect(() => {
@@ -76,22 +77,22 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
   };
 
   return (
-    <Modal title="Новый профиль" onClose={onClose} wide>
+    <Modal title={t("Новый профиль")} onClose={onClose} wide>
       <form className="form" onSubmit={(e) => { e.preventDefault(); if (canCreate) create(); }}>
         <label>
-          <span>Название</span>
-          <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Технология+" maxLength={64} data-autofocus />
+          <span>{t("Название")}</span>
+          <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Например: Технология+")} maxLength={64} data-autofocus />
         </label>
         <div className="form" style={{ gap: 6 }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <span className="muted small">Версия Minecraft{offline ? " · нет сети, список из кеша" : ""}</span>
+            <span className="muted small">{t("Версия Minecraft")}{offline ? t(" · нет сети, список из кеша") : ""}</span>
             <label className="row small" style={{ display: "flex" }}>
-              <input type="checkbox" checked={snapshots} onChange={(e) => setSnapshots(e.target.checked)} /> снапшоты
+              <input type="checkbox" checked={snapshots} onChange={(e) => setSnapshots(e.target.checked)} /> {t("снапшоты")}
             </label>
           </div>
-          <input className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти версию…" aria-label="Поиск версии" />
-          <div className="vlist" role="listbox" aria-label="Версии">
-            {versions === null && <div className="muted small" style={{ padding: 10 }}><span className="spinner" /> Загружаем список версий…</div>}
+          <input className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("Найти версию…")} aria-label={t("Поиск версии")} />
+          <div className="vlist" role="listbox" aria-label={t("Версии")}>
+            {versions === null && <div className="muted small" style={{ padding: 10 }}><span className="spinner" /> {t("Загружаем список версий…")}</div>}
             {shown.map((v) => (
               <button type="button" key={v.id} role="option" aria-selected={v.id === version} className={v.id === version ? "on" : ""} onClick={() => setVersion(v.id)}>
                 <span>{v.id}{v.type !== "release" ? <span className="muted"> · {v.type}</span> : null}</span>
@@ -102,7 +103,7 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
           {java && <span className="muted small">{version}: {java}</span>}
         </div>
         <label>
-          <span>Загрузчик</span>
+          <span>{t("Загрузчик")}</span>
           <select className="field" value={loader} onChange={(e) => setLoader(e.target.value as LoaderKind)}>
             {LOADERS.map((l) => (
               <option key={l.kind} value={l.kind} disabled={!l.ready}>{loaderName[l.kind]}{l.note ? ` — ${l.note}` : ""}</option>
@@ -111,15 +112,15 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
         </label>
         {loader !== "vanilla" && (
           <label>
-            <span>Версия {loaderName[loader]}</span>
+            <span>{t("Версия")} {loaderName[loader]}</span>
             {loaderVersions === null ? (
-              <span className="muted small"><span className="spinner" /> Проверяем совместимость…</span>
+              <span className="muted small"><span className="spinner" /> {t("Проверяем совместимость…")}</span>
             ) : incompatible ? (
-              <span className="badge err">{loaderName[loader]} не поддерживает Minecraft {version}</span>
+              <span className="badge err">{loaderName[loader]} {t("не поддерживает Minecraft")} {version}</span>
             ) : (
               <select className="field" value={loaderVersion} onChange={(e) => setLoaderVersion(e.target.value)}>
                 {loaderVersions.map((v) => (
-                  <option key={v.version} value={v.version}>{v.version}{v.stable ? " · стабильная" : " · нестабильная"}</option>
+                  <option key={v.version} value={v.version}>{v.version}{v.stable ? t(" · стабильная") : t(" · нестабильная")}</option>
                 ))}
               </select>
             )}
@@ -127,8 +128,8 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
         )}
         {error && <div className="alert err"><span>{error}</span></div>}
         <div className="acts">
-          <button type="button" className="btn" onClick={onClose}>Отмена</button>
-          <button type="submit" className="btn pri" disabled={!canCreate}>{busy ? "Создаём…" : "Создать"}</button>
+          <button type="button" className="btn" onClick={onClose}>{t("Отмена")}</button>
+          <button type="submit" className="btn pri" disabled={!canCreate}>{busy ? t("Создаём…") : t("Создать")}</button>
         </div>
       </form>
     </Modal>

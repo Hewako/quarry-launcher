@@ -1,5 +1,6 @@
 // Палитра команд (Ctrl+K / ⌘K): быстрый переход к профилям, вкладкам, экранам и действиям.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { t } from "../i18n";
 
 export interface Command { id: string; label: string; hint?: string; run: () => void }
 
@@ -32,11 +33,11 @@ export function Palette({ commands, onClose }: { commands: Command[]; onClose: (
 
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Палитра команд" onKeyDown={onKey}>
-        <input ref={input} className="field" placeholder="Профиль, вкладка или действие…" value={q} onChange={(e) => setQ(e.target.value)}
+      <div className="palette" role="dialog" aria-modal="true" aria-label={t("Палитра команд")} onKeyDown={onKey}>
+        <input ref={input} className="field" placeholder={t("Профиль, вкладка или действие…")} value={q} onChange={(e) => setQ(e.target.value)}
           role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant={shown[sel] ? `pc-${shown[sel].id}` : undefined} />
-        <ul id="palette-list" role="listbox" aria-label="Команды">
-          {shown.length === 0 && <li className="muted small" style={{ padding: 10 }}>Ничего не найдено</li>}
+        <ul id="palette-list" role="listbox" aria-label={t("Команды")}>
+          {shown.length === 0 && <li className="muted small" style={{ padding: 10 }}>{t("Ничего не найдено")}</li>}
           {shown.map((c, i) => (
             <li key={c.id} id={`pc-${c.id}`} role="option" aria-selected={i === sel} className={i === sel ? "on" : ""}
               onMouseEnter={() => setSel(i)} onMouseDown={(e) => { e.preventDefault(); run(c); }}>
@@ -44,7 +45,7 @@ export function Palette({ commands, onClose }: { commands: Command[]; onClose: (
             </li>
           ))}
         </ul>
-        <p className="muted small" style={{ margin: "8px 4px 0" }}>↑↓ — выбрать · Enter — выполнить · Esc — закрыть</p>
+        <p className="muted small" style={{ margin: "8px 4px 0" }}>{t("↑↓ — выбрать · Enter — выполнить · Esc — закрыть")}</p>
       </div>
     </div>
   );

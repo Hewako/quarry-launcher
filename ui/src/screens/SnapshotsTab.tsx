@@ -2,14 +2,15 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { errText, relTime, sizeText, snapshots, type Instance, type SnapshotDiff, type SnapshotInfo, type WorldBackup, type WorldInfo } from "../api";
 import { useDialog } from "../ui/Dialog";
+import { t } from "../i18n";
 
 function DiffView({ d }: { d: SnapshotDiff }) {
   const empty = !d.added.length && !d.removed.length && !d.changed.length && !d.options.length;
-  if (empty) return <div className="diff"><span className="muted">С тех пор ничего не изменилось.</span></div>;
+  if (empty) return <div className="diff"><span className="muted">{t("С тех пор ничего не изменилось.")}</span></div>;
   return (
     <div className="diff">
-      {d.added.map((p) => <span key={p} className="add">+ {p} <span className="muted">(появилось после снимка)</span></span>)}
-      {d.removed.map((p) => <span key={p} className="del">− {p} <span className="muted">(было в снимке)</span></span>)}
+      {d.added.map((p) => <span key={p} className="add">+ {p} <span className="muted">{t("(появилось после снимка)")}</span></span>)}
+      {d.removed.map((p) => <span key={p} className="del">− {p} <span className="muted">{t("(было в снимке)")}</span></span>)}
       {d.changed.map((p) => <span key={p} className="chg">~ {p}</span>)}
       {d.options.map(([k, a, b]) => <span key={k} className="chg">~ options.txt: {k} {a || "—"} → {b}</span>)}
     </div>
@@ -36,88 +37,88 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
   };
   const restore = async (s: SnapshotInfo) => {
     const ok = await dialog.confirm({
-      title: `Откатить к «${s.reason}»?`,
-      body: "Моды, настройки модов и options.txt вернутся к состоянию снимка. Текущее состояние сначала сохранится отдельным снимком, так что откат тоже можно отменить. Миры не затрагиваются.",
-      confirm: "Откатить",
+      title: t("Откатить к «{0}»?", s.reason),
+      body: t("Моды, настройки модов и options.txt вернутся к состоянию снимка. Текущее состояние сначала сохранится отдельным снимком, так что откат тоже можно отменить. Миры не затрагиваются."),
+      confirm: t("Откатить"),
     });
-    if (ok) await act(s.id, async () => { await snapshots.restore(inst.id, s.id); setDiffs({}); onRestored(); }, "Откат не удался");
+    if (ok) await act(s.id, async () => { await snapshots.restore(inst.id, s.id); setDiffs({}); onRestored(); }, t("Откат не удался"));
   };
   const restoreWorld = async (w: WorldInfo, b: WorldBackup) => {
     const ok = await dialog.confirm({
-      title: `Вернуть «${w.name}» к бэкапу?`,
-      body: `Мир вернётся к состоянию на ${new Date(b.created_at * 1000).toLocaleString()}. Текущий мир не удаляется: сначала он сам сохранится в бэкап и отложится в папку backups/…/replaced.`,
-      confirm: "Восстановить",
+      title: t("Вернуть «{0}» к бэкапу?", w.name),
+      body: t("Мир вернётся к состоянию на {0}. Текущий мир не удаляется: сначала он сам сохранится в бэкап и отложится в папку backups/…/replaced.", new Date(b.created_at * 1000).toLocaleString()),
+      confirm: t("Восстановить"),
     });
     if (ok) await act(`r${b.file}`, async () => {
       await snapshots.restoreWorld(inst.id, b.file);
-      await dialog.alert("Мир восстановлен", `«${w.name}» снова в состоянии бэкапа.`);
-    }, "Мир не восстановлен");
+      await dialog.alert(t("Мир восстановлен"), t("«{0}» снова в состоянии бэкапа.", w.name));
+    }, t("Мир не восстановлен"));
   };
 
   return (
     <>
       <div className="pagehead" style={{ marginBottom: 14 }}>
         <p className="muted small" style={{ margin: 0, maxWidth: 680 }}>
-          Снимок создаётся сам перед установкой, обновлением и удалением модов, а также перед откатом. Хранятся 10 последних автоматических, ручные и закреплённые. В снимок входят моды, настройки модов и options.txt; миры защищают отдельные бэкапы ниже.
+          {t("Снимок создаётся сам перед установкой, обновлением и удалением модов, а также перед откатом. Хранятся 10 последних автоматических, ручные и закреплённые. В снимок входят моды, настройки модов и options.txt; миры защищают отдельные бэкапы ниже.")}
         </p>
-        <button className="btn" disabled={running || busy !== ""} onClick={() => act("new", () => snapshots.create(inst.id, "Создан вручную"), "Снимок не создан")}>+ Создать снимок</button>
+        <button className="btn" disabled={running || busy !== ""} onClick={() => act("new", () => snapshots.create(inst.id, t("Создан вручную")), t("Снимок не создан"))}>{t("+ Создать снимок")}</button>
       </div>
       <div className="card">
-        {list === null ? <p className="muted"><span className="spinner" /> Загружаем…</p> : list.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>Снимков пока нет. Первый появится сам перед первым изменением модов.</p>
+        {list === null ? <p className="muted"><span className="spinner" /> {t("Загружаем…")}</p> : list.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>{t("Снимков пока нет. Первый появится сам перед первым изменением модов.")}</p>
         ) : (
           <div className="timeline">
             {list.map((s) => (
               <div className="snap" key={s.id}>
                 <b>{s.reason}</b>{" "}
-                <span className="muted small">· {relTime(s.created_at)} · {s.auto ? "автоматически" : "вручную"} · модов {s.mods}, конфигов {s.configs}</span>
-                {s.pinned && <span className="pin"> ● закреплён — ротация его не удалит</span>}
+                <span className="muted small">· {relTime(s.created_at)} · {s.auto ? t("автоматически") : t("вручную")} {t("· модов")} {s.mods}{t(", конфигов")} {s.configs}</span>
+                {s.pinned && <span className="pin"> {t("● закреплён — ротация его не удалит")}</span>}
                 {diffs[s.id] && <DiffView d={diffs[s.id]} />}
                 <div className="row" style={{ marginTop: 6 }}>
-                  <button className="btn" disabled={running || busy !== ""} onClick={() => restore(s)}>{busy === s.id ? "Откатываем…" : "Откатить к этому снимку"}</button>
-                  <button className="btn" onClick={() => snapshots.diff(inst.id, s.id).then((d) => setDiffs({ ...diffs, [s.id]: d })).catch((e) => dialog.alert("Не удалось сравнить", errText(e)))}>Сравнить с текущим</button>
-                  <button className="btn link small" onClick={() => act(`pin${s.id}`, () => snapshots.pin(inst.id, s.id, !s.pinned), "Не получилось")}>{s.pinned ? "Открепить" : "Закрепить"}</button>
+                  <button className="btn" disabled={running || busy !== ""} onClick={() => restore(s)}>{busy === s.id ? t("Откатываем…") : t("Откатить к этому снимку")}</button>
+                  <button className="btn" onClick={() => snapshots.diff(inst.id, s.id).then((d) => setDiffs({ ...diffs, [s.id]: d })).catch((e) => dialog.alert(t("Не удалось сравнить"), errText(e)))}>{t("Сравнить с текущим")}</button>
+                  <button className="btn link small" onClick={() => act(`pin${s.id}`, () => snapshots.pin(inst.id, s.id, !s.pinned), t("Не получилось"))}>{s.pinned ? t("Открепить") : t("Закрепить")}</button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-      <h4 style={{ margin: "22px 0 10px" }}>Миры и их бэкапы</h4>
+      <h4 style={{ margin: "22px 0 10px" }}>{t("Миры и их бэкапы")}</h4>
       <p className="muted small" style={{ margin: "0 0 10px", maxWidth: 680 }}>
-        Quarry сам делает бэкап последнего мира, если моды менялись после прошлой игры, и перед удалением мода, который добавляет блоки или измерения. Хранятся 5 последних бэкапов каждого мира.
+        {t("Quarry сам делает бэкап последнего мира, если моды менялись после прошлой игры, и перед удалением мода, который добавляет блоки или измерения. Хранятся 5 последних бэкапов каждого мира.")}
       </p>
       <div className="card">
-        {worlds.length === 0 ? <p className="muted" style={{ margin: 0 }}>Миров в профиле пока нет.</p> : (
+        {worlds.length === 0 ? <p className="muted" style={{ margin: 0 }}>{t("Миров в профиле пока нет.")}</p> : (
           <table>
             <tbody>
               {worlds.map((w) => (
                 <Fragment key={w.folder}>
                   <tr>
                     <td>
-                      <b>{w.name}</b>{w.hardcore && <span className="badge err" style={{ marginLeft: 6 }}>хардкор</span>}
+                      <b>{w.name}</b>{w.hardcore && <span className="badge err" style={{ marginLeft: 6 }}>{t("хардкор")}</span>}
                       <div className="muted small">
-                        {w.version_name ?? "версия неизвестна"} · {w.game_mode} · {sizeText(w.size)}{w.last_played ? ` · играли ${relTime(w.last_played)}` : ""}
-                        {w.folder !== w.name && <> · папка <span className="mono">{w.folder}</span></>}
+                        {w.version_name ?? t("версия неизвестна")} · {t(w.game_mode)} · {sizeText(w.size)}{w.last_played ? t(" · играли {0}", relTime(w.last_played)) : ""}
+                        {w.folder !== w.name && <> {t("· папка")} <span className="mono">{w.folder}</span></>}
                       </div>
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       {w.backups.length > 0 && (
                         <button className="btn link small" aria-expanded={open === w.folder} onClick={() => setOpen(open === w.folder ? "" : w.folder)}>
-                          Бэкапы ({w.backups.length})
+                          {t("Бэкапы (")}{w.backups.length})
                         </button>
                       )}
                       <button className="btn" disabled={running || busy !== ""} onClick={() => act(`w${w.folder}`, async () => {
                         const b = await snapshots.backupWorld(inst.id, w.folder);
-                        await dialog.alert("Бэкап готов", `${w.name}: ${sizeText(b.size)}.`);
-                      }, "Бэкап не создан")}>{busy === `w${w.folder}` ? "Сохраняем…" : "Сделать бэкап"}</button>
+                        await dialog.alert(t("Бэкап готов"), `${w.name}: ${sizeText(b.size)}.`);
+                      }, t("Бэкап не создан"))}>{busy === `w${w.folder}` ? t("Сохраняем…") : t("Сделать бэкап")}</button>
                     </td>
                   </tr>
                   {open === w.folder && w.backups.map((b) => (
                     <tr key={b.file} className="sub">
                       <td className="small" style={{ paddingLeft: 22 }}>{new Date(b.created_at * 1000).toLocaleString()} · {sizeText(b.size)} <span className="muted">({relTime(b.created_at)})</span></td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="btn" disabled={running || busy !== ""} onClick={() => restoreWorld(w, b)}>{busy === `r${b.file}` ? "Восстанавливаем…" : "Восстановить"}</button>
+                        <button className="btn" disabled={running || busy !== ""} onClick={() => restoreWorld(w, b)}>{busy === `r${b.file}` ? t("Восстанавливаем…") : t("Восстановить")}</button>
                       </td>
                     </tr>
                   ))}

@@ -1,5 +1,6 @@
 // Собственные диалоги вместо confirm()/alert(): с фокусом, Esc и понятными кнопками.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { t } from "../i18n";
 
 interface ConfirmOptions {
   title: string;
@@ -18,7 +19,7 @@ const Ctx = createContext<DialogApi | null>(null);
 
 export function useDialog(): DialogApi {
   const v = useContext(Ctx);
-  if (!v) throw new Error("useDialog вне DialogProvider");
+  if (!v) throw new Error(t("useDialog вне DialogProvider"));
   return v;
 }
 
@@ -75,11 +76,11 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           <div className="acts">
             {pending.kind === "confirm" ? (
               <>
-                <button className="btn" onClick={() => close(false)}>{pending.o.cancel ?? "Отмена"}</button>
+                <button className="btn" onClick={() => close(false)}>{pending.o.cancel ?? t("Отмена")}</button>
                 <button className={pending.o.danger ? "btn danger" : "btn pri"} data-autofocus onClick={() => close(true)}>{pending.o.confirm}</button>
               </>
             ) : (
-              <button className="btn pri" data-autofocus onClick={() => close(true)}>Понятно</button>
+              <button className="btn pri" data-autofocus onClick={() => close(true)}>{t("Понятно")}</button>
             )}
           </div>
         </Modal>

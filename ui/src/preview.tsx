@@ -63,7 +63,7 @@ mockIPC((cmd, args) => {
     case "servers_save": return null;
     case "disk_usage": return { total: 1_480_000_000, parts: [{ label: "Миры", size: 820_000_000 }, { label: "Моды", size: 410_000_000 }, { label: "Ресурспаки и шейдеры", size: 160_000_000 }, { label: "Снимки модов", size: 70_000_000 }, { label: "Скриншоты", size: 20_000_000 }] };
     case "list_accounts": return withAccount ? [{ provider: "microsoft", uuid: "0123", name: "Steve_Builder", owns_java_edition: true, checked_at: now }] : [];
-    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: "ru", ui_scale: 100, compact: false, first_run_done: !params.has("firstrun"), backup_before_risky_launch: true, backup_after_exit: false, backup_every_days: 0, download_limit_kbps: 0, check_launcher_updates: true };
+    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: params.get("lang") ?? "ru", ui_scale: 100, compact: false, first_run_done: !params.has("firstrun"), backup_before_risky_launch: true, backup_after_exit: false, backup_every_days: 0, download_limit_kbps: 0, check_launcher_updates: true };
     case "save_global_settings": return null;
     case "launch_settings": {
       const i = instances.find((x) => x.id === a.id)!;

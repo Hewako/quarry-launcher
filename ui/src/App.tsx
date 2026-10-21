@@ -15,17 +15,18 @@ import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
 import { clearNotes, markRead, useNotes } from "./notify";
 import { Palette, type Command } from "./ui/Palette";
+import { syncLang, t } from "./i18n";
 
 type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
 
 const NAV: { id: Screen; label: string; ico: string }[] = [
-  { id: "home", label: "Главная", ico: "⌂" },
-  { id: "profile", label: "Профили", ico: "▦" },
+  { id: "home", label: t("Главная"), ico: "⌂" },
+  { id: "profile", label: t("Профили"), ico: "▦" },
   { id: "doctor", label: "Mod Doctor", ico: "⚙" },
-  { id: "history", label: "Снимки и откат", ico: "↺" },
-  { id: "logs", label: "Логи и краши", ico: "≡" },
-  { id: "accounts", label: "Аккаунты", ico: "☺" },
-  { id: "settings", label: "Настройки", ico: "✎" },
+  { id: "history", label: t("Снимки и откат"), ico: "↺" },
+  { id: "logs", label: t("Логи и краши"), ico: "≡" },
+  { id: "accounts", label: t("Аккаунты"), ico: "☺" },
+  { id: "settings", label: t("Настройки"), ico: "✎" },
 ];
 
 function applyTheme(theme: string) {
@@ -41,7 +42,7 @@ export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | 
   root.dataset.density = g.compact ? "compact" : "normal";
 }
 
-const TAB_LABELS: [Tab, string][] = [["mods", "Моды"], ["resources", "Ресурсы"], ["configs", "Конфиги"], ["launch", "Запуск и память"], ["options", "Настройки игры"], ["snapshots", "Снимки и миры"], ["servers", "Серверы"], ["logs", "Логи"], ["profile", "Профиль"]];
+const TAB_LABELS: [Tab, string][] = [["mods", t("Моды")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
 
 function Shell() {
   const streamer = useStreamer();
@@ -82,7 +83,7 @@ function Shell() {
   useEffect(() => {
     launches.start();
     api.appInfo().then(setInfo);
-    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); setFirstRun(!g.first_run_done); }).catch(() => applyTheme("dark"));
+    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); setFirstRun(!g.first_run_done); syncLang(g.language); }).catch(() => applyTheme("dark"));
     refresh();
     refreshAccounts();
     const off = listen("launch-finished", () => refresh());
@@ -113,26 +114,26 @@ function Shell() {
   const msAll = accounts.filter((a) => a.provider === "microsoft");
   const ms = msAll.find((a) => `${a.provider}:${a.uuid}` === defaultKey) ?? msAll[0];
 
-  if (!info) return <div className="content muted">Загрузка…</div>;
+  if (!info) return <div className="content muted">{t("Загрузка…")}</div>;
   const open = (id: string, tab?: Tab) => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
   const commands: Command[] = [
-    ...NAV.filter((n) => n.id !== "doctor" && n.id !== "history").map((n) => ({ id: `s-${n.id}`, label: n.label, hint: "экран", run: () => { setProfileTab(undefined); setScreen(n.id); } })),
+    ...NAV.filter((n) => n.id !== "doctor" && n.id !== "history").map((n) => ({ id: `s-${n.id}`, label: n.label, hint: t("экран"), run: () => { setProfileTab(undefined); setScreen(n.id); } })),
     ...instances.flatMap((i) => [
-      { id: `p-${i.id}`, label: i.name, hint: `профиль · ${i.game_version}`, run: () => open(i.id) },
-      { id: `play-${i.id}`, label: `Играть: ${i.name}`, hint: "запуск", run: () => { launches.begin(i.id); api.launch(i.id).catch(() => {}); } },
+      { id: `p-${i.id}`, label: i.name, hint: t("профиль · {0}", i.game_version), run: () => open(i.id) },
+      { id: `play-${i.id}`, label: t("Играть: {0}", i.name), hint: t("запуск"), run: () => { launches.begin(i.id); api.launch(i.id).catch(() => {}); } },
     ]),
-    ...(selected ? TAB_LABELS.map(([t, l]) => ({ id: `t-${t}`, label: `${selected.name}: ${l}`, hint: "вкладка", run: () => open(selected.id, t) })) : []),
-    { id: "a-new", label: "Новый профиль", hint: "действие", run: () => setCreating(true) },
-    { id: "a-import", label: "Импорт сборки", hint: ".mrpack / zip / Prism", run: () => setImporting(true) },
-    { id: "a-theme", label: "Сменить тему", hint: "светлая / тёмная", run: () => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") },
+    ...(selected ? TAB_LABELS.map(([tab, l]) => ({ id: `t-${tab}`, label: `${selected.name}: ${t(l)}`, hint: t("вкладка"), run: () => open(selected.id, tab) })) : []),
+    { id: "a-new", label: t("Новый профиль"), hint: t("действие"), run: () => setCreating(true) },
+    { id: "a-import", label: t("Импорт сборки"), hint: ".mrpack / zip / Prism", run: () => setImporting(true) },
+    { id: "a-theme", label: t("Сменить тему"), hint: t("светлая / тёмная"), run: () => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") },
   ];
 
   return (
     <div className="app">
-      <a href="#main" className="skip">Перейти к содержимому</a>
+      <a href="#main" className="skip">{t("Перейти к содержимому")}</a>
       <aside className="side">
-        <div className="logo"><i /><div>Quarry<small>рабочее название · v{info.version}</small></div></div>
-        <nav className="nav" aria-label="Разделы">
+        <div className="logo"><i /><div>Quarry<small>{t("рабочее название · v")}{info.version}</small></div></div>
+        <nav className="nav" aria-label={t("Разделы")}>
           {NAV.map((n) => (
             <button key={n.id} className={(n.id === "doctor" ? screen === "profile" && profileTab === "mods" : n.id === "history" ? screen === "profile" && profileTab === "snapshots" : n.id === "profile" ? screen === "profile" && profileTab !== "mods" && profileTab !== "snapshots" : screen === n.id) ? "on" : ""} aria-current={screen === n.id ? "page" : undefined} onClick={() => {
               if (n.id === "doctor" || n.id === "history") { setProfileTab(n.id === "doctor" ? "mods" : "snapshots"); setScreen("profile"); return; }
@@ -147,35 +148,35 @@ function Shell() {
         <button className="acct" onClick={() => setScreen("accounts")}>
           <Avatar account={ms} />
           <div style={{ minWidth: 0 }}>
-            <b>{ms ? nick(ms.name, streamer) : "Нет аккаунта"}</b>
-            {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? "владение ✓" : "игра не куплена"}</span> : <span className="badge">войти</span>}
+            <b>{ms ? nick(ms.name, streamer) : t("Нет аккаунта")}</b>
+            {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? t("владение ✓") : t("игра не куплена")}</span> : <span className="badge">{t("войти")}</span>}
           </div>
         </button>
       </aside>
 
       <div className="main">
         {info.dev_launch && (
-          <div className="devbar" role="status">Сборка разработчика (dev-launch): разрешён запуск без входа для отладки на собственной копии игры. В релизе этого режима нет.</div>
+          <div className="devbar" role="status">{t("Сборка разработчика (dev-launch): разрешён запуск без входа для отладки на собственной копии игры. В релизе этого режима нет.")}</div>
         )}
         <header className="top">
           {downloading ? (
             <div className="dl" aria-live="polite">
-              ↓ {downloading.name}: {downloading.s.stageLabel} · {downloading.s.progress!.files_done} из {downloading.s.progress!.files_total} файлов · {mb(downloading.s.progress!.bytes_done)} МБ
+              ↓ {downloading.name}: {t(downloading.s.stageLabel)} · {downloading.s.progress!.files_done} {t("из")} {downloading.s.progress!.files_total} {t("файлов ·")} {mb(downloading.s.progress!.bytes_done)} {t("МБ")}
               <div className="bar"><i style={{ width: `${downloading.s.progress!.bytes_total ? (downloading.s.progress!.bytes_done / downloading.s.progress!.bytes_total) * 100 : 0}%` }} /></div>
             </div>
           ) : runningCount > 0 ? (
-            <span className="dl">Запущено профилей: {runningCount}</span>
+            <span className="dl">{t("Запущено профилей:")} {runningCount}</span>
           ) : <span className="dl" />}
           <div className="sp" />
-          <button className="btn small search" onClick={() => setPalette(true)} aria-label="Палитра команд (Ctrl+K)">Поиск <kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd></button>
+          <button className="btn small search" onClick={() => setPalette(true)} aria-label={t("Палитра команд (Ctrl+K)")}>{t("Поиск")} <kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd></button>
           <div className="bellwrap">
-            <button className="iconbtn" aria-label={`Уведомления${notes.unread ? `: новых ${notes.unread}` : ""}`} aria-expanded={bell} onClick={() => { setBell(!bell); markRead(); }}>
+            <button className="iconbtn" aria-label={t("Уведомления{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} aria-expanded={bell} onClick={() => { setBell(!bell); markRead(); }}>
               🔔{notes.unread > 0 && <span className="dot">{notes.unread}</span>}
             </button>
             {bell && (
-              <div className="bellpanel" role="region" aria-label="Уведомления">
-                <div className="row" style={{ justifyContent: "space-between" }}><b>Уведомления</b>{notes.notes.length > 0 && <button className="btn link small" onClick={clearNotes}>Очистить</button>}</div>
-                {notes.notes.length === 0 ? <p className="muted small">Пока ничего нового.</p> : notes.notes.map((n) => (
+              <div className="bellpanel" role="region" aria-label={t("Уведомления")}>
+                <div className="row" style={{ justifyContent: "space-between" }}><b>{t("Уведомления")}</b>{notes.notes.length > 0 && <button className="btn link small" onClick={clearNotes}>{t("Очистить")}</button>}</div>
+                {notes.notes.length === 0 ? <p className="muted small">{t("Пока ничего нового.")}</p> : notes.notes.map((n) => (
                   <div key={n.id} className={`note ${n.kind}`}>
                     <b>{n.title}</b>{n.body && <span className="small">{n.body}</span>}
                     <span className="muted small">{n.profile ? `${instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
@@ -184,11 +185,11 @@ function Shell() {
               </div>
             )}
           </div>
-          <button className="iconbtn" aria-label="Переключить тему" title="Тема" onClick={() => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>◐</button>
+          <button className="iconbtn" aria-label={t("Переключить тему")} title={t("Тема")} onClick={() => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>◐</button>
         </header>
 
         <main className="content" id="main" tabIndex={-1}>
-          {loadError && <div className="alert err"><div className="h">Не удалось прочитать профили</div><span>{loadError}</span></div>}
+          {loadError && <div className="alert err"><div className="h">{t("Не удалось прочитать профили")}</div><span>{loadError}</span></div>}
           {screen === "home" && (
             <Home info={info} instances={instances} broken={broken} accounts={accounts} states={states} selected={selected}
               onSelect={setSelectedId} onOpen={(id, tab) => open(id, tab)} onCreate={() => setCreating(true)} onImport={() => setImporting(true)}
@@ -198,10 +199,10 @@ function Shell() {
             <>
               {instances.length > 1 && (
                 <div className="row" style={{ marginBottom: 12 }}>
-                  <select className="field" style={{ maxWidth: 280 }} value={selected.id} onChange={(e) => setSelectedId(e.target.value)} aria-label="Профиль">
+                  <select className="field" style={{ maxWidth: 280 }} value={selected.id} onChange={(e) => setSelectedId(e.target.value)} aria-label={t("Профиль")}>
                     {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
-                  <button className="btn" onClick={() => setCreating(true)}>+ Новый профиль</button>
+                  <button className="btn" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button>
                 </div>
               )}
               <InstancePage key={selected.id} inst={selected} instances={instances} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
@@ -210,7 +211,7 @@ function Shell() {
                 onTrashed={() => { refresh(); setScreen("home"); }} />
             </>
           ) : (
-            <div className="card empty"><p>Профилей нет.</p><button className="btn pri" onClick={() => setCreating(true)}>+ Новый профиль</button></div>
+            <div className="card empty"><p>{t("Профилей нет.")}</p><button className="btn pri" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button></div>
           ))}
           {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
           {screen === "accounts" && <Accounts info={info} accounts={accounts} defaultKey={defaultKey} onChanged={refreshAccounts} />}
@@ -218,7 +219,7 @@ function Shell() {
         </main>
 
         <footer className="foot">
-          <span>Данные: {path(info.data_dir, streamer)}</span>
+          <span>{t("Данные:")} {path(info.data_dir, streamer)}</span>
           <span>Quarry {info.version}{info.dev_launch ? " · dev-launch" : ""}</span>
         </footer>
       </div>
