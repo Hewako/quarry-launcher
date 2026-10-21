@@ -102,7 +102,7 @@ export interface AccountRef { provider: Provider; uuid: string; name: string; ow
 export interface GlobalSettings {
   launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string;
   language: string; accent?: string; ui_scale: number; first_run_done: boolean;
-  backup_before_risky_launch: boolean; backup_after_exit: boolean; backup_every_days: number; check_launcher_updates: boolean;
+  backup_before_risky_launch: boolean; backup_after_exit: boolean; backup_every_days: number; download_limit_kbps: number; check_launcher_updates: boolean;
 }
 export interface WorldBackup { world: string; file: string; size: number; created_at: number }
 export interface WorldInfo {
@@ -157,6 +157,7 @@ export const api = {
   servers: (id: string) => invoke<Server[]>("servers_list", { id }),
   saveServers: (id: string, servers: Server[]) => invoke<void>("servers_save", { id, servers }),
   pingServer: (address: string) => invoke<ServerStatus>("server_ping", { address }),
+  pauseDownloads: (paused: boolean) => invoke<void>("downloads_pause", { paused }),
   memoryAdvice: (maxMb: number, packMb?: number) => invoke<string[]>("memory_advice", { maxMb, packMb: packMb ?? null }),
   launchSettings: (id: string) =>
     invoke<{ resolved: ResolvedLaunch; profile: LaunchOverrides; global: LaunchOverrides; total_memory_mb?: number }>("launch_settings", { id }),

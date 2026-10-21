@@ -82,6 +82,18 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
           <span />
         </div>
         <div className="setting">
+          <div className="lbl">Скорость загрузок<span className="hint">чтобы не мешать другим в сети</span></div>
+          <select className="field" value={s.download_limit_kbps} onChange={(e) => setS({ ...s, download_limit_kbps: Number(e.target.value) })}>
+            <option value={0}>Без ограничения</option>
+            <option value={512}>до 0,5 МБ/с</option>
+            <option value={1024}>до 1 МБ/с</option>
+            <option value={2048}>до 2 МБ/с</option>
+            <option value={5120}>до 5 МБ/с</option>
+            <option value={10240}>до 10 МБ/с</option>
+          </select>
+          <span />
+        </div>
+        <div className="setting">
           <div className="lbl">Папка данных</div>
           <span className="mono" style={{ userSelect: "text" }}>{info.data_dir}</span>
           <span />

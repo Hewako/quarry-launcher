@@ -28,9 +28,33 @@ export function StatusBadge({ inst, state }: { inst: Instance; state?: LaunchSta
 }
 
 /** Ход подготовки: этап, файлы, мегабайты. */
+/** Скорость по последним ~3 секундам и оставшееся время. */
+function useSpeed(done: number, total: number): { speed: number; eta: number | null } {
+  const samples = useRef<[number, number][]>([]);
+  const now = Date.now();
+  const s = samples.current;
+  if (!s.length || s[s.length - 1][1] !== done) s.push([now, done]);
+  while (s.length > 2 && now - s[0][0] > 3000) s.shift();
+  const [t0, b0] = s[0];
+  const speed = now - t0 > 300 ? ((done - b0) * 1000) / (now - t0) : 0;
+  return { speed, eta: speed > 0 && total > done ? (total - done) / speed : null };
+}
+
+const fmtEta = (sec: number) => (sec < 60 ? `${Math.ceil(sec)} с` : `${Math.floor(sec / 60)} мин ${Math.ceil(sec % 60)} с`);
+
+let pausedNow = false;
+
 export function LaunchProgress({ state }: { state: LaunchState }) {
   const p = state.progress;
   const pct = p && p.bytes_total > 0 ? Math.min(100, (p.bytes_done / p.bytes_total) * 100) : p && p.files_total > 0 ? (p.files_done / p.files_total) * 100 : 0;
+  const { speed, eta } = useSpeed(p?.bytes_done ?? 0, p?.bytes_total ?? 0);
+  const [paused, setPaused] = useState(pausedNow);
+  const togglePause = () => { pausedNow = !paused; setPaused(pausedNow); api.pauseDownloads(pausedNow).catch(() => {}); };
+  const downloading = state.phase === "preparing" && !!p && p.files_total > 0 && p.files_done < p.files_total;
+  // Загрузка закончилась или отменена — пауза не должна остаться на следующие загрузки.
+  useEffect(() => {
+    if (!downloading && pausedNow) { pausedNow = false; setPaused(false); api.pauseDownloads(false).catch(() => {}); }
+  }, [downloading]);
   return (
     <div className="prep" aria-live="polite">
       <div className="row small">
@@ -39,8 +63,10 @@ export function LaunchProgress({ state }: { state: LaunchState }) {
         {p && p.files_total > 0 && (
           <span className="muted">
             {p.files_done} из {p.files_total} файлов · {mb(p.bytes_done)} / {mb(p.bytes_total)} МБ{p.retries ? ` · повторов: ${p.retries}` : ""}
+            {downloading && (paused ? " · на паузе" : speed > 0 ? ` · ${(speed / 1048576).toFixed(1)} МБ/с${eta !== null ? ` · осталось ≈ ${fmtEta(eta)}` : ""}` : "")}
           </span>
         )}
+        {downloading && <button className="btn link small" onClick={togglePause}>{paused ? "Продолжить" : "Пауза"}</button>}
       </div>
       {p && p.files_total > 0 && <div className="bar wide"><i style={{ width: `${pct}%` }} /></div>}
       {state.javaReason && <span className="muted small">Java: {state.javaReason}</span>}

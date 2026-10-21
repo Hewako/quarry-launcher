@@ -57,6 +57,67 @@ pub enum Verify {
     Full,
 }
 
+/// Пауза и ограничение скорости. Глобальный регулятор (`throttle()`) действует на все
+/// загрузки сразу — как в браузере.
+#[derive(Debug, Default)]
+pub struct Throttle {
+    paused: AtomicBool,
+    /// Байт в секунду; 0 — без ограничения.
+    limit: AtomicU64,
+    window: Mutex<Option<(Instant, u64)>>,
+}
+
+impl Throttle {
+    pub fn set_paused(&self, paused: bool) {
+        self.paused.store(paused, Ordering::SeqCst);
+    }
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::SeqCst)
+    }
+    pub fn set_limit_kbps(&self, kbps: u64) {
+        self.limit.store(kbps * 1024, Ordering::SeqCst);
+    }
+    /// Пропустить `n` байт: подождать, пока снята пауза и не превышен лимит.
+    pub async fn gate(&self, n: usize, cancel: &Cancel) -> Result<()> {
+        while self.is_paused() {
+            cancel.check()?;
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let limit = self.limit.load(Ordering::SeqCst);
+        if limit == 0 {
+            return Ok(());
+        }
+        loop {
+            cancel.check()?;
+            let wait = {
+                let mut w = self.window.lock().unwrap_or_else(|p| p.into_inner());
+                let now = Instant::now();
+                let (start, used) = w.get_or_insert((now, 0));
+                if now.duration_since(*start) >= Duration::from_secs(1) {
+                    *start = now;
+                    *used = 0;
+                }
+                if *used < limit {
+                    *used += n as u64;
+                    None
+                } else {
+                    Some(Duration::from_secs(1).saturating_sub(now.duration_since(*start)))
+                }
+            };
+            match wait {
+                None => return Ok(()),
+                Some(d) => tokio::time::sleep(d.max(Duration::from_millis(10))).await,
+            }
+        }
+    }
+}
+
+/// Общий регулятор всех загрузок лаунчера.
+pub fn throttle() -> &'static Throttle {
+    static T: std::sync::OnceLock<Throttle> = std::sync::OnceLock::new();
+    T.get_or_init(Throttle::default)
+}
+
 /// Флаг отмены. Дочерний флаг отменяется вместе с родителем, но не наоборот.
 #[derive(Debug, Clone, Default)]
 pub struct Cancel {
@@ -251,6 +312,7 @@ async fn fetch_once(task: &Task, shared: &Shared, cancel: &Cancel) -> Result<u64
                 .bytes_done
                 .fetch_add(chunk.len() as u64, Ordering::Relaxed);
             shared.report(false);
+            throttle().gate(chunk.len(), cancel).await?;
         }
         file.flush().await.at(&tmp)?;
         Ok(())
@@ -525,5 +587,40 @@ mod tests {
         assert!(!bad.exists());
         assert_eq!(std::fs::read_dir(&d).unwrap().count(), 1);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[tokio::test]
+    async fn throttle_limits_speed() {
+        let t = Throttle::default();
+        t.set_limit_kbps(50); // 50 КБ/с
+        let started = std::time::Instant::now();
+        for _ in 0..10 {
+            t.gate(10 * 1024, &Cancel::new()).await.unwrap();
+        }
+        // 100 КБ при 50 КБ/с — не меньше ~1 секунды.
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(900),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn throttle_pauses_and_cancels() {
+        let t = std::sync::Arc::new(Throttle::default());
+        t.set_paused(true);
+        let t2 = t.clone();
+        let h = tokio::spawn(async move { t2.gate(1, &Cancel::new()).await });
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(!h.is_finished(), "на паузе загрузка ждёт");
+        t.set_paused(false);
+        assert!(h.await.unwrap().is_ok());
+        t.set_paused(true);
+        let c = Cancel::new();
+        c.cancel();
+        assert!(
+            matches!(t.gate(1, &c).await, Err(Error::Cancelled)),
+            "отмена работает и на паузе"
+        );
     }
 }

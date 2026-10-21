@@ -293,6 +293,9 @@ pub struct GlobalSettings {
     /// Бэкап по расписанию: раз в N дней перед запуском, если в мир играли. 0 — выключено.
     #[serde(default)]
     pub backup_every_days: u32,
+    /// Ограничение скорости загрузок, КБ/с; 0 — без ограничения.
+    #[serde(default)]
+    pub download_limit_kbps: u32,
     /// Проверять, вышла ли новая версия Quarry (страница релизов GitHub).
     #[serde(default = "yes")]
     pub check_launcher_updates: bool,
@@ -325,6 +328,7 @@ impl Default for GlobalSettings {
             backup_before_risky_launch: true,
             backup_after_exit: false,
             backup_every_days: 0,
+            download_limit_kbps: 0,
             check_launcher_updates: true,
         }
     }

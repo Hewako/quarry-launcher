@@ -276,7 +276,15 @@ fn global_settings(state: State<AppState>) -> CmdResult<GlobalSettings> {
 
 #[tauri::command]
 fn save_global_settings(state: State<AppState>, settings: GlobalSettings) -> CmdResult<()> {
-    settings.save(&state.data).map_err(err)
+    settings.save(&state.data).map_err(err)?;
+    quarry_core::download::throttle().set_limit_kbps(settings.download_limit_kbps.into());
+    Ok(())
+}
+
+/// Пауза всех загрузок (и снятие паузы).
+#[tauri::command]
+fn downloads_pause(paused: bool) {
+    quarry_core::download::throttle().set_paused(paused);
 }
 
 #[derive(Serialize)]
@@ -1316,6 +1324,9 @@ pub fn run() {
         .setup(|app| {
             let root = DataDir::default_root().ok_or("Не удалось определить домашнюю папку")?;
             let data = DataDir::open(root)?;
+            if let Ok(g) = GlobalSettings::load(&data) {
+                quarry_core::download::throttle().set_limit_kbps(g.download_limit_kbps.into());
+            }
             app.manage(AppState {
                 data,
                 registry: LaunchRegistry::default(),
@@ -1371,6 +1382,7 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            downloads_pause,
             memory_advice,
             configs_list,
             configs_search,
