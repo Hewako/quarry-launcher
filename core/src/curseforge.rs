@@ -241,7 +241,12 @@ async fn mod_info(mod_id: u64) -> Result<CfMod> {
     Ok(d.data)
 }
 
-async fn files(mod_id: u64, loader: LoaderKind, game_version: &str) -> Result<Vec<CfFile>> {
+/// Более новый файл (стабильный, если есть), чем установленный `current_file_id`.
+pub fn newer_file<'a>(files: &'a [CfFile], current_file_id: &str) -> Option<&'a CfFile> {
+    pick(files, Channel::Auto).filter(|f| f.id.to_string() != current_file_id)
+}
+
+pub async fn files(mod_id: u64, loader: LoaderKind, game_version: &str) -> Result<Vec<CfFile>> {
     let mut url = format!(
         "{API}/mods/{mod_id}/files?gameVersion={}&pageSize=50",
         urlencoding::encode(game_version)
@@ -447,5 +452,14 @@ mod tests {
             ("Just Enough Items", "mezz", 350_000_000)
         );
         assert_eq!(hits[0].categories, ["utility"]);
+    }
+
+    #[test]
+    fn update_only_when_newer_file_in_channel() {
+        let files = vec![file(30, 2, None), file(20, 1, None), file(10, 1, None)];
+        // Стоит 10, новейшая стабильная — 20 (бета 30 не предлагается в канале «авто»).
+        assert_eq!(newer_file(&files, "10").map(|f| f.id), Some(20));
+        assert!(newer_file(&files, "20").is_none(), "уже последняя");
+        assert!(newer_file(&[], "10").is_none());
     }
 }

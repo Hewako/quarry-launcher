@@ -241,9 +241,19 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
         notes: Vec::new(),
     };
     let mut pinned = 0;
+    // Моды с CurseForge проверяются через его API (если в сборке есть ключ).
+    let via_cf = |f: &ModFile| {
+        crate::curseforge::api_key().is_some()
+            && f.source
+                .as_ref()
+                .is_some_and(|s| s.source == Source::CurseForge)
+    };
     for f in &files {
         if f.source.as_ref().is_some_and(|s| s.pinned) {
             pinned += 1;
+            continue;
+        }
+        if via_cf(f) {
             continue;
         }
         let Some(v) = updates.get(&f.sha1) else {
@@ -283,6 +293,43 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
             version: Some(v.clone()),
             cf_file: None,
         });
+    }
+    for f in files
+        .iter()
+        .filter(|f| via_cf(f) && !f.source.as_ref().is_some_and(|s| s.pinned))
+    {
+        let src = f.source.as_ref().expect("проверено в via_cf");
+        let (Some(mod_id), Some(current)) = (
+            src.project_id
+                .as_deref()
+                .and_then(|p| p.parse::<u64>().ok()),
+            src.version_id.as_deref(),
+        ) else {
+            continue;
+        };
+        match crate::curseforge::files(mod_id, c.instance.loader, &c.instance.game_version).await {
+            Ok(list) => {
+                if let Some(nf) = crate::curseforge::newer_file(&list, current)
+                    && nf.trusted_url().is_some()
+                {
+                    plan.changes.push(Change {
+                        kind: ChangeKind::Update,
+                        title: f.display_name(),
+                        file_name: Some(nf.file_name.clone()),
+                        old_file: Some(f.rel_path.trim_start_matches("mods/").to_string()),
+                        old_version: src.version_number.clone(),
+                        new_version: Some(nf.display_name.clone()),
+                        reason: "новая версия (CurseForge)".into(),
+                        size: nf.file_length,
+                        version: None,
+                        cf_file: Some(nf.clone()),
+                    });
+                }
+            }
+            Err(e) => plan
+                .notes
+                .push(format!("{}: CurseForge не ответил ({e})", f.display_name())),
+        }
     }
     if pinned > 0 {
         plan.notes
