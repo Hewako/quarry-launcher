@@ -1,6 +1,6 @@
 // Типизированные обёртки над командами Tauri. Формы данных совпадают с serde в quarry-core.
 import { invoke } from "@tauri-apps/api/core";
-import { t } from "./i18n";
+import { currentLang, t } from "./i18n";
 
 export type LoaderKind = "vanilla" | "fabric" | "quilt" | "neoforge" | "forge";
 export type AuthMode = "microsoft" | "ely_by";
@@ -74,6 +74,13 @@ export type ResKind = "resourcepack" | "shader" | "datapack";
 
 export interface ConfigFile { path: string; size: number; user_edited: boolean }
 export interface DiffLine { kind: "=" | "+" | "-"; text: string }
+/** «5 модов» с правильным склонением (ru) или «5 mods» (en). */
+export function modsLabel(n: number): string {
+  if (currentLang() === "en") return `${n} ${n === 1 ? "mod" : "mods"}`;
+  const d = n % 10, h = n % 100;
+  return `${n} ${d === 1 && h !== 11 ? "мод" : d >= 2 && d <= 4 && (h < 12 || h > 14) ? "мода" : "модов"}`;
+}
+
 export const configs = {
   list: (id: string) => invoke<ConfigFile[]>("configs_list", { id }),
   search: (id: string, query: string) => invoke<{ path: string; line: number; text: string }[]>("configs_search", { id, query }),
@@ -163,7 +170,7 @@ export const accountKey = (a: AccountRef) => `${a.provider}:${a.uuid}`;
 
 export const api = {
   appInfo: () => invoke<AppInfo>("app_info"),
-  listInstances: () => invoke<{ instances: Instance[]; broken: { dir: string; reason: string }[]; running: string[] }>("list_instances"),
+  listInstances: () => invoke<{ instances: Instance[]; broken: { dir: string; reason: string }[]; running: string[]; mods: Record<string, number> }>("list_instances"),
   createInstance: (name: string, gameVersion: string, loader: LoaderKind, loaderVersion?: string) =>
     invoke<Instance>("create_instance", { name, gameVersion, loader, loaderVersion: loaderVersion ?? null }),
   trashInstance: (id: string) => invoke<string>("trash_instance", { id }),

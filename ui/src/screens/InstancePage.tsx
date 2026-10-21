@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errText, loaderName, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
+import { api, errText, loaderName, sizeText, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { useDialog } from "../ui/Dialog";
 import { LaunchProgress, PlayButton, StatusBadge } from "../ui/common";
@@ -244,6 +244,8 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
   const dialog = useDialog();
   const [tab, setTab] = useState<Tab>(initialTab ?? (inst.loader === "vanilla" ? "launch" : "mods"));
   const [reload, setReload] = useState(0);
+  const [disk, setDisk] = useState<number | null>(null);
+  useEffect(() => { api.diskUsage(inst.id).then((u) => setDisk(u.total)).catch(() => setDisk(null)); }, [inst.id, reload]);
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
 
   const trash = async () => {
@@ -267,7 +269,7 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
       <div className="pagehead">
         <div>
           <h2>{inst.name}</h2>
-          <p className="sub" style={{ margin: 0 }}>Minecraft {inst.game_version} · {loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""} · <StatusBadge inst={inst} state={state} /></p>
+          <p className="sub" style={{ margin: 0 }}>Minecraft {inst.game_version} · {loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""}{disk !== null ? ` · ${t("{0} на диске", sizeText(disk))}` : ""} · <StatusBadge inst={inst} state={state} /></p>
         </div>
         <div className="row">
           <button className="btn" onClick={() => api.openFolder(inst.id).catch((e) => dialog.alert(t("Не удалось открыть папку"), errText(e)))}>{t("Папка")}</button>

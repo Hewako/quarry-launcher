@@ -884,4 +884,10 @@ export const EN: Record<string, string> = {
   "требует": "requires",
   "необязательно": "optional",
   "серый узел — библиотека, поставлена как зависимость": "gray node — a library installed as a dependency",
+  "Последний запуск:": "Last launch:",
+  "сборка {0} · {1}": "pack {0} · {1}",
+  "Что происходило": "What happened",
+  "центр уведомлений · без всплывающих окон": "notification center · no pop-ups",
+  "Аккаунты и скины": "Accounts & skins",
+  "{0} на диске": "{0} on disk",
 };

@@ -25,7 +25,7 @@ const NAV: { id: Screen; label: string; ico: string }[] = [
   { id: "doctor", label: "Mod Doctor", ico: "⚙" },
   { id: "history", label: t("Снимки и откат"), ico: "↺" },
   { id: "logs", label: t("Логи и краши"), ico: "≡" },
-  { id: "accounts", label: t("Аккаунты"), ico: "☺" },
+  { id: "accounts", label: t("Аккаунты и скины"), ico: "☺" },
   { id: "settings", label: t("Настройки"), ico: "✎" },
 ];
 
@@ -82,6 +82,7 @@ function Shell() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [broken, setBroken] = useState<{ dir: string; reason: string }[]>([]);
+  const [modsCount, setModsCount] = useState<Record<string, number>>({});
   const [accounts, setAccounts] = useState<AccountRef[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [screen, setScreen] = useState<Screen>("home");
@@ -101,6 +102,7 @@ function Shell() {
       const r = await api.listInstances();
       setInstances(r.instances);
       setBroken(r.broken);
+      setModsCount(r.mods ?? {});
       setSelectedId((cur) => (cur && r.instances.some((i) => i.id === cur) ? cur : r.instances[0]?.id));
       setLoadError("");
     } catch (e) {
@@ -204,6 +206,10 @@ function Shell() {
           </div>
         )}
         <header className="top">
+          <button className="searchbox" onClick={() => setPalette(true)} aria-label={t("Палитра команд (Ctrl+K)")}>
+            <span>{t("Профиль, вкладка или действие…")}</span><kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd>
+          </button>
+          <div className="sp" />
           {downloading ? (
             <div className="dl" aria-live="polite">
               ↓ {downloading.name}: {t(downloading.s.stageLabel)} · {downloading.s.progress!.files_done} {t("из")} {downloading.s.progress!.files_total} {t("файлов ·")} {mb(downloading.s.progress!.bytes_done)} {t("МБ")}
@@ -212,8 +218,6 @@ function Shell() {
           ) : runningCount > 0 ? (
             <span className="dl">{t("Запущено профилей:")} {runningCount}</span>
           ) : <span className="dl" />}
-          <div className="sp" />
-          <button className="btn small search" onClick={() => setPalette(true)} aria-label={t("Палитра команд (Ctrl+K)")}>{t("Поиск")} <kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd></button>
           <div className="bellwrap">
             <button className="iconbtn" aria-label={t("Уведомления{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} aria-expanded={bell} onClick={() => { setBell(!bell); markRead(); }}>
               🔔{notes.unread > 0 && <span className="dot">{notes.unread}</span>}
@@ -236,7 +240,7 @@ function Shell() {
         <main className="content" id="main" tabIndex={-1}>
           {loadError && <div className="alert err"><div className="h">{t("Не удалось прочитать профили")}</div><span>{loadError}</span></div>}
           {screen === "home" && (
-            <Home info={info} instances={instances} broken={broken} accounts={accounts} states={states} selected={selected}
+            <Home info={info} instances={instances} modsCount={modsCount} broken={broken} accounts={accounts} states={states} selected={selected}
               onSelect={setSelectedId} onOpen={(id, tab) => open(id, tab)} onCreate={() => setCreating(true)} onImport={() => setImporting(true)}
               onAccounts={() => setScreen("accounts")} onLogs={(id) => { setSelectedId(id); setScreen("logs"); }} />
           )}

@@ -320,3 +320,13 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .lg { display: inline-block; width: 26px; border-top: 2px solid var(--muted); vertical-align: middle; }
 .lg.opt { border-top-style: dotted; }
 .lg.bad { border-top: 2px dashed var(--err); }
+
+/* Поиск в верхней панели (открывает палитру) */
+.searchbox { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 260px; max-width: 420px; flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: var(--muted); cursor: text; text-align: left; }
+.searchbox:hover { border-color: var(--muted); }
+/* Лента «Что происходило» */
+.feed { display: grid; gap: 10px; }
+.fitem { display: grid; gap: 2px; padding-left: 16px; position: relative; }
+.fitem::before { content: ""; position: absolute; left: 0; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.fitem.warn::before { background: var(--warn); }
+.fitem.err::before { background: var(--err); }

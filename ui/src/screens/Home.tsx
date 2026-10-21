@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
-import { duration, loaderName, relTime, sizeText, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
+import { duration, loaderName, modsLabel, relTime, sizeText, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
 import { CrashCard } from "../ui/CrashCard";
 import type { Tab } from "./InstancePage";
 import { nick, useStreamer } from "../streamer";
 import { t } from "../i18n";
+import { useNotes } from "../notify";
 
 type Sort = "recent" | "name" | "version" | "created";
 
 interface Props {
   info: AppInfo;
   instances: Instance[];
+  modsCount: Record<string, number>;
   broken: { dir: string; reason: string }[];
   accounts: AccountRef[];
   states: Map<string, LaunchState>;
@@ -51,6 +53,7 @@ export function Home(p: Props) {
   const setViewSaved = (v: "cards" | "list") => { setView(v); try { localStorage.setItem("profilesView", v); } catch { /* недоступно — не страшно */ } };
   const streamer = useStreamer();
   const [query, setQuery] = useState("");
+  const { notes } = useNotes();
   const [sort, setSort] = useState<Sort>(() => (localStorage.getItem("profilesSort") as Sort) ?? "recent");
   const [filter, setFilter] = useState("all");
   const setSortSaved = (v: Sort) => { setSort(v); try { localStorage.setItem("profilesSort", v); } catch { /* не страшно */ } };
@@ -108,6 +111,8 @@ export function Home(p: Props) {
               <div className="chips">
                 <span className="chip">Minecraft {inst.game_version}</span>
                 <span className="chip">{loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""}</span>
+                {inst.loader !== "vanilla" && <span className="chip">{modsLabel(p.modsCount[inst.id] ?? 0)}</span>}
+                {inst.pack && <span className="chip">{t("сборка {0} · {1}", inst.pack.version, inst.pack.channel === "beta" ? "beta" : inst.pack.channel === "alpha" ? "alpha" : "stable")}</span>}
                 {inst.last_launch && <span className="chip">{t("последний запуск")} {relTime(inst.last_launch.at)}{inst.last_launch.duration_secs ? `, ${duration(inst.last_launch.duration_secs)}` : ""}</span>}
               </div>
               <div className="play-wrap">
@@ -200,10 +205,11 @@ export function Home(p: Props) {
                   <ProfileIcon id={i.id} color={i.color} />
                   <div style={{ minWidth: 0 }}>
                     <b>{i.favorite && <span className="star" aria-label={t("в избранном")}>★ </span>}{i.name}</b>
-                    <span className="muted small">{i.game_version} · {loaderName[i.loader]}{i.group ? ` · ${i.group}` : ""}</span>
+                    <span className="muted small">{i.game_version} · {loaderName[i.loader]}{i.loader !== "vanilla" ? ` · ${modsLabel(p.modsCount[i.id] ?? 0)}` : ""}{i.group ? ` · ${i.group}` : ""}</span>
                   </div>
                 </div>
                 <span><span className={`badge ${st.cls}`}>{st.text}</span></span>
+                <span className="meta"><span>{t("Последний запуск:")} {i.archived ? t("в архиве") : i.last_launch ? relTime(i.last_launch.at) : "—"}</span><span aria-hidden>›</span></span>
               </button>
             );
           })}
@@ -225,6 +231,19 @@ export function Home(p: Props) {
             </tbody>
           </table>
         </div>
+      )}
+      {notes.length > 0 && (
+        <>
+          <div className="sect"><h4>{t("Что происходило")}</h4><span className="muted small">{t("центр уведомлений · без всплывающих окон")}</span></div>
+          <div className="card feed">
+            {notes.slice(0, 5).map((n) => (
+              <div key={n.id} className={`fitem ${n.kind}`}>
+                <b>{n.title}</b>{n.body && <span className="small">{n.body}</span>}
+                <span className="muted small">{n.profile ? `${p.instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       {shown.length === 0 && <p className="muted">{t("Ничего не найдено")}{query ? t(" по запросу «{0}»", query) : ""}.</p>}
       {p.broken.length > 0 && (

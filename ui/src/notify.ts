@@ -3,11 +3,16 @@ import { useSyncExternalStore } from "react";
 
 export interface Note { id: number; at: number; kind: "info" | "warn" | "err"; title: string; body?: string; profile?: string }
 
-let notes: Note[] = [];
+const KEY = "quarry.notes";
+// Лента сохраняется между запусками (только у этого пользователя, в localStorage).
+let notes: Note[] = (() => { try { return JSON.parse(localStorage.getItem(KEY) ?? "[]") as Note[]; } catch { return []; } })();
 let unread = 0;
-let seq = 0;
+let seq = notes.reduce((m, n) => Math.max(m, n.id), 0);
 const listeners = new Set<() => void>();
-const emit = () => listeners.forEach((l) => l());
+const emit = () => {
+  try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch { /* не страшно */ }
+  listeners.forEach((l) => l());
+};
 
 export function pushNote(n: Omit<Note, "id" | "at">) {
   notes = [{ ...n, id: ++seq, at: Date.now() }, ...notes].slice(0, 50);

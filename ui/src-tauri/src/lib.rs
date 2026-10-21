@@ -58,15 +58,35 @@ struct InstanceList {
     instances: Vec<Instance>,
     broken: Vec<BrokenInstance>,
     running: Vec<String>,
+    /// Включённых модов в профиле (для карточек).
+    mods: std::collections::BTreeMap<String, usize>,
 }
 
 #[tauri::command]
 fn list_instances(state: State<AppState>) -> CmdResult<InstanceList> {
-    let (instances, broken) = InstanceStore::new(state.data.clone()).list().map_err(err)?;
+    let store = InstanceStore::new(state.data.clone());
+    let (instances, broken) = store.list().map_err(err)?;
+    let mods = instances
+        .iter()
+        .map(|i| {
+            let n = store
+                .game_dir(&i.id)
+                .ok()
+                .and_then(|g| std::fs::read_dir(g.join("mods")).ok())
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| e.file_name().to_string_lossy().ends_with(".jar"))
+                        .count()
+                })
+                .unwrap_or(0);
+            (i.id.clone(), n)
+        })
+        .collect();
     Ok(InstanceList {
         instances,
         broken,
         running: state.registry.running_ids(),
+        mods,
     })
 }
 
