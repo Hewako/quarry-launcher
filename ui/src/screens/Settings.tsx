@@ -62,6 +62,16 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
           <span />
         </div>
         <div className="setting">
+          <div className="lbl">Бэкап мира перед рискованным запуском<span className="hint">если моды менялись после прошлой игры</span></div>
+          <label className="row"><input type="checkbox" checked={s.backup_before_risky_launch} onChange={(e) => setS({ ...s, backup_before_risky_launch: e.target.checked })} /> включён</label>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">Бэкап мира после выхода из игры<span className="hint">последний мир, в который играли</span></div>
+          <label className="row"><input type="checkbox" checked={s.backup_after_exit} onChange={(e) => setS({ ...s, backup_after_exit: e.target.checked })} /> включён</label>
+          <span />
+        </div>
+        <div className="setting">
           <div className="lbl">Папка данных</div>
           <span className="mono" style={{ userSelect: "text" }}>{info.data_dir}</span>
           <span />

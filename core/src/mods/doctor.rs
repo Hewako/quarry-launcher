@@ -483,6 +483,7 @@ mod tests {
 
     fn file(name: &str, meta: ModMeta) -> ModFile {
         ModFile {
+            world_content: false,
             file_name: name.into(),
             rel_path: format!("mods/{name}"),
             enabled: true,

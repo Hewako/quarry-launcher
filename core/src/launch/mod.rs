@@ -578,6 +578,48 @@ async fn run(
         GameEvent::Log { line, .. } => line_cb(LaunchEvent::Log { line }),
         GameEvent::Started { .. } => {}
     });
+    // Миры: сохранённые в более новой версии игры и «рискованный» запуск — сначала бэкап.
+    let backups_dir = crate::worlds::backups_dir(data, &inst.id);
+    if let Ok(jar) = crate::worlds::game_jar_info(&installed.client_jar)
+        && let Some(game_wv) = jar.world_version
+    {
+        let worlds = crate::worlds::list(&game_dir, &backups_dir);
+        for w in crate::worlds::newer_than(&worlds, game_wv) {
+            let saved = crate::snapshot::backup_world(&game_dir, &backups_dir, &w.folder).is_ok();
+            emit(LaunchEvent::Warning {
+                message: format!(
+                    "Мир «{}» сохранён в более новой версии игры ({}), чем {}. Открывать его в старой версии рискованно — {}",
+                    w.name,
+                    w.version_name.clone().unwrap_or_else(|| "?".into()),
+                    inst.game_version,
+                    if saved {
+                        "бэкап сделан"
+                    } else {
+                        "бэкап сделать не удалось"
+                    }
+                ),
+            });
+        }
+    }
+    let journal = crate::mods::manage::journal(&store.dir(&inst.id)?);
+    let mods_changed = inst
+        .last_launch
+        .as_ref()
+        .is_none_or(|l| journal.iter().any(|j| j.at >= l.at));
+    if global.backup_before_risky_launch
+        && mods_changed
+        && inst.loader != crate::loader::LoaderKind::Vanilla
+        && inst.last_launch.is_some()
+        && let Some(b) = crate::worlds::backup_latest(&game_dir, &backups_dir)
+    {
+        emit(LaunchEvent::Warning {
+            message: format!(
+                "Моды менялись после прошлой игры — сделан бэкап мира «{}»",
+                b.world
+            ),
+        });
+    }
+
     let safe_guard = if options.safe_mode && game_dir.join("mods").is_dir() {
         let aside = game_dir.join(SAFE_MODE_DIR);
         std::fs::rename(game_dir.join("mods"), &aside).map_err(|e| Error::io(&aside, e))?;
@@ -600,6 +642,14 @@ async fn run(
     let _ = account; // аккаунт уже показан событием Account
     let mut info = proc.wait().await?;
     drop(safe_guard);
+    if global.backup_after_exit
+        && !info.killed
+        && let Some(b) = crate::worlds::backup_latest(&game_dir, &backups_dir)
+    {
+        emit(LaunchEvent::Warning {
+            message: format!("После выхода сделан бэкап мира «{}»", b.world),
+        });
+    }
     if info.crashed && !options.safe_mode {
         let mut lines = info.tail.clone();
         if let Some(cr) = &info.crash_report {

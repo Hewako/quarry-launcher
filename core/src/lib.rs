@@ -20,11 +20,13 @@ pub mod loader;
 pub mod logmask;
 pub mod metadata;
 pub mod mods;
+pub mod nbt;
 pub mod net;
 pub mod paths;
 pub mod settings;
 pub mod skin;
 pub mod snapshot;
+pub mod worlds;
 
 pub use error::{Error, Result};
 pub use net::USER_AGENT;

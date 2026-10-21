@@ -730,20 +730,17 @@ fn snapshot_pin(
 }
 
 #[tauri::command]
-fn worlds_list(state: State<AppState>, id: String) -> CmdResult<Vec<String>> {
+fn worlds_list(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::worlds::WorldInfo>> {
     let game = InstanceStore::new(state.data.clone())
         .game_dir(&id)
         .map_err(err)?;
-    let mut out: Vec<String> = std::fs::read_dir(game.join("saves"))
-        .map(|rd| {
-            rd.flatten()
-                .filter(|e| e.path().join("level.dat").is_file())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
-    out.sort();
-    Ok(out)
+    Ok(quarry_core::worlds::list(
+        &game,
+        &quarry_core::worlds::backups_dir(&state.data, &id),
+    ))
 }
 
 #[tauri::command]
@@ -754,7 +751,28 @@ fn world_backup(
 ) -> CmdResult<quarry_core::snapshot::WorldBackup> {
     let store = InstanceStore::new(state.data.clone());
     let game = store.game_dir(&id).map_err(err)?;
-    quarry_core::snapshot::backup_world(&game, &state.data.backups().join(&id), &world).map_err(err)
+    quarry_core::snapshot::backup_world(
+        &game,
+        &quarry_core::worlds::backups_dir(&state.data, &id),
+        &world,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn world_restore(state: State<AppState>, id: String, file: String) -> CmdResult<String> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    quarry_core::worlds::restore(
+        &game,
+        &quarry_core::worlds::backups_dir(&state.data, &id),
+        std::path::Path::new(&file),
+    )
+    .map_err(err)
 }
 
 #[derive(Serialize)]
@@ -882,6 +900,7 @@ pub fn run() {
             snapshot_pin,
             worlds_list,
             world_backup,
+            world_restore,
             import_sources,
             import_path,
             link_minecraft,

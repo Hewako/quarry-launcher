@@ -112,6 +112,26 @@ pub fn read_jar(path: &Path) -> Result<Vec<ModMeta>> {
     Ok(out)
 }
 
+/// Добавляет ли мод что-то в сам мир: генерацию, измерения или новые блоки.
+/// Удаление такого мода может испортить сохранённые чанки — перед этим нужен бэкап.
+pub fn adds_world_content(path: &Path) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let Ok(zip) = zip::ZipArchive::new(file) else {
+        return false;
+    };
+    zip.file_names().flatten().any(|n| {
+        let parts: Vec<&str> = n.split('/').collect();
+        parts.len() >= 4
+            && parts[1] != "minecraft"
+            && matches!(
+                (parts[0], parts[2]),
+                ("data", "worldgen" | "dimension" | "dimension_type") | ("assets", "blockstates")
+            )
+    })
+}
+
 /// Вложенные моды Fabric (`jars: [{file: "META-INF/jars/x.jar"}]`).
 fn nested_fabric(zip: &mut zip::ZipArchive<std::fs::File>, text: &str) -> Vec<ModMeta> {
     #[derive(Deserialize)]
@@ -530,6 +550,29 @@ side="CLIENT"
         let broken = d.join("broken.jar");
         std::fs::write(&broken, b"not a zip").unwrap();
         assert!(read_jar(&broken).is_err());
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn world_content_detection() {
+        let d = std::env::temp_dir().join(format!("quarry-worldmod-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let biomes = d.join("biomes.jar");
+        make_jar(&biomes, &[("data/terralith/worldgen/biome/x.json", b"{}")]);
+        let blocks = d.join("blocks.jar");
+        make_jar(&blocks, &[("assets/create/blockstates/cog.json", b"{}")]);
+        let ui = d.join("ui.jar");
+        make_jar(
+            &ui,
+            &[
+                ("assets/minecraft/blockstates/stone.json", b"{}"),
+                ("assets/sodium/lang/en_us.json", b"{}"),
+            ],
+        );
+        assert!(adds_world_content(&biomes));
+        assert!(adds_world_content(&blocks));
+        // Ресурсы, переопределяющие ванильные блоки, — не новый контент.
+        assert!(!adds_world_content(&ui));
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

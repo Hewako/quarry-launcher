@@ -1,6 +1,6 @@
 // Вкладка «Снимки»: история изменений профиля, сравнение с текущим и откат; бэкапы миров.
-import { useCallback, useEffect, useState } from "react";
-import { errText, relTime, sizeText, snapshots, type Instance, type SnapshotDiff, type SnapshotInfo } from "../api";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { errText, relTime, sizeText, snapshots, type Instance, type SnapshotDiff, type SnapshotInfo, type WorldBackup, type WorldInfo } from "../api";
 import { useDialog } from "../ui/Dialog";
 
 function DiffView({ d }: { d: SnapshotDiff }) {
@@ -20,7 +20,8 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
   const dialog = useDialog();
   const [list, setList] = useState<SnapshotInfo[] | null>(null);
   const [diffs, setDiffs] = useState<Record<string, SnapshotDiff>>({});
-  const [worlds, setWorlds] = useState<string[]>([]);
+  const [worlds, setWorlds] = useState<WorldInfo[]>([]);
+  const [open, setOpen] = useState("");
   const [busy, setBusy] = useState("");
 
   const load = useCallback(() => {
@@ -40,6 +41,17 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
       confirm: "Откатить",
     });
     if (ok) await act(s.id, async () => { await snapshots.restore(inst.id, s.id); setDiffs({}); onRestored(); }, "Откат не удался");
+  };
+  const restoreWorld = async (w: WorldInfo, b: WorldBackup) => {
+    const ok = await dialog.confirm({
+      title: `Вернуть «${w.name}» к бэкапу?`,
+      body: `Мир вернётся к состоянию на ${new Date(b.created_at * 1000).toLocaleString()}. Текущий мир не удаляется: сначала он сам сохранится в бэкап и отложится в папку backups/…/replaced.`,
+      confirm: "Восстановить",
+    });
+    if (ok) await act(`r${b.file}`, async () => {
+      await snapshots.restoreWorld(inst.id, b.file);
+      await dialog.alert("Мир восстановлен", `«${w.name}» снова в состоянии бэкапа.`);
+    }, "Мир не восстановлен");
   };
 
   return (
@@ -71,21 +83,45 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
           </div>
         )}
       </div>
-      <h4 style={{ margin: "22px 0 10px" }}>Бэкапы миров</h4>
+      <h4 style={{ margin: "22px 0 10px" }}>Миры и их бэкапы</h4>
+      <p className="muted small" style={{ margin: "0 0 10px", maxWidth: 680 }}>
+        Quarry сам делает бэкап последнего мира, если моды менялись после прошлой игры, и перед удалением мода, который добавляет блоки или измерения. Хранятся 5 последних бэкапов каждого мира.
+      </p>
       <div className="card">
         {worlds.length === 0 ? <p className="muted" style={{ margin: 0 }}>Миров в профиле пока нет.</p> : (
           <table>
             <tbody>
               {worlds.map((w) => (
-                <tr key={w}>
-                  <td>{w}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <button className="btn" disabled={busy !== ""} onClick={() => act(`w${w}`, async () => {
-                      const b = await snapshots.backupWorld(inst.id, w);
-                      await dialog.alert("Бэкап готов", `${b.world}: ${sizeText(b.size)}. Хранятся 5 последних бэкапов каждого мира (папка backups в данных Quarry).`);
-                    }, "Бэкап не создан")}>{busy === `w${w}` ? "Сохраняем…" : "Сделать бэкап"}</button>
-                  </td>
-                </tr>
+                <Fragment key={w.folder}>
+                  <tr>
+                    <td>
+                      <b>{w.name}</b>{w.hardcore && <span className="badge crashed" style={{ marginLeft: 6 }}>хардкор</span>}
+                      <div className="muted small">
+                        {w.version_name ?? "версия неизвестна"} · {w.game_mode} · {sizeText(w.size)}{w.last_played ? ` · играли ${relTime(w.last_played)}` : ""}
+                        {w.folder !== w.name && <> · папка <span className="mono">{w.folder}</span></>}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      {w.backups.length > 0 && (
+                        <button className="btn link small" aria-expanded={open === w.folder} onClick={() => setOpen(open === w.folder ? "" : w.folder)}>
+                          Бэкапы ({w.backups.length})
+                        </button>
+                      )}
+                      <button className="btn" disabled={running || busy !== ""} onClick={() => act(`w${w.folder}`, async () => {
+                        const b = await snapshots.backupWorld(inst.id, w.folder);
+                        await dialog.alert("Бэкап готов", `${w.name}: ${sizeText(b.size)}.`);
+                      }, "Бэкап не создан")}>{busy === `w${w.folder}` ? "Сохраняем…" : "Сделать бэкап"}</button>
+                    </td>
+                  </tr>
+                  {open === w.folder && w.backups.map((b) => (
+                    <tr key={b.file} className="sub">
+                      <td className="small" style={{ paddingLeft: 22 }}>{new Date(b.created_at * 1000).toLocaleString()} · {sizeText(b.size)} <span className="muted">({relTime(b.created_at)})</span></td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn" disabled={running || busy !== ""} onClick={() => restoreWorld(w, b)}>{busy === `r${b.file}` ? "Восстанавливаем…" : "Восстановить"}</button>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

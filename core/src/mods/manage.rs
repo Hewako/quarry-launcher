@@ -523,6 +523,26 @@ pub async fn apply(
     Ok(snap)
 }
 
+/// Мод меняет мир — перед удалением или выключением бэкап последнего мира.
+/// Возвращает причину для журнала с пометкой о бэкапе.
+fn with_world_backup(
+    store: &InstanceStore,
+    id: &str,
+    game_dir: &Path,
+    file_name: &str,
+    reason: &str,
+) -> String {
+    let path = game_dir.join("mods").join(file_name);
+    if !path.is_file() || !super::meta::adds_world_content(&path) {
+        return reason.to_string();
+    }
+    let backups = crate::worlds::backups_dir(store.data(), id);
+    match crate::worlds::backup_latest(game_dir, &backups) {
+        Some(b) => format!("{reason}; мод меняет мир — сделан бэкап «{}»", b.world),
+        None => reason.to_string(),
+    }
+}
+
 /// Удалить мод из профиля (после снимка — вернуть можно откатом).
 pub fn remove(
     store: &InstanceStore,
@@ -539,6 +559,7 @@ pub fn remove(
         &format!("Перед удалением {base}"),
         true,
     )?;
+    let reason = &with_world_backup(store, id, &game_dir, base, reason);
     let mut removed = false;
     for p in [
         game_dir.join("mods").join(base),
@@ -577,6 +598,11 @@ pub fn toggle(
     reason: &str,
 ) -> Result<()> {
     let game_dir = store.game_dir(id)?;
+    let reason = &if enabled {
+        reason.to_string()
+    } else {
+        with_world_backup(store, id, &game_dir, file_name, reason)
+    };
     super::set_enabled(&game_dir, file_name, enabled)?;
     journal_append(
         &store.dir(id)?,

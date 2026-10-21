@@ -196,7 +196,10 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
     try { await mods.toggle(inst.id, file, enabled); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
   };
   const remove = async (f: ModFile) => {
-    const ok = await dialog.confirm({ title: `Удалить ${f.mods[0]?.name ?? f.file_name}?`, body: "Перед удалением будет создан снимок — вернуть мод можно на вкладке «Снимки». Если сомневаетесь, лучше выключите мод.", confirm: "Удалить", danger: true });
+    const world = f.world_content
+      ? " Этот мод добавляет в мир блоки, измерения или генерацию: без него часть построек и чанков может пропасть. Quarry сначала сделает бэкап последнего мира."
+      : "";
+    const ok = await dialog.confirm({ title: `Удалить ${f.mods[0]?.name ?? f.file_name}?`, body: "Перед удалением будет создан снимок — вернуть мод можно на вкладке «Снимки». Если сомневаетесь, лучше выключите мод." + world, confirm: "Удалить", danger: true });
     if (!ok) return;
     try { await mods.remove(inst.id, f.file_name); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
   };

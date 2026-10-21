@@ -76,6 +76,8 @@ enum Command {
         #[command(subcommand)]
         action: Option<ModsAction>,
     },
+    /// Миры профиля и их бэкапы
+    Worlds { id: String },
     /// Снимки профиля
     Snapshots {
         id: String,
@@ -459,6 +461,22 @@ async fn main() -> Result<()> {
                         snap.id
                     );
                 }
+            }
+        }
+        Command::Worlds { id } => {
+            let store = InstanceStore::new(data.clone());
+            let game = store.game_dir(&id)?;
+            let backups = quarry_core::worlds::backups_dir(&data, &id);
+            for w in quarry_core::worlds::list(&game, &backups) {
+                println!(
+                    "{:<24} {:<10} {:<12} DataVersion {:<6} {:.1} МБ, бэкапов {}",
+                    w.name,
+                    w.version_name.unwrap_or_default(),
+                    w.game_mode,
+                    w.data_version.map(|v| v.to_string()).unwrap_or_default(),
+                    w.size as f64 / 1_048_576.0,
+                    w.backups.len()
+                );
             }
         }
         Command::Snapshots { id, restore } => {

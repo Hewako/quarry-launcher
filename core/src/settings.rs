@@ -171,10 +171,39 @@ pub struct GlobalSettings {
     /// Аккаунт по умолчанию: `провайдер:uuid`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_account: Option<String>,
+    /// Язык интерфейса: `ru` или `en`.
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// Акцентный цвет интерфейса (CSS-цвет) и масштаб (проценты).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    #[serde(default = "default_scale")]
+    pub ui_scale: u32,
+    /// Мастер первого запуска пройден.
+    #[serde(default)]
+    pub first_run_done: bool,
+    /// Бэкап последнего мира перед «рискованным» запуском (моды менялись после прошлой игры).
+    #[serde(default = "yes")]
+    pub backup_before_risky_launch: bool,
+    /// Бэкап последнего мира после выхода из игры.
+    #[serde(default)]
+    pub backup_after_exit: bool,
+    /// Проверять, вышла ли новая версия Quarry (страница релизов GitHub).
+    #[serde(default = "yes")]
+    pub check_launcher_updates: bool,
 }
 
 fn default_theme() -> String {
     "dark".into()
+}
+fn default_language() -> String {
+    "ru".into()
+}
+fn default_scale() -> u32 {
+    100
+}
+fn yes() -> bool {
+    true
 }
 
 impl Default for GlobalSettings {
@@ -184,6 +213,13 @@ impl Default for GlobalSettings {
             theme: default_theme(),
             streamer_mode: false,
             default_account: None,
+            language: default_language(),
+            accent: None,
+            ui_scale: default_scale(),
+            first_run_done: false,
+            backup_before_risky_launch: true,
+            backup_after_exit: false,
+            check_launcher_updates: true,
         }
     }
 }

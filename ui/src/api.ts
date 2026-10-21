@@ -59,7 +59,16 @@ export interface AppInfo {
 export interface VersionEntry { id: string; type: string; releaseTime: string }
 export interface LoaderVersion { version: string; stable: boolean }
 export interface AccountRef { provider: Provider; uuid: string; name: string; owns_java_edition: boolean; checked_at: number; skin_url?: string; skin_variant?: string }
-export interface GlobalSettings { launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string }
+export interface GlobalSettings {
+  launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string;
+  language: string; accent?: string; ui_scale: number; first_run_done: boolean;
+  backup_before_risky_launch: boolean; backup_after_exit: boolean; check_launcher_updates: boolean;
+}
+export interface WorldBackup { world: string; file: string; size: number; created_at: number }
+export interface WorldInfo {
+  folder: string; name: string; version_name?: string; data_version?: number; game_mode: string; hardcore: boolean;
+  last_played: number; size: number; backups: WorldBackup[];
+}
 export interface DeviceCode { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number; message: string }
 
 export type QuickPlay = { kind: "singleplayer" | "multiplayer" | "realms"; target: string };
@@ -176,7 +185,7 @@ export function statusOf(i: Instance, phase?: "preparing" | "running" | "done" |
 export type Side = "client" | "server" | "both" | "unknown";
 export interface ModMeta { loader: string; id: string; name: string; version: string; side: Side; dependencies: { id: string; range: string; kind: string }[]; mixins: string[] }
 export interface LockEntry { path: string; sha1: string; source: "modrinth" | "curseforge" | "import" | "manual"; project_id?: string; version_number?: string; title?: string; layer: "base" | "user"; pinned?: boolean }
-export interface ModFile { file_name: string; rel_path: string; enabled: boolean; size: number; sha1: string; mods: ModMeta[]; read_error?: string; source?: LockEntry }
+export interface ModFile { file_name: string; rel_path: string; enabled: boolean; size: number; sha1: string; mods: ModMeta[]; read_error?: string; source?: LockEntry; world_content: boolean }
 export type ModState = "ok" | "warning" | "blocked" | "disabled" | "unknown";
 export type Fix = { kind: "install"; mod_id: string } | { kind: "disable"; file_name: string } | { kind: "keep_one"; file_names: string[] };
 export interface Finding { severity: "blocking" | "warning"; title: string; detail: string; evidence: string; files: string[]; fixes: Fix[] }
@@ -210,8 +219,9 @@ export const snapshots = {
   diff: (id: string, snapshot: string) => invoke<SnapshotDiff>("snapshot_diff", { id, snapshot }),
   restore: (id: string, snapshot: string) => invoke<SnapshotInfo>("snapshot_restore", { id, snapshot }),
   pin: (id: string, snapshot: string, pinned: boolean) => invoke<void>("snapshot_pin", { id, snapshot, pinned }),
-  worlds: (id: string) => invoke<string[]>("worlds_list", { id }),
-  backupWorld: (id: string, world: string) => invoke<{ world: string; file: string; size: number }>("world_backup", { id, world }),
+  worlds: (id: string) => invoke<WorldInfo[]>("worlds_list", { id }),
+  backupWorld: (id: string, world: string) => invoke<WorldBackup>("world_backup", { id, world }),
+  restoreWorld: (id: string, file: string) => invoke<string>("world_restore", { id, file }),
 };
 
 export const importer = {

@@ -31,6 +31,8 @@ pub struct ModFile {
     pub read_error: Option<String>,
     /// Откуда файл (из pack.lock); `None` — положен вручную и не записан.
     pub source: Option<LockEntry>,
+    /// Мод добавляет блоки, измерения или генерацию мира.
+    pub world_content: bool,
 }
 
 impl ModFile {
@@ -77,6 +79,7 @@ pub fn inventory(game_dir: &Path, instance_dir: &Path) -> Result<Vec<ModFile>> {
         };
         out.push(ModFile {
             source: lock.find(&rel_path, &sha1).cloned(),
+            world_content: meta::adds_world_content(&path),
             file_name,
             rel_path,
             enabled,

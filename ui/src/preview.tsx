@@ -26,7 +26,7 @@ mockIPC((cmd, args) => {
     case "app_info": return { version: "0.1.0", dev_launch: params.has("dev"), data_dir: "/Users/player/.quarry", microsoft_configured: params.has("ms"), os: "macos" };
     case "list_instances": return { instances, broken: [], running: [] };
     case "list_accounts": return withAccount ? [{ provider: "microsoft", uuid: "0123", name: "Steve_Builder", owns_java_edition: true, checked_at: now }] : [];
-    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false };
+    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: "ru", ui_scale: 100, first_run_done: true, backup_before_risky_launch: true, backup_after_exit: false, check_launcher_updates: true };
     case "save_global_settings": return null;
     case "launch_settings": {
       const i = instances.find((x) => x.id === a.id)!;
@@ -80,7 +80,12 @@ mockIPC((cmd, args) => {
       { id: "s1", reason: "Чистая сборка 1.8", created_at: now - 9 * 86400, pinned: true, auto: false, mods: 42, configs: 118 },
     ];
     case "snapshot_diff": return { added: ["mods/DistantHorizons-2.3.4.jar"], removed: [], changed: [], options: [["renderDistance", "12", "16"]] };
-    case "worlds_list": return ["База у реки", "Творческий"];
+    case "worlds_list": return [
+      { folder: "New World", name: "База у реки", version_name: "26.3", data_version: 5023, game_mode: "выживание", hardcore: false, last_played: now - 3600, size: 21_000_000,
+        backups: [{ world: "New World", file: "/b/New World-1.zip", size: 18_000_000, created_at: now - 7200 }, { world: "New World", file: "/b/New World-2.zip", size: 17_500_000, created_at: now - 86400 * 2 }] },
+      { folder: "Creative", name: "Творческий", version_name: "26.4-snapshot-2", data_version: 5101, game_mode: "творчество", hardcore: true, last_played: now - 86400 * 9, size: 4_200_000, backups: [] },
+    ];
+    case "world_restore": return "New World";
     case "import_sources": return { prism: [["/Users/player/Library/Application Support/PrismLauncher/instances/Tech", "Технология+ (1.21.11 · Fabric)"]], official: "/Users/player/Library/Application Support/minecraft" };
     case "mods_check_updates": return { changes: [{ kind: "update", title: "Sodium", old_version: "0.8.12", new_version: "0.8.14", reason: "новая версия", size: 1914874 }], notes: ["Моды, которых нет на Modrinth, проверить на обновления нельзя"] };
     case "catalog_search": return { hits: [{ project_id: "AANobbMI", slug: "sodium", title: "Sodium", description: "Современный движок отрисовки, заметно поднимает FPS", downloads: 250585660, author: "jellysquid3", client_side: "required", categories: [] }], total_hits: 1 };
