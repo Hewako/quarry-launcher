@@ -8,6 +8,7 @@ pub mod lock;
 pub mod manage;
 pub mod meta;
 pub mod range;
+pub mod rules;
 
 use crate::download::hash_file;
 use crate::error::{Error, IoContext, Result};

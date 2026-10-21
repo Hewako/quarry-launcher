@@ -1547,6 +1547,12 @@ pub fn run() {
             if let Ok(g) = GlobalSettings::load(&data) {
                 quarry_core::download::throttle().set_limit_kbps(g.download_limit_kbps.into());
             }
+            // Правила Mod Doctor: сначала кеш, свежие — в фоне (не чаще раза в сутки).
+            quarry_core::mods::rules::load_cached(&data);
+            let d = data.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = quarry_core::mods::rules::refresh(&d).await;
+            });
             app.manage(AppState {
                 data,
                 registry: LaunchRegistry::default(),

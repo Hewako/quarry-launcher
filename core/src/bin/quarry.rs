@@ -146,7 +146,9 @@ fn data_dir(root: Option<PathBuf>) -> Result<DataDir> {
     let root = root
         .or_else(DataDir::default_root)
         .context("Не удалось определить домашнюю папку")?;
-    Ok(DataDir::open(root)?)
+    let data = DataDir::open(root)?;
+    quarry_core::mods::rules::load_cached(&data);
+    Ok(data)
 }
 
 fn mb(bytes: u64) -> f64 {

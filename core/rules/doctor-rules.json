@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "updated": "2026-10-22",
+  "conflicts": [
+    { "a": "optifine", "b": "sodium", "why": "OptiFine и Sodium заменяют один и тот же движок отрисовки" },
+    { "a": "optifine", "b": "embeddium", "why": "OptiFine и Embeddium заменяют один и тот же движок отрисовки" },
+    { "a": "optifabric", "b": "sodium", "why": "OptiFabric (OptiFine для Fabric) и Sodium заменяют один и тот же движок отрисовки" },
+    { "a": "iris", "b": "oculus", "why": "Iris и Oculus — две системы шейдеров, нужна одна" }
+  ]
+}

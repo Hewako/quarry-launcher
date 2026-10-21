@@ -84,32 +84,6 @@ pub struct Report {
     pub can_launch: bool,
 }
 
-/// Правила «вместе не работают», которых нет в метаданных модов. Хранятся как данные.
-/// Основание каждой пары — документация/описание самих модов (графические движки заменяют
-/// один и тот же рендер).
-const GRAPHICS_CONFLICTS: &[(&str, &str, &str)] = &[
-    (
-        "optifine",
-        "sodium",
-        "OptiFine и Sodium заменяют один и тот же движок отрисовки",
-    ),
-    (
-        "optifine",
-        "embeddium",
-        "OptiFine и Embeddium заменяют один и тот же движок отрисовки",
-    ),
-    (
-        "optifabric",
-        "sodium",
-        "OptiFabric (OptiFine для Fabric) и Sodium заменяют один и тот же движок отрисовки",
-    ),
-    (
-        "iris",
-        "oculus",
-        "Iris и Oculus — две системы шейдеров, нужна одна",
-    ),
-];
-
 fn builtin_ids(loader: LoaderKind) -> &'static [&'static str] {
     match loader {
         LoaderKind::Fabric => &[
@@ -385,8 +359,10 @@ pub fn check(
     }
 
     // Правила-данные (графические движки).
-    for (a, b, why) in GRAPHICS_CONFLICTS {
-        if let (Some((_, fa)), Some((_, fb))) = (present.get(*a), present.get(*b)) {
+    // Пары «вместе не работают» — данные (mods::rules), обновляются без релиза.
+    let rules = super::rules::current();
+    for super::rules::Conflict { a, b, why } in &rules.conflicts {
+        if let (Some((_, fa)), Some((_, fb))) = (present.get(a.as_str()), present.get(b.as_str())) {
             if fa == fb {
                 continue;
             }
@@ -394,7 +370,7 @@ pub fn check(
                 severity: Severity::Blocking,
                 title: format!("«{a}» и «{b}» не работают вместе"),
                 detail: format!("{why}. Оставьте один."),
-                evidence: "правило базы Quarry (несовместимые графические движки)".into(),
+                evidence: format!("правило базы Quarry (версия от {})", rules.updated),
                 files: vec![fa.clone(), fb.clone()],
                 fixes: vec![
                     Fix::Disable {
