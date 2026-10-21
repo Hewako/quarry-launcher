@@ -292,3 +292,31 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .steps li.done { color: var(--text); }
 .privacy li { margin-bottom: 6px; }
 .skinfig { width: 144px; height: 128px; image-rendering: pixelated; display: block; }
+
+/* Выбор починки краша */
+.fixopts { display: grid; gap: 8px; margin: 8px 0; }
+.fixopt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+.fixopt.on { border-color: var(--accent); }
+.fixopt small { display: block; color: var(--muted); margin-top: 2px; }
+.fixopt input { margin-top: 3px; }
+
+/* Граф зависимостей */
+.graph { position: relative; padding: 0; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 22px 22px; }
+.graph svg { width: 100%; height: auto; display: block; }
+.edge { stroke: var(--muted); stroke-width: 1.4; }
+.edge.opt { stroke-dasharray: 2 4; }
+.edge.bad { stroke: var(--err); stroke-dasharray: 7 5; stroke-width: 2; }
+.edge-label { fill: var(--err); font-size: 13px; }
+.node { cursor: pointer; }
+.node circle { fill: var(--panel2); stroke: var(--text); stroke-width: 1.6; }
+.node.lib circle { stroke: var(--muted); }
+.node.bad circle { stroke: var(--err); }
+.node.on circle { stroke: var(--blue); stroke-width: 3; }
+.node text { fill: var(--text); font-size: 14px; }
+.node.lib text { fill: var(--muted); }
+.node:focus-visible circle { stroke: var(--blue); stroke-width: 3; }
+.graph-info { position: absolute; top: 12px; right: 12px; width: min(340px, 45%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 6px; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.lg { display: inline-block; width: 26px; border-top: 2px solid var(--muted); vertical-align: middle; }
+.lg.opt { border-top-style: dotted; }
+.lg.bad { border-top: 2px dashed var(--err); }

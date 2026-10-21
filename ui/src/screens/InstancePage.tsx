@@ -12,12 +12,13 @@ import { ServersTab } from "./ServersTab";
 import { ResourcesTab } from "./ResourcesTab";
 import { ConfigsTab } from "./ConfigsTab";
 import { OptionsTab } from "./OptionsTab";
+import { DepsTab } from "./DepsTab";
 import { nick, useStreamer } from "../streamer";
 import { t } from "../i18n";
 
-export type Tab = "mods" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
+export type Tab = "mods" | "deps" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
 
-const TABS: [Tab, string][] = [["mods", t("Моды · Mod Doctor")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
+const TABS: [Tab, string][] = [["mods", t("Моды · Mod Doctor")], ["deps", t("Зависимости")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
 
 function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }) {
   return (
@@ -295,6 +296,7 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
       {tab === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}
       {tab === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
       {tab === "snapshots" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
+      {tab === "deps" && <DepsTab key={inst.id} inst={inst} />}
       {tab === "options" && <OptionsTab key={inst.id} inst={inst} running={isActive(state)} />}
       {tab === "configs" && <ConfigsTab key={inst.id} inst={inst} running={isActive(state)} />}
       {tab === "resources" && <ResourcesTab key={inst.id} inst={inst} running={isActive(state)} />}

@@ -87,15 +87,23 @@ mockIPC((cmd, args) => {
         await emit("launch-event", { id, event: { type: "stage", stage: "assets", label: "Ресурсы игры" } });
         await emit("launch-event", { id, event: { type: "progress", stage: "assets", progress: { files_total: 4231, files_done: 1730, bytes_total: 680_000_000, bytes_done: 270_000_000, retries: 0 } } });
         await emit("launch-event", { id, event: { type: "java", label: "Eclipse Adoptium 25.0.4.1 (aarch64)", reason: "нужна Java 25 (javaVersion.majorVersion = 25 в JSON версии) — найдена Eclipse Adoptium 25.0.4.1 (aarch64)" } });
+        if (params.has("crash")) {
+          const analysis = { title: "Indium несовместим с новой версией Sodium", explanation: "Indium добавлял Fabric Rendering API для Sodium до 0.6; в Sodium 0.8 этих классов больше нет.", confidence: "high", confidence_label: "высокая", evidence: ["Mixin apply for mod indium failed indium.mixins.json"], suspects: ["indium.jar"], actions: [{ kind: "disable_mod", file_name: "indium.jar" }, { kind: "safe_launch" }] };
+          await emit("launch-event", { id, event: { type: "exited", info: { code: -1, duration_secs: 31, killed: false, crashed: true, log_file: "", tail: [], analysis } } });
+          await emit("launch-finished", { id });
+        }
       }, 50);
       return null;
     }
     case "mods_view": {
-      const fm = (id: string, name: string, version: string, side: string) => [{ loader: "fabric", id, name, version, side, dependencies: [], mixins: [] }];
+      const dep = (id: string, kind = "required", range = "*") => ({ id, range, kind });
+      const fm = (id: string, name: string, version: string, side: string, dependencies: { id: string; range: string; kind: string }[] = []) => [{ loader: "fabric", id, name, version, side, dependencies, mixins: [] }];
       const files = [
         { file_name: "sodium.jar", rel_path: "mods/sodium.jar", enabled: true, size: 1, sha1: "a", mods: fm("sodium", "Sodium", "0.8.14", "client"), source: { path: "mods/sodium.jar", sha1: "a", source: "modrinth", layer: "base" } },
-        { file_name: "indium.jar", rel_path: "mods/indium.jar", enabled: true, size: 1, sha1: "b", mods: fm("indium", "Indium", "1.0.30", "client"), source: { path: "mods/indium.jar", sha1: "b", source: "modrinth", layer: "user" } },
-        { file_name: "iris.jar", rel_path: "mods/iris.jar", enabled: true, size: 1, sha1: "c", mods: fm("iris", "Iris Shaders", "1.10.8", "client"), source: { path: "mods/iris.jar", sha1: "c", source: "modrinth", layer: "base" } },
+        { file_name: "indium.jar", rel_path: "mods/indium.jar", enabled: true, size: 1, sha1: "b", mods: fm("indium", "Indium", "1.0.30", "client", [dep("sodium", "required", "<0.6"), dep("fabric-api")]), source: { path: "mods/indium.jar", sha1: "b", source: "modrinth", layer: "user" } },
+        { file_name: "iris.jar", rel_path: "mods/iris.jar", enabled: true, size: 1, sha1: "c", mods: fm("iris", "Iris Shaders", "1.10.8", "client", [dep("sodium"), dep("fabric-api")]), source: { path: "mods/iris.jar", sha1: "c", source: "modrinth", layer: "base" } },
+        { file_name: "fabric-api.jar", rel_path: "mods/fabric-api.jar", enabled: true, size: 1, sha1: "e", mods: fm("fabric-api", "Fabric API", "0.120.0", "both"), source: { path: "mods/fabric-api.jar", sha1: "e", source: "modrinth", layer: "base" } },
+        { file_name: "dh.jar", rel_path: "mods/dh.jar", enabled: true, size: 1, sha1: "f", mods: fm("distanthorizons", "Distant Horizons", "2.3.4", "client", [dep("sodium", "optional"), dep("fabric-api")]), source: { path: "mods/dh.jar", sha1: "f", source: "modrinth", layer: "user" } },
         { file_name: "old.jar.disabled", rel_path: "mods/old.jar.disabled", enabled: false, size: 1, sha1: "d", mods: [], read_error: "в файле нет метаданных мода" },
       ];
       return {

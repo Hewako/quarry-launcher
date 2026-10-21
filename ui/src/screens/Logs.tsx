@@ -28,6 +28,7 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
     api.readLog(inst.id).then(setFile).catch((e) => setErr(errText(e)));
   }, [inst?.id, live]);
 
+  const openReport = () => { if (inst) diagnostics.reportPreview(inst.id).then((r) => { setReport(r); setPart(0); }).catch((e) => dialog.alert(t("Отчёт не собран"), errText(e))); };
   if (!inst) return <p className="muted">{t("Профилей нет — логов тоже.")}</p>;
   const last = inst.last_launch;
   const exit = state?.exit;
@@ -42,12 +43,12 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
               {last.prepare_secs !== undefined ? t(" · подготовка {0}", duration(last.prepare_secs)) : ""}{last.peak_ram_mb ? t(" · память до {0} ГБ", (last.peak_ram_mb / 1024).toFixed(1)) : ""}</> : <>{t("Профиль «")}{inst.name}{t("» ещё не запускался")}</>}
           </p>
         </div>
-        <button className="btn" onClick={() => diagnostics.reportPreview(inst.id).then((r) => { setReport(r); setPart(0); }).catch((e) => dialog.alert(t("Отчёт не собран"), errText(e)))}>{t("Отчёт для поддержки…")}</button>
+        <button className="btn" onClick={openReport}>{t("Отчёт для поддержки…")}</button>
         <select className="field" style={{ maxWidth: 260 }} value={inst.id} onChange={(e) => onPick(e.target.value)} aria-label={t("Профиль")}>
           {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
       </div>
-      {exit?.analysis && <CrashCard inst={inst} a={exit.analysis} code={exit.code} />}
+      {exit?.analysis && <CrashCard inst={inst} a={exit.analysis} code={exit.code} onReport={openReport} />}
       {crashed && !exit?.analysis && (
         <div className="alert err">
           <div className="h">{t("Игра упала")}{exit?.code != null ? t(" с кодом {0}", exit.code) : last?.exit_code != null ? t(" с кодом {0}", last.exit_code) : ""}</div>

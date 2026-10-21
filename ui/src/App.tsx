@@ -55,7 +55,7 @@ export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | 
   root.dataset.density = g.compact ? "compact" : "normal";
 }
 
-const TAB_LABELS: [Tab, string][] = [["mods", t("Моды")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
+const TAB_LABELS: [Tab, string][] = [["mods", t("Моды")], ["deps", t("Зависимости")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
 
 /** Подпись строки настроек (div.lbl) называет поле этой строки для экранных читалок. */
 function useSettingLabels() {
