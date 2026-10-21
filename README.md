@@ -3,7 +3,9 @@
 Открытый лаунчер Minecraft: Java Edition для игроков с несколькими профилями и модпаками.
 Рабочее название. Не связан с Mojang и Microsoft.
 
-**Состояние:** ранняя разработка (0.1). Подробно — [docs/PROGRESS.md](docs/PROGRESS.md).
+**Состояние:** ранняя разработка (0.1). Что нового — [CHANGELOG.md](CHANGELOG.md),
+подробный журнал работы — [docs/PROGRESS.md](docs/PROGRESS.md).
+Как описывать изменения — [docs/COMMITS.md](docs/COMMITS.md).
 
 ## Что уже работает
 
