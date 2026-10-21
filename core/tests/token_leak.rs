@@ -72,6 +72,8 @@ async fn token_never_reaches_logs_events_or_preview() {
         max_memory_mb: 1024,
         extra_jvm_args: vec![],
         resolution: None,
+        extra_game_args: vec![],
+        extra_env: vec![],
         quick_play: None,
         authlib_injector: None,
         launcher_name: "Quarry",

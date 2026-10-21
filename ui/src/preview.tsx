@@ -43,6 +43,7 @@ mockIPC((cmd, args) => {
     case "config_read": return "{\n  \"quality\": {\n    \"weather_quality\": \"FAST\"\n  }\n}\n";
     case "config_history": return [{ at: Date.now() - 3600_000, size: 830 }];
     case "config_preview": return { diff: [{ kind: "=", text: "{" }, { kind: "-", text: "  \"fps\": 60" }, { kind: "+", text: "  \"fps\": 144" }, { kind: "=", text: "}" }] };
+    case "memory_advice": return Number(a.maxMb) > 12_000 ? ["Отдано 14 из 16 ГБ памяти компьютера — системе и браузеру может не хватить, игра начнёт тормозить"] : [];
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

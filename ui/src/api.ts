@@ -13,6 +13,8 @@ export interface LaunchOverrides {
   java_path?: string;
   jvm_args?: string[];
   resolution?: [number, number];
+  game_args?: string[];
+  env?: Record<string, string>;
 }
 
 export interface LastLaunch {
@@ -155,6 +157,7 @@ export const api = {
   servers: (id: string) => invoke<Server[]>("servers_list", { id }),
   saveServers: (id: string, servers: Server[]) => invoke<void>("servers_save", { id, servers }),
   pingServer: (address: string) => invoke<ServerStatus>("server_ping", { address }),
+  memoryAdvice: (maxMb: number, packMb?: number) => invoke<string[]>("memory_advice", { maxMb, packMb: packMb ?? null }),
   launchSettings: (id: string) =>
     invoke<{ resolved: ResolvedLaunch; profile: LaunchOverrides; global: LaunchOverrides; total_memory_mb?: number }>("launch_settings", { id }),
   globalSettings: () => invoke<GlobalSettings>("global_settings"),

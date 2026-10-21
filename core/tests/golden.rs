@@ -106,6 +106,8 @@ fn build(
         max_memory_mb: 4096,
         extra_jvm_args: vec!["-XX:+UseG1GC".into()],
         resolution: None,
+        extra_game_args: vec![],
+        extra_env: vec![],
         quick_play: quick,
         authlib_injector: None,
         launcher_name: "Quarry",

@@ -30,13 +30,25 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   const [data, setData] = useState<Awaited<ReturnType<typeof api.launchSettings>> | null>(null);
   const [draft, setDraft] = useState<LaunchOverrides>(inst.settings);
   const [args, setArgs] = useState((inst.settings.jvm_args ?? []).join(" "));
+  const [gameArgs, setGameArgs] = useState((inst.settings.game_args ?? []).join(" "));
+  const [envText, setEnvText] = useState(Object.entries(inst.settings.env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n"));
+  const [advice, setAdvice] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState("");
 
   const load = useCallback(() => {
-    api.launchSettings(inst.id).then((d) => { setData(d); setDraft(d.profile); setArgs((d.profile.jvm_args ?? []).join(" ")); }).catch(() => setData(null));
+    api.launchSettings(inst.id).then((d) => {
+      setData(d); setDraft(d.profile); setArgs((d.profile.jvm_args ?? []).join(" "));
+      setGameArgs((d.profile.game_args ?? []).join(" "));
+      setEnvText(Object.entries(d.profile.env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n"));
+    }).catch(() => setData(null));
   }, [inst.id]);
   useEffect(load, [load]);
+  const maxForAdvice = draft.max_memory_mb ?? inst.pack_settings.max_memory_mb ?? data?.global.max_memory_mb ?? 4096;
+  useEffect(() => {
+    const t = setTimeout(() => api.memoryAdvice(maxForAdvice, inst.pack_settings.max_memory_mb).then(setAdvice).catch(() => setAdvice([])), 250);
+    return () => clearTimeout(t);
+  }, [maxForAdvice, inst.pack_settings.max_memory_mb]);
 
   if (!data) return <p className="muted"><span className="spinner" /> Загружаем настройки…</p>;
 
@@ -54,7 +66,17 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
     setSaving(true);
     try {
       const parsed = args.trim() ? args.trim().split(/\s+/) : undefined;
-      const updated = await api.updateInstance(inst.id, { settings: { ...draft, jvm_args: parsed } });
+      const env: Record<string, string> = {};
+      for (const line of envText.split("\n").map((l) => l.trim()).filter(Boolean)) {
+        const i = line.indexOf("=");
+        if (i < 1) throw new Error(`Строка «${line}»: нужно ИМЯ=значение`);
+        env[line.slice(0, i).trim()] = line.slice(i + 1);
+      }
+      const updated = await api.updateInstance(inst.id, { settings: {
+        ...draft, jvm_args: parsed,
+        game_args: gameArgs.trim() ? gameArgs.trim().split(/\s+/) : undefined,
+        env: Object.keys(env).length ? env : undefined,
+      } });
       onChanged(updated);
       load();
     } catch (e) {
@@ -79,7 +101,8 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
           <div>
             <input type="range" min={1024} max={ceiling} step={512} value={Math.min(max.value, ceiling)} aria-label="Память, МБ"
               onChange={(e) => setDraft({ ...draft, max_memory_mb: Number(e.target.value), min_memory_mb: undefined })} />
-            <span className="muted small">Xms = Xmx: память не перевыделяется посреди игры. Больше 8 ГБ обычно нужно только большим сборкам.{total && max.value > total * 0.75 ? " Внимание: системе и браузеру останется мало памяти." : ""}</span>
+            <span className="muted small">Xms = Xmx: память не перевыделяется посреди игры.{inst.pack_settings.max_memory_mb ? ` Сборка рекомендует ${inst.pack_settings.max_memory_mb} МБ.` : ""}</span>
+            {advice.map((a) => <span key={a} className="small" style={{ color: "var(--warn)" }}>⚠ {a}</span>)}
           </div>
           <SourceTag source={max.source} onReset={() => setDraft({ ...draft, max_memory_mb: undefined, min_memory_mb: undefined })} />
         </div>
@@ -93,6 +116,27 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
           <div className="lbl">Аргументы JVM<span className="hint">через пробел; -Xmx и -javaagent запрещены</span></div>
           <input className="field mono" placeholder="например -XX:+UseG1GC" value={args} onChange={(e) => setArgs(e.target.value)} />
           <SourceTag source={args.trim() ? "profile" : inst.pack_settings.jvm_args ? "pack" : data.global.jvm_args ? "global" : "default"} onReset={() => setArgs("")} />
+        </div>
+        <div className="setting">
+          <div className="lbl">Размер окна игры<span className="hint">пусто — как решит игра</span></div>
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <input className="field" type="number" min={320} aria-label="Ширина окна" placeholder="ширина" value={draft.resolution?.[0] ?? ""}
+              onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [Number(e.target.value), draft.resolution?.[1] ?? 720] : undefined })} />
+            <span className="muted">×</span>
+            <input className="field" type="number" min={240} aria-label="Высота окна" placeholder="высота" value={draft.resolution?.[1] ?? ""}
+              onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [draft.resolution?.[0] ?? 1280, Number(e.target.value)] : undefined })} />
+          </div>
+          <SourceTag source={draft.resolution ? "profile" : inst.pack_settings.resolution ? "pack" : data.global.resolution ? "global" : "default"} onReset={() => setDraft({ ...draft, resolution: undefined })} />
+        </div>
+        <div className="setting">
+          <div className="lbl">Аргументы игры<span className="hint">через пробел, в конце команды; вход и папки задаёт лаунчер</span></div>
+          <input className="field mono" placeholder="например --fullscreen" value={gameArgs} onChange={(e) => setGameArgs(e.target.value)} />
+          <SourceTag source={gameArgs.trim() ? "profile" : inst.pack_settings.game_args ? "pack" : data.global.game_args ? "global" : "default"} onReset={() => setGameArgs("")} />
+        </div>
+        <div className="setting">
+          <div className="lbl">Переменные окружения<span className="hint">ИМЯ=значение, по одной в строке; LD_*, DYLD_* и JAVA_TOOL_OPTIONS запрещены</span></div>
+          <textarea className="field mono" rows={2} placeholder="MESA_GL_VERSION_OVERRIDE=4.5" value={envText} onChange={(e) => setEnvText(e.target.value)} />
+          <SourceTag source={envText.trim() ? "profile" : inst.pack_settings.env ? "pack" : data.global.env ? "global" : "default"} onReset={() => setEnvText("")} />
         </div>
         <div className="setting">
           <div className="lbl">Вход<span className="hint">Ely.by — только при Microsoft-аккаунте с купленной игрой</span></div>

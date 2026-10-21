@@ -19,6 +19,12 @@ pub struct LaunchOverrides {
     pub jvm_args: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution: Option<(u32, u32)>,
+    /// Дополнительные аргументы игры (после аргументов версии).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_args: Option<Vec<String>>,
+    /// Переменные окружения для процесса игры.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env: Option<std::collections::BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +49,8 @@ pub struct ResolvedLaunch {
     pub java_path: Resolved<Option<PathBuf>>,
     pub jvm_args: Resolved<Vec<String>>,
     pub resolution: Resolved<Option<(u32, u32)>>,
+    pub game_args: Resolved<Vec<String>>,
+    pub env: Resolved<std::collections::BTreeMap<String, String>>,
 }
 
 pub const DEFAULT_MAX_MEMORY_MB: u32 = 4096;
@@ -120,7 +128,73 @@ pub fn resolve(
             global.resolution.map(Some).as_ref(),
             None,
         ),
+        game_args: pick(
+            profile.game_args.as_ref(),
+            pack.game_args.as_ref(),
+            global.game_args.as_ref(),
+            Vec::new(),
+        ),
+        env: pick(
+            profile.env.as_ref(),
+            pack.env.as_ref(),
+            global.env.as_ref(),
+            Default::default(),
+        ),
     }
+}
+
+/// Аргументы игры, которые задаёт сам лаунчер: их подмена сломала бы вход или изоляцию.
+const MANAGED_GAME_ARGS: [&str; 9] = [
+    "--accessToken",
+    "--uuid",
+    "--username",
+    "--userType",
+    "--xuid",
+    "--clientId",
+    "--gameDir",
+    "--assetsDir",
+    "--version",
+];
+
+/// Переменные окружения, через которые в Java или процесс можно подгрузить чужой код.
+fn env_forbidden(name: &str) -> bool {
+    matches!(
+        name,
+        "JAVA_TOOL_OPTIONS" | "_JAVA_OPTIONS" | "JDK_JAVA_OPTIONS" | "CLASSPATH" | "JAVA_HOME"
+    ) || name.starts_with("LD_")
+        || name.starts_with("DYLD_")
+}
+
+/// Советы по памяти: доля от ОЗУ компьютера, рекомендация сборки, крайние значения.
+pub fn memory_advice(max_mb: u32, total_mb: Option<u64>, pack_mb: Option<u32>) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(total) = total_mb
+        && u64::from(max_mb) * 4 > total * 3
+    {
+        out.push(format!(
+            "Отдано {} из {} ГБ памяти компьютера — системе и браузеру может не хватить, игра начнёт тормозить",
+            max_mb / 1024,
+            total / 1024
+        ));
+    }
+    if let Some(p) = pack_mb
+        && max_mb < p
+    {
+        out.push(format!("Сборка рекомендует не меньше {p} МБ"));
+    }
+    if max_mb < 2048 {
+        out.push(
+            "Меньше 2 ГБ — мало для современных версий: возможны вылеты из-за нехватки памяти"
+                .into(),
+        );
+    }
+    if max_mb > 16_384 {
+        out.push(
+            "Больше 16 ГБ почти никогда не нужно: длинные паузы сборщика мусора дают подлагивания"
+                .into(),
+        );
+    }
+    out
 }
 
 /// Проверка значений, введённых пользователем.
@@ -148,6 +222,34 @@ pub fn validate(o: &LaunchOverrides) -> Result<()> {
                 return Err(Error::invalid(
                     "-javaagent в аргументах запрещён: агенты подключает только лаунчер (authlib-injector для Ely.by)",
                 ));
+            }
+        }
+    }
+    if let Some(args) = &o.game_args
+        && let Some(a) = args
+            .iter()
+            .find(|a| MANAGED_GAME_ARGS.contains(&a.as_str()))
+    {
+        return Err(Error::invalid(format!(
+            "Аргумент {a} задаёт сам лаунчер — его нельзя менять"
+        )));
+    }
+    if let Some(env) = &o.env {
+        for name in env.keys() {
+            let valid = name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !valid {
+                return Err(Error::invalid(format!(
+                    "Имя переменной {name:?}: только латинские буквы, цифры и _, не с цифры"
+                )));
+            }
+            if env_forbidden(name) {
+                return Err(Error::invalid(format!(
+                    "Переменную {name} задавать нельзя: через неё в игру можно подгрузить посторонний код"
+                )));
             }
         }
     }
@@ -361,5 +463,66 @@ mod tests {
                 .any(|e| e.file_name().to_string_lossy().contains("broken"))
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn game_args_and_env_are_checked() {
+        let ok = LaunchOverrides {
+            game_args: Some(vec!["--fullscreen".into()]),
+            env: Some([("MESA_GL_VERSION_OVERRIDE".to_string(), "4.5".to_string())].into()),
+            ..Default::default()
+        };
+        assert!(validate(&ok).is_ok());
+        for bad in ["--accessToken", "--uuid", "--gameDir", "--username"] {
+            let o = LaunchOverrides {
+                game_args: Some(vec![bad.into(), "x".into()]),
+                ..Default::default()
+            };
+            assert!(validate(&o).is_err(), "{bad}");
+        }
+        for bad in [
+            "JAVA_TOOL_OPTIONS",
+            "_JAVA_OPTIONS",
+            "JDK_JAVA_OPTIONS",
+            "LD_PRELOAD",
+            "DYLD_INSERT_LIBRARIES",
+            "1BAD",
+            "A B",
+        ] {
+            let o = LaunchOverrides {
+                env: Some([(bad.to_string(), "x".to_string())].into()),
+                ..Default::default()
+            };
+            assert!(validate(&o).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn memory_advice_warns_on_extremes() {
+        // Почти вся память компьютера.
+        assert!(
+            memory_advice(15_000, Some(16_384), None)
+                .iter()
+                .any(|w| w.contains("системе"))
+        );
+        // Сборка рекомендует больше.
+        assert!(
+            memory_advice(4096, Some(32_768), Some(8192))
+                .iter()
+                .any(|w| w.contains("8192"))
+        );
+        // Слишком мало для современной игры.
+        assert!(
+            memory_advice(1024, Some(16_384), None)
+                .iter()
+                .any(|w| w.contains("мало"))
+        );
+        // Очень много — паузы сборщика мусора.
+        assert!(
+            memory_advice(24_576, Some(65_536), None)
+                .iter()
+                .any(|w| w.contains("16 ГБ"))
+        );
+        assert!(memory_advice(6144, Some(16_384), None).is_empty());
     }
 }

@@ -79,6 +79,7 @@ pub async fn spawn(
     let mut command = tokio::process::Command::new(&cmd.program);
     command
         .args(&cmd.args)
+        .envs(cmd.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&cmd.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -245,9 +246,11 @@ mod tests {
             program: "/bin/sh".into(),
             args: vec![
                 "-c".into(),
-                "echo 'token is supersecret12345'; echo err >&2; exit 3".into(),
+                "echo 'token is supersecret12345'; echo \"env:$QUARRY_T\"; echo err >&2; exit 3"
+                    .into(),
             ],
             cwd: d.join("game"),
+            env: vec![("QUARRY_T".into(), "envok".into())],
             unresolved: vec![],
         };
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -272,6 +275,10 @@ mod tests {
         );
         assert!(text.contains("err"));
         assert!(
+            text.contains("env:envok"),
+            "переменные окружения доходят до игры"
+        );
+        assert!(
             events
                 .lock()
                 .unwrap()
@@ -288,6 +295,7 @@ mod tests {
             program: "/bin/sh".into(),
             args: vec!["-c".into(), "sleep 30".into()],
             cwd: d.clone(),
+            env: vec![],
             unresolved: vec![],
         };
         let p = spawn(&cmd, &d.join("run.log"), Masker::new(), None)

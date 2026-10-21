@@ -238,6 +238,11 @@ fn launch_settings(state: State<AppState>, id: String) -> CmdResult<LaunchSettin
 
 /// Объём ОЗУ для подсказки по памяти. Не подтверждено для всех ОС: macOS — sysctl,
 /// Linux — /proc/meminfo, Windows — пока нет (подсказка без числа).
+#[tauri::command]
+fn memory_advice(max_mb: u32, pack_mb: Option<u32>) -> Vec<String> {
+    quarry_core::settings::memory_advice(max_mb, total_memory_mb(), pack_mb)
+}
+
 fn total_memory_mb() -> Option<u64> {
     if cfg!(target_os = "macos") {
         let out = std::process::Command::new("sysctl")
@@ -1366,6 +1371,7 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            memory_advice,
             configs_list,
             configs_search,
             config_read,

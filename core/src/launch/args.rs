@@ -56,6 +56,10 @@ pub struct LaunchSpec<'a> {
     /// Пользовательские JVM-аргументы — после аргументов версии, чтобы их переопределять.
     pub extra_jvm_args: Vec<String>,
     pub resolution: Option<(u32, u32)>,
+    /// Пользовательские аргументы игры — в самом конце.
+    pub extra_game_args: Vec<String>,
+    /// Пользовательские переменные окружения (уже проверены settings::validate).
+    pub extra_env: Vec<(String, String)>,
     pub quick_play: Option<QuickPlay>,
     /// `-javaagent:<jar>=<api>` для authlib-injector (только профили Ely.by).
     pub authlib_injector: Option<(PathBuf, String)>,
@@ -68,6 +72,7 @@ pub struct LaunchCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    pub env: Vec<(String, String)>,
     /// Переменные, которых не оказалось в таблице подстановки (для диагностики).
     pub unresolved: Vec<String>,
 }
@@ -78,7 +83,12 @@ impl LaunchCommand {
         let masker = logmask::Masker::new()
             .with_home(None)
             .with_secret(&auth.access_token);
-        let mut parts = vec![quote(&self.program.to_string_lossy())];
+        let mut parts: Vec<String> = self
+            .env
+            .iter()
+            .map(|(k, v)| format!("{k}={}", quote(&masker.mask(v))))
+            .collect();
+        parts.push(quote(&self.program.to_string_lossy()));
         let mut hide_next = false;
         for a in &self.args {
             if hide_next {
@@ -286,10 +296,12 @@ pub fn build(spec: &LaunchSpec) -> LaunchCommand {
         args.extend(["--server".into(), host, "--port".into(), port]);
     }
 
+    args.extend(spec.extra_game_args.iter().cloned());
     LaunchCommand {
         program: spec.java.to_path_buf(),
         args,
         cwd: spec.game_dir.to_path_buf(),
+        env: spec.extra_env.clone(),
         unresolved,
     }
 }
