@@ -183,7 +183,7 @@ export function OptionsTab({ inst, running }: { inst: Instance; running: boolean
 
       <details style={{ marginTop: 16 }}>
         <summary>{t("Все параметры options.txt (")}{view.entries.length})</summary>
-        <input className="field" type="search" placeholder={t("Найти параметр…")} value={filter} onChange={(e) => setFilter(e.target.value)} style={{ margin: "8px 0" }} />
+        <input className="field" type="search" placeholder={t("Найти параметр…")} aria-label={t("Найти параметр…")} value={filter} onChange={(e) => setFilter(e.target.value)} style={{ margin: "8px 0" }} />
         <div className="card" style={{ padding: 0, maxHeight: 360, overflow: "auto" }}>
           <table className="servers">
             <tbody>

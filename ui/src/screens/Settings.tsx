@@ -4,7 +4,7 @@ import { useDialog } from "../ui/Dialog";
 import { path, setStreamer } from "../streamer";
 import { switchLang, t } from "../i18n";
 
-const ACCENTS = ["#3fb950", "#3b7dd8", "#8b5cf6", "#d0703a", "#c2415d", "#2a9d8f"];
+const ACCENTS = ["#3fb950", "#2563eb", "#7c3aed", "#d0703a", "#c2415d", "#2a9d8f"];
 
 export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo; theme: string; onTheme: (t: string) => void; onAppearance: (g: GlobalSettings) => void }) {
   const dialog = useDialog();

@@ -49,7 +49,7 @@ export function LogView({ lines, follow = true }: { lines: string[]; follow?: bo
         {([["all", t("Всё")], ["errors", t("Ошибки{0}", errors ? ` (${errors})` : "")], ["warnings", t("Предупреждения")], ["loader", t("Только загрузчик")]] as const).map(([k, label]) => (
           <button key={k} className={`btn ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{label}</button>
         ))}
-        <input className="field" style={{ maxWidth: 240 }} placeholder={t("Поиск в логе…")} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input className="field" style={{ maxWidth: 240 }} placeholder={t("Поиск в логе…")} aria-label={t("Поиск в логе…")} value={query} onChange={(e) => setQuery(e.target.value)} />
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={copy}>{copied ? t("Скопировано") : t("Копировать фрагмент")}</button>
       </div>

@@ -34,17 +34,49 @@ function applyTheme(theme: string) {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
 }
 
+/** Цвет текста на акцентном фоне: белый или тёмный — что контрастнее (WCAG). */
+function inkFor(hex: string): string {
+  const [r, g, b] = (hex.match(/\w\w/g) ?? ["0", "0", "0"]).map((x) => parseInt(x, 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return 1.05 / (l + 0.05) >= (l + 0.05) / 0.05 ? "#ffffff" : "#06210f";
+}
+
 /** Акцентный цвет, масштаб и плотность интерфейса из настроек. */
 export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | "compact">) {
   const root = document.documentElement;
-  if (g.accent) root.style.setProperty("--accent", g.accent); else root.style.removeProperty("--accent");
+  if (g.accent) {
+    root.style.setProperty("--accent", g.accent);
+    root.style.setProperty("--accent-ink", inkFor(g.accent));
+  } else {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent-ink");
+  }
   root.style.setProperty("zoom", `${(g.ui_scale || 100) / 100}`);
   root.dataset.density = g.compact ? "compact" : "normal";
 }
 
 const TAB_LABELS: [Tab, string][] = [["mods", t("Моды")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
 
+/** Подпись строки настроек (div.lbl) называет поле этой строки для экранных читалок. */
+function useSettingLabels() {
+  useEffect(() => {
+    let n = 0;
+    const link = () => document.querySelectorAll<HTMLElement>(".setting").forEach((row) => {
+      const lbl = row.querySelector<HTMLElement>(".lbl");
+      const field = row.querySelector<HTMLElement>("input:not([type=checkbox]):not([type=radio]), select, textarea");
+      if (!lbl || !field || field.hasAttribute("aria-label") || field.hasAttribute("aria-labelledby")) return;
+      lbl.id ||= `setting-lbl-${++n}`;
+      field.setAttribute("aria-labelledby", lbl.id);
+    });
+    const obs = new MutationObserver(link);
+    obs.observe(document.body, { childList: true, subtree: true });
+    link();
+    return () => obs.disconnect();
+  }, []);
+}
+
 function Shell() {
+  useSettingLabels();
   const streamer = useStreamer();
   const states = useLaunches();
   const [info, setInfo] = useState<AppInfo | null>(null);

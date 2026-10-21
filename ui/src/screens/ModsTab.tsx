@@ -320,7 +320,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         </div>
       )}
       <div className="modbar">
-        <input className="field" style={{ maxWidth: 260 }} placeholder={t("Найти мод…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className="field" style={{ maxWidth: 260 }} placeholder={t("Найти мод…")} aria-label={t("Найти мод…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span style={{ flex: 1 }} />
         <span className="muted small">{available === null ? t("обновления проверяются…") : updateCount ? t("обновления есть у {0}", updateCount) : t("обновлений нет")}</span>
         <button className="btn" disabled={running || checking || updateCount === 0} onClick={updates}>
