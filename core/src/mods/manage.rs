@@ -240,7 +240,7 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
         changes: Vec::new(),
         notes: Vec::new(),
     };
-    let mut pinned = 0;
+    let (todo, pinned, disabled) = update_candidates(&files);
     // Моды с CurseForge проверяются через его API (если в сборке есть ключ).
     let via_cf = |f: &ModFile| {
         crate::curseforge::api_key().is_some()
@@ -248,11 +248,7 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
                 .as_ref()
                 .is_some_and(|s| s.source == Source::CurseForge)
     };
-    for f in &files {
-        if f.source.as_ref().is_some_and(|s| s.pinned) {
-            pinned += 1;
-            continue;
-        }
+    for &f in &todo {
         if via_cf(f) {
             continue;
         }
@@ -294,10 +290,7 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
             cf_file: None,
         });
     }
-    for f in files
-        .iter()
-        .filter(|f| via_cf(f) && !f.source.as_ref().is_some_and(|s| s.pinned))
-    {
+    for &f in todo.iter().filter(|f| via_cf(f)) {
         let src = f.source.as_ref().expect("проверено в via_cf");
         let (Some(mod_id), Some(current)) = (
             src.project_id
@@ -331,6 +324,11 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
                 .push(format!("{}: CurseForge не ответил ({e})", f.display_name())),
         }
     }
+    if disabled > 0 {
+        plan.notes.push(format!(
+            "Выключенные моды не обновляются, пока их не включить: {disabled}"
+        ));
+    }
     if pinned > 0 {
         plan.notes
             .push(format!("Закреплённые версии не обновляются: {pinned}"));
@@ -339,6 +337,16 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
         plan.notes.push("Моды, которых нет на Modrinth, проверить на обновления нельзя — их нужно обновлять вручную".into());
     }
     Ok(plan)
+}
+
+/// Какие моды проверять на обновления: включённые и не закреплённые. Выключенный мод
+/// при обновлении стал бы включённым — его не трогаем. Возвращает ещё число закреплённых
+/// и выключенных (для заметок).
+fn update_candidates(files: &[ModFile]) -> (Vec<&ModFile>, usize, usize) {
+    let pinned = |f: &&ModFile| f.source.as_ref().is_some_and(|s| s.pinned);
+    let todo = files.iter().filter(|f| f.enabled && !pinned(f)).collect();
+    let pinned_n = files.iter().filter(|f| f.enabled && pinned(f)).count();
+    (todo, pinned_n, files.iter().filter(|f| !f.enabled).count())
 }
 
 /// Закрепить или открепить версию мода (закреплённые не предлагаются к обновлению).
@@ -866,5 +874,45 @@ mod tests {
             "только что установленное — последняя версия"
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn disabled_and_pinned_mods_are_not_updated() {
+        let mk = |name: &str, enabled: bool, pinned: bool| ModFile {
+            file_name: name.into(),
+            rel_path: format!("mods/{name}{}", if enabled { "" } else { ".disabled" }),
+            enabled,
+            size: 1,
+            sha1: name.into(),
+            mods: vec![],
+            read_error: None,
+            source: pinned.then(|| LockEntry {
+                path: format!("mods/{name}"),
+                sha1: name.into(),
+                sha512: None,
+                source: Source::Modrinth,
+                project_id: None,
+                version_id: None,
+                version_number: None,
+                title: None,
+                layer: Layer::User,
+                installed_at: 0,
+                pinned: true,
+            }),
+            world_content: false,
+        };
+        let files = vec![
+            mk("a.jar", true, false),
+            mk("off.jar", false, false),
+            mk("pin.jar", true, true),
+        ];
+        let (todo, pinned, disabled) = update_candidates(&files);
+        assert_eq!(
+            todo.iter()
+                .map(|f| f.file_name.as_str())
+                .collect::<Vec<_>>(),
+            ["a.jar"]
+        );
+        assert_eq!((pinned, disabled), (1, 1));
     }
 }

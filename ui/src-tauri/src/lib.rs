@@ -649,9 +649,9 @@ fn cancel_login(state: State<AppState>) {
     }
 }
 
-/// Открыть ссылку в системном браузере. Только адреса входа Microsoft и сайты проекта.
-#[tauri::command]
-fn open_link(app: tauri::AppHandle, url: String) -> CmdResult<()> {
+/// Можно ли открыть ссылку: только адреса входа Microsoft и сайты проекта. Префикс должен
+/// заканчиваться на границе адреса — `https://ely.by` не пропускает `https://ely.by.evil.com`.
+fn link_allowed(url: &str) -> bool {
     const ALLOWED: [&str; 7] = [
         "https://www.microsoft.com/link",
         "https://microsoft.com/devicelogin",
@@ -661,7 +661,17 @@ fn open_link(app: tauri::AppHandle, url: String) -> CmdResult<()> {
         "https://www.curseforge.com/",
         "https://modrinth.com/",
     ];
-    if !ALLOWED.iter().any(|a| url.starts_with(a)) {
+    ALLOWED.iter().any(|a| {
+        url.strip_prefix(a).is_some_and(|rest| {
+            a.ends_with('/') || rest.is_empty() || rest.starts_with(['/', '?', '#'])
+        })
+    })
+}
+
+/// Открыть ссылку в системном браузере. Только адреса входа Microsoft и сайты проекта.
+#[tauri::command]
+fn open_link(app: tauri::AppHandle, url: String) -> CmdResult<()> {
+    if !link_allowed(&url) {
         return Err("Эту ссылку лаунчер не открывает".into());
     }
     app.opener()
@@ -1960,4 +1970,26 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("ошибка запуска приложения Quarry");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::link_allowed;
+
+    #[test]
+    fn links_stop_at_address_boundary() {
+        assert!(link_allowed("https://ely.by"));
+        assert!(link_allowed("https://ely.by/oauth2/v1"));
+        assert!(link_allowed(
+            "https://github.com/Hewako/quarry-launcher/releases/tag/v0.2.0"
+        ));
+        assert!(link_allowed("https://www.microsoft.com/link?otc=ABC"));
+        assert!(link_allowed("https://modrinth.com/project/sodium"));
+        assert!(!link_allowed("https://ely.by.evil.com/login"));
+        assert!(!link_allowed(
+            "https://github.com/Hewako/quarry-launcher-evil"
+        ));
+        assert!(!link_allowed("https://evil.com/?https://ely.by"));
+        assert!(!link_allowed("http://ely.by"));
+    }
 }

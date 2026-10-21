@@ -97,10 +97,14 @@ pub fn usage(pid: u32) -> Option<(u64, f64)> {
         let script = format!(
             "$p = Get-Process -Id {pid}; \"{{0}} {{1}}\" -f $p.WorkingSet64, [long]$p.TotalProcessorTime.TotalMilliseconds"
         );
-        let out = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-Command", &script])
-            .output()
-            .ok()?;
+        let mut c = std::process::Command::new("powershell");
+        c.args(["-NoProfile", "-Command", &script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: без мигающей консоли
+        }
+        let out = c.output().ok()?;
         let text = String::from_utf8_lossy(&out.stdout);
         let mut it = text.split_whitespace().map(|x| x.parse::<u64>().ok());
         let (bytes, ms) = (it.next()??, it.next()??);

@@ -184,9 +184,14 @@ pub fn detect_os_version() -> String {
             .arg("-productVersion")
             .output()
     } else if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/C", "ver"])
-            .output()
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "ver"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: без мигающей консоли
+        }
+        c.output()
     } else {
         std::process::Command::new("uname").arg("-r").output()
     };

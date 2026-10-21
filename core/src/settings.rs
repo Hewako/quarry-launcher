@@ -165,6 +165,20 @@ fn env_forbidden(name: &str) -> bool {
         || name.starts_with("DYLD_")
 }
 
+/// Аргументы JVM, через которые можно выполнить команду или загрузить чужой код в обход
+/// лаунчера. Для них — пояснение, почему нельзя.
+pub fn jvm_arg_forbidden(a: &str) -> Option<&'static str> {
+    if a.starts_with("-javaagent") || a.starts_with("-agentpath") || a.starts_with("-agentlib") {
+        Some("агенты подключает только лаунчер (authlib-injector для Ely.by)")
+    } else if a.starts_with("-XX:OnError") || a.starts_with("-XX:OnOutOfMemoryError") {
+        Some("этот аргумент запускает команду — для своих команд есть «Команды до и после запуска»")
+    } else if a.starts_with("-Xbootclasspath") {
+        Some("подмена системных классов Java запрещена")
+    } else {
+        None
+    }
+}
+
 /// Советы по памяти: доля от ОЗУ компьютера, рекомендация сборки, крайние значения.
 pub fn memory_advice(max_mb: u32, total_mb: Option<u64>, pack_mb: Option<u32>) -> Vec<String> {
     let mut out = Vec::new();
@@ -218,10 +232,8 @@ pub fn validate(o: &LaunchOverrides) -> Result<()> {
                     "Память задаётся ползунком, а не аргументами -Xmx/-Xms",
                 ));
             }
-            if a.starts_with("-javaagent") {
-                return Err(Error::invalid(
-                    "-javaagent в аргументах запрещён: агенты подключает только лаунчер (authlib-injector для Ely.by)",
-                ));
+            if let Some(why) = jvm_arg_forbidden(a) {
+                return Err(Error::invalid(format!("{a}: {why}")));
             }
         }
     }
@@ -539,5 +551,28 @@ mod tests {
                 .any(|w| w.contains("16 ГБ"))
         );
         assert!(memory_advice(6144, Some(16_384), None).is_empty());
+    }
+
+    #[test]
+    fn jvm_args_cannot_run_or_load_foreign_code() {
+        for bad in [
+            "-XX:OnOutOfMemoryError=calc",
+            "-XX:OnError=sh x",
+            "-agentpath:/tmp/a.so",
+            "-agentlib:jdwp=x",
+            "-javaagent:x.jar",
+            "-Xbootclasspath/a:x.jar",
+        ] {
+            let o = LaunchOverrides {
+                jvm_args: Some(vec![bad.into()]),
+                ..Default::default()
+            };
+            assert!(validate(&o).is_err(), "{bad}");
+        }
+        let ok = LaunchOverrides {
+            jvm_args: Some(vec!["-XX:+UseG1GC".into(), "-Dfoo=bar".into()]),
+            ..Default::default()
+        };
+        assert!(validate(&ok).is_ok());
     }
 }

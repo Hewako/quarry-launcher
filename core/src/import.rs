@@ -176,7 +176,10 @@ pub fn import_mmc(store: &InstanceStore, dir: &Path) -> Result<ImportResult> {
                 .get("JvmArgs")
                 .map(|a| {
                     a.split_whitespace()
-                        .filter(|x| !x.starts_with("-Xm") && !x.starts_with("-javaagent"))
+                        // Память — ползунком; опасные аргументы чужого инстанса не переносим.
+                        .filter(|x| {
+                            !x.starts_with("-Xm") && crate::settings::jvm_arg_forbidden(x).is_none()
+                        })
                         .map(str::to_string)
                         .collect()
                 })
@@ -1183,7 +1186,7 @@ mod tests {
         std::fs::create_dir_all(src.join(".minecraft/saves/World/region")).unwrap();
         std::fs::write(src.join(".minecraft/mods/a.jar"), b"jar").unwrap();
         std::fs::write(src.join(".minecraft/saves/World/level.dat"), b"lvl").unwrap();
-        std::fs::write(src.join("instance.cfg"), "[General]\nname=Технология+\nOverrideMemory=true\nMaxMemAlloc=6144\nOverrideJavaArgs=true\nJvmArgs=-Xmx2G -XX:+UseG1GC\n").unwrap();
+        std::fs::write(src.join("instance.cfg"), "[General]\nname=Технология+\nOverrideMemory=true\nMaxMemAlloc=6144\nOverrideJavaArgs=true\nJvmArgs=-Xmx2G -XX:+UseG1GC -XX:OnOutOfMemoryError=calc -agentpath:/tmp/x.dylib\n").unwrap();
         std::fs::write(src.join("mmc-pack.json"), r#"{"components":[{"uid":"net.minecraft","version":"1.21.11"},{"uid":"net.fabricmc.fabric-loader","version":"0.17.2"}],"formatVersion":1}"#).unwrap();
         let before = dir_fingerprint(&src);
         let r = import_mmc(&s, &src).unwrap();
@@ -1193,7 +1196,7 @@ mod tests {
         assert_eq!(
             r.instance.settings.jvm_args.as_deref(),
             Some(&["-XX:+UseG1GC".to_string()][..]),
-            "-Xmx отфильтрован"
+            "-Xmx и опасные аргументы (команда при ошибке, нативный агент) отброшены"
         );
         let game = s.game_dir(&r.instance.id).unwrap();
         assert!(game.join("saves/World/level.dat").exists());

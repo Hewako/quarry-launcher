@@ -52,6 +52,8 @@ pub async fn run(cmd: &str, cwd: &Path, profile: &str) -> Result<(i32, String)> 
     let mut c = if cfg!(windows) {
         let mut c = tokio::process::Command::new("cmd");
         c.args(["/C", cmd]);
+        #[cfg(windows)]
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: без мигающей консоли
         c
     } else {
         let mut c = tokio::process::Command::new("sh");

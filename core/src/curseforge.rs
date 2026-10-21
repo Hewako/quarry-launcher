@@ -242,8 +242,10 @@ async fn mod_info(mod_id: u64) -> Result<CfMod> {
 }
 
 /// Более новый файл (стабильный, если есть), чем установленный `current_file_id`.
+/// ID файлов CurseForge растут со временем: файл не новее установленного — не обновление.
 pub fn newer_file<'a>(files: &'a [CfFile], current_file_id: &str) -> Option<&'a CfFile> {
-    pick(files, Channel::Auto).filter(|f| f.id.to_string() != current_file_id)
+    let current: u64 = current_file_id.parse().ok()?;
+    pick(files, Channel::Auto).filter(|f| f.id > current)
 }
 
 pub async fn files(mod_id: u64, loader: LoaderKind, game_version: &str) -> Result<Vec<CfFile>> {
@@ -461,5 +463,7 @@ mod tests {
         assert_eq!(newer_file(&files, "10").map(|f| f.id), Some(20));
         assert!(newer_file(&files, "20").is_none(), "уже последняя");
         assert!(newer_file(&[], "10").is_none());
+        // Стоит бета 30, новее любой стабильной: «обновление» до стабильной 20 было бы откатом.
+        assert!(newer_file(&files, "30").is_none());
     }
 }

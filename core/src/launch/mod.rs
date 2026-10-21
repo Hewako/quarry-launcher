@@ -549,6 +549,18 @@ async fn run(
         None
     };
 
+    // Опасные аргументы могли попасть в файлы профиля в обход проверки (старый импорт,
+    // ручная правка) — с ними не запускаем.
+    if let Some((a, why)) = resolved
+        .jvm_args
+        .value
+        .iter()
+        .find_map(|a| crate::settings::jvm_arg_forbidden(a).map(|w| (a, w)))
+    {
+        return Err(Error::invalid(format!(
+            "В аргументах JVM есть {a}: {why}. Уберите его на вкладке «Запуск и память»"
+        )));
+    }
     let spec = LaunchSpec {
         installed: &installed,
         java: &java.install.path,

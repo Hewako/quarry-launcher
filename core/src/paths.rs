@@ -220,10 +220,14 @@ pub fn free_space(path: &Path) -> Option<u64> {
             "(Get-Item -LiteralPath '{}').PSDrive.Free",
             p.display().to_string().replace('\'', "''")
         );
-        let out = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-Command", &script])
-            .output()
-            .ok()?;
+        let mut c = std::process::Command::new("powershell");
+        c.args(["-NoProfile", "-Command", &script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: без мигающей консоли
+        }
+        let out = c.output().ok()?;
         return String::from_utf8_lossy(&out.stdout).trim().parse().ok();
     }
     let out = std::process::Command::new("df")
