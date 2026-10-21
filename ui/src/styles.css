@@ -243,3 +243,17 @@ select.field { padding: 6px 8px; }
 .groupbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
 .chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
 .field.mini { padding: 3px 6px; font-size: 12px; }
+
+/* Вкладка «Конфиги» */
+.cfg { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 14px; align-items: start; }
+.cfglist .field { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.cfgscroll { max-height: 520px; overflow: auto; padding: 6px; }
+.cfgitem { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 6px 8px; color: var(--text); cursor: pointer; font-size: 12.5px; }
+.cfgitem:hover { background: var(--panel2); }
+.cfgitem.on { background: var(--panel2); outline: 1px solid var(--accent); }
+.cfgitem .badge { margin-top: 2px; }
+.hitline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.cfgtext { min-height: 420px; resize: vertical; white-space: pre; tab-size: 2; }
+.cfghist { margin-top: 10px; }
+.cfghist .row { justify-content: space-between; padding: 4px 0; }
+.cfgdiff { max-height: 420px; overflow: auto; white-space: pre; font: 12px var(--mono); }

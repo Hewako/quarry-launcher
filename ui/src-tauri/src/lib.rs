@@ -1085,6 +1085,93 @@ async fn mods_auto_groups(state: State<'_, AppState>, id: String) -> CmdResult<u
         .map_err(err)
 }
 
+fn config_dirs(state: &AppState, id: &str) -> CmdResult<(std::path::PathBuf, std::path::PathBuf)> {
+    let store = InstanceStore::new(state.data.clone());
+    Ok((
+        store.game_dir(id).map_err(err)?,
+        store.dir(id).map_err(err)?,
+    ))
+}
+
+#[tauri::command]
+fn configs_list(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::configs::ConfigFile>> {
+    let (game, dir) = config_dirs(&state, &id)?;
+    Ok(quarry_core::configs::list(&game, &dir))
+}
+
+#[tauri::command]
+async fn configs_search(
+    state: State<'_, AppState>,
+    id: String,
+    query: String,
+) -> CmdResult<Vec<quarry_core::configs::Hit>> {
+    let (game, _) = config_dirs(&state, &id)?;
+    tauri::async_runtime::spawn_blocking(move || quarry_core::configs::search(&game, &query))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn config_read(state: State<AppState>, id: String, path: String) -> CmdResult<String> {
+    let (game, _) = config_dirs(&state, &id)?;
+    quarry_core::configs::read(&game, &path).map_err(err)
+}
+
+#[derive(Serialize)]
+struct ConfigPreview {
+    diff: Vec<quarry_core::configs::DiffLine>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn config_preview(
+    state: State<AppState>,
+    id: String,
+    path: String,
+    text: String,
+) -> CmdResult<ConfigPreview> {
+    let (game, _) = config_dirs(&state, &id)?;
+    let old = quarry_core::configs::read(&game, &path).unwrap_or_default();
+    Ok(ConfigPreview {
+        diff: quarry_core::configs::diff(&old, &text),
+        error: quarry_core::configs::validate(&path, &text).err(),
+    })
+}
+
+#[tauri::command]
+fn config_save(state: State<AppState>, id: String, path: String, text: String) -> CmdResult<()> {
+    // Игра и моды перезаписывают свои настройки при выходе.
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру: она перезапишет настройки при выходе".into());
+    }
+    let (game, dir) = config_dirs(&state, &id)?;
+    quarry_core::configs::save(&game, &dir, &path, &text).map_err(err)
+}
+
+#[tauri::command]
+fn config_history(
+    state: State<AppState>,
+    id: String,
+    path: String,
+) -> CmdResult<Vec<quarry_core::configs::HistoryEntry>> {
+    let (_, dir) = config_dirs(&state, &id)?;
+    Ok(quarry_core::configs::history(&dir, &path))
+}
+
+#[tauri::command]
+fn config_history_read(
+    state: State<AppState>,
+    id: String,
+    path: String,
+    at: u64,
+) -> CmdResult<String> {
+    let (_, dir) = config_dirs(&state, &id)?;
+    quarry_core::configs::history_read(&dir, &path, at).map_err(err)
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1249,6 +1336,13 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            configs_list,
+            configs_search,
+            config_read,
+            config_preview,
+            config_save,
+            config_history,
+            config_history_read,
             mods_groups,
             mods_set_group,
             mods_toggle_group,

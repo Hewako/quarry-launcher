@@ -9,6 +9,7 @@ compile_error!(
 pub mod account;
 pub mod archive;
 pub mod catalog;
+pub mod configs;
 pub mod download;
 pub mod error;
 pub mod import;

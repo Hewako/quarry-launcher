@@ -38,6 +38,11 @@ mockIPC((cmd, args) => {
         { file_name: "BSL.zip", description: "", size: 900_000, is_dir: false, enabled: false },
       ] };
     case "mods_groups": return { names: ["Оптимизация", "Визуал", "Удобство", "Серверные", "Разработка"], groups: { "sodium.jar": "Оптимизация", "iris.jar": "Визуал", "indium.jar": "Визуал" } };
+    case "configs_list": return [{ path: "config/iris.properties", size: 120, user_edited: false }, { path: "config/sodium-options.json", size: 840, user_edited: true }, { path: "options.txt", size: 4200, user_edited: false }];
+    case "configs_search": return [{ path: "config/iris.properties", line: 2, text: "shaderPack=BSL.zip" }];
+    case "config_read": return "{\n  \"quality\": {\n    \"weather_quality\": \"FAST\"\n  }\n}\n";
+    case "config_history": return [{ at: Date.now() - 3600_000, size: 830 }];
+    case "config_preview": return { diff: [{ kind: "=", text: "{" }, { kind: "-", text: "  \"fps\": 60" }, { kind: "+", text: "  \"fps\": 144" }, { kind: "=", text: "}" }] };
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

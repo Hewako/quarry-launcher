@@ -64,6 +64,18 @@ export interface ServerStatus { version: string; protocol: number; online: numbe
 export interface PackInfo { file_name: string; description: string; size: number; is_dir: boolean; enabled: boolean; formats?: [number, number]; compatible?: boolean; icon?: string }
 export type ResKind = "resourcepack" | "shader" | "datapack";
 
+export interface ConfigFile { path: string; size: number; user_edited: boolean }
+export interface DiffLine { kind: "=" | "+" | "-"; text: string }
+export const configs = {
+  list: (id: string) => invoke<ConfigFile[]>("configs_list", { id }),
+  search: (id: string, query: string) => invoke<{ path: string; line: number; text: string }[]>("configs_search", { id, query }),
+  read: (id: string, path: string) => invoke<string>("config_read", { id, path }),
+  preview: (id: string, path: string, text: string) => invoke<{ diff: DiffLine[]; error?: string }>("config_preview", { id, path, text }),
+  save: (id: string, path: string, text: string) => invoke<void>("config_save", { id, path, text }),
+  history: (id: string, path: string) => invoke<{ at: number; size: number }[]>("config_history", { id, path }),
+  historyRead: (id: string, path: string, at: number) => invoke<string>("config_history_read", { id, path, at }),
+};
+
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
   max_memory_mb: Resolved<number>;
