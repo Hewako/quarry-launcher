@@ -28,7 +28,17 @@ export function Modal({ title, children, onClose, wide }: { title: string; child
     const prev = document.activeElement as HTMLElement | null;
     const el = ref.current?.querySelector<HTMLElement>("[data-autofocus], input, select, button.pri, button");
     el?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      // Tab не выходит за пределы окна.
+      if (e.key === "Tab" && ref.current) {
+        const items = [...ref.current.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")].filter((x) => !x.hasAttribute("disabled"));
+        if (items.length === 0) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("keydown", onKey); prev?.focus(); };
   }, [onClose]);

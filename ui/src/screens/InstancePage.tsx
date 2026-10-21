@@ -253,7 +253,15 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
       )}
       <div className="ptabs" role="tablist">
         {TABS.map(([t, label]) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{label}</button>
+          <button key={t} role="tab" aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} className={tab === t ? "on" : ""} onClick={() => setTab(t)}
+            onKeyDown={(e) => {
+              const i = TABS.findIndex(([x]) => x === t);
+              const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+              if (next < 0) return;
+              e.preventDefault();
+              setTab(TABS[next][0]);
+              (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
+            }}>{label}</button>
         ))}
       </div>
       {tab === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}

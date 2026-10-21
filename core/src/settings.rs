@@ -281,6 +281,9 @@ pub struct GlobalSettings {
     pub accent: Option<String>,
     #[serde(default = "default_scale")]
     pub ui_scale: u32,
+    /// Компактный режим: меньше отступов.
+    #[serde(default)]
+    pub compact: bool,
     /// Мастер первого запуска пройден.
     #[serde(default)]
     pub first_run_done: bool,
@@ -324,6 +327,7 @@ impl Default for GlobalSettings {
             language: default_language(),
             accent: None,
             ui_scale: default_scale(),
+            compact: false,
             first_run_done: false,
             backup_before_risky_launch: true,
             backup_after_exit: false,

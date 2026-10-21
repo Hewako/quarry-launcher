@@ -3,7 +3,9 @@ import { api, diagnostics, errText, sizeText, type AppInfo, type GlobalSettings 
 import { useDialog } from "../ui/Dialog";
 import { path, setStreamer } from "../streamer";
 
-export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: string; onTheme: (t: string) => void }) {
+const ACCENTS = ["#3fb950", "#3b7dd8", "#8b5cf6", "#d0703a", "#c2415d", "#2a9d8f"];
+
+export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo; theme: string; onTheme: (t: string) => void; onAppearance: (g: GlobalSettings) => void }) {
   const dialog = useDialog();
   const [s, setS] = useState<GlobalSettings | null>(null);
   const [args, setArgs] = useState("");
@@ -58,6 +60,29 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
             <option value="light">Светлая</option>
             <option value="system">Как в системе</option>
           </select>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">Акцентный цвет</div>
+          <div className="row" role="radiogroup" aria-label="Акцентный цвет">
+            <button className={`swatch auto ${!s.accent ? "on" : ""}`} role="radio" aria-checked={!s.accent} title="Как в теме" onClick={() => { const n = { ...s, accent: undefined }; setS(n); onAppearance(n); }}>A</button>
+            {ACCENTS.map((c) => (
+              <button key={c} className={`swatch ${s.accent === c ? "on" : ""}`} role="radio" aria-checked={s.accent === c} aria-label={c} style={{ background: c }}
+                onClick={() => { const n = { ...s, accent: c }; setS(n); onAppearance(n); }} />
+            ))}
+          </div>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">Масштаб интерфейса</div>
+          <select className="field" value={s.ui_scale} onChange={(e) => { const n = { ...s, ui_scale: Number(e.target.value) }; setS(n); onAppearance(n); }}>
+            {[90, 100, 110, 125, 150].map((v) => <option key={v} value={v}>{v}%</option>)}
+          </select>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">Компактный режим<span className="hint">меньше отступов — больше строк на экране</span></div>
+          <label className="row"><input type="checkbox" checked={s.compact} onChange={(e) => { const n = { ...s, compact: e.target.checked }; setS(n); onAppearance(n); }} /> включён</label>
           <span />
         </div>
         <div className="setting">

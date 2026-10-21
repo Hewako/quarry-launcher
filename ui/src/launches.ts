@@ -3,6 +3,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import type { ExitInfo, LaunchEvent, Progress } from "./api";
+import { pushNote } from "./notify";
 
 export interface LaunchState {
   phase: "preparing" | "running" | "done" | "failed";
@@ -63,19 +64,22 @@ class LaunchStore {
           case "progress": return { ...s, progress: e.progress };
           case "account": return { ...s, account: `${e.name} (${e.provider})` };
           case "java": return { ...s, javaLabel: e.label, javaReason: e.reason };
-          case "warning": return { ...s, warnings: [...s.warnings, e.message] };
+          case "warning": pushNote({ kind: "warn", title: e.message, profile: id }); return { ...s, warnings: [...s.warnings, e.message] };
           case "started": return { ...s, phase: "running", stageLabel: "Игра запущена", command: e.command, progress: undefined };
           case "log": {
             const logs = s.logs.length >= MAX_LOG_LINES ? s.logs.slice(-MAX_LOG_LINES + 1) : s.logs.slice();
             logs.push(e.line);
             return { ...s, logs };
           }
-          case "exited": return { ...s, exit: e.info, phase: "done", stageLabel: e.info.crashed ? "Игра упала" : "Игра закрыта" };
+          case "exited":
+            if (e.info.crashed) pushNote({ kind: "err", title: "Игра упала", body: e.info.analysis?.title, profile: id });
+            return { ...s, exit: e.info, phase: "done", stageLabel: e.info.crashed ? "Игра упала" : "Игра закрыта" };
         }
       });
       schedule();
     });
     await listen<{ id: string; error?: string }>("launch-finished", ({ payload }) => {
+      if (payload.error) pushNote({ kind: "err", title: "Запуск не удался", body: payload.error, profile: payload.id });
       this.update(payload.id, (s) =>
         payload.error ? { ...s, phase: "failed", error: payload.error } : { ...s, phase: "done" },
       );

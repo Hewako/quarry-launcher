@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
-import { api, mb, type AccountRef, type AppInfo, type Instance } from "./api";
+import { api, mb, relTime, type AccountRef, type AppInfo, type GlobalSettings, type Instance } from "./api";
 import { isActive, launches, useLaunches } from "./launches";
 import { Accounts } from "./screens/Accounts";
 import { CreateInstance } from "./screens/CreateInstance";
@@ -12,6 +12,8 @@ import { Settings } from "./screens/Settings";
 import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
+import { clearNotes, markRead, useNotes } from "./notify";
+import { Palette, type Command } from "./ui/Palette";
 
 type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
 
@@ -30,6 +32,16 @@ function applyTheme(theme: string) {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
 }
 
+/** Акцентный цвет, масштаб и плотность интерфейса из настроек. */
+export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | "compact">) {
+  const root = document.documentElement;
+  if (g.accent) root.style.setProperty("--accent", g.accent); else root.style.removeProperty("--accent");
+  root.style.setProperty("zoom", `${(g.ui_scale || 100) / 100}`);
+  root.dataset.density = g.compact ? "compact" : "normal";
+}
+
+const TAB_LABELS: [Tab, string][] = [["mods", "Моды"], ["resources", "Ресурсы"], ["configs", "Конфиги"], ["launch", "Запуск и память"], ["options", "Настройки игры"], ["snapshots", "Снимки и миры"], ["servers", "Серверы"], ["logs", "Логи"], ["profile", "Профиль"]];
+
 function Shell() {
   const streamer = useStreamer();
   const states = useLaunches();
@@ -44,6 +56,9 @@ function Shell() {
   const [importing, setImporting] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [loadError, setLoadError] = useState("");
+  const [palette, setPalette] = useState(false);
+  const [bell, setBell] = useState(false);
+  const notes = useNotes();
 
   const refresh = useCallback(async () => {
     try {
@@ -65,11 +80,16 @@ function Shell() {
   useEffect(() => {
     launches.start();
     api.appInfo().then(setInfo);
-    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); }).catch(() => applyTheme("dark"));
+    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); }).catch(() => applyTheme("dark"));
     refresh();
     refreshAccounts();
     const off = listen("launch-finished", () => refresh());
-    return () => { off.then((f) => f()); };
+    // Ctrl+K / ⌘K — палитра команд.
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { off.then((f) => f()); window.removeEventListener("keydown", onKey); };
   }, [refresh, refreshAccounts]);
 
   const changeTheme = (t: string) => {
@@ -93,9 +113,21 @@ function Shell() {
 
   if (!info) return <div className="content muted">Загрузка…</div>;
   const open = (id: string, tab?: Tab) => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
+  const commands: Command[] = [
+    ...NAV.filter((n) => n.id !== "doctor" && n.id !== "history").map((n) => ({ id: `s-${n.id}`, label: n.label, hint: "экран", run: () => { setProfileTab(undefined); setScreen(n.id); } })),
+    ...instances.flatMap((i) => [
+      { id: `p-${i.id}`, label: i.name, hint: `профиль · ${i.game_version}`, run: () => open(i.id) },
+      { id: `play-${i.id}`, label: `Играть: ${i.name}`, hint: "запуск", run: () => { launches.begin(i.id); api.launch(i.id).catch(() => {}); } },
+    ]),
+    ...(selected ? TAB_LABELS.map(([t, l]) => ({ id: `t-${t}`, label: `${selected.name}: ${l}`, hint: "вкладка", run: () => open(selected.id, t) })) : []),
+    { id: "a-new", label: "Новый профиль", hint: "действие", run: () => setCreating(true) },
+    { id: "a-import", label: "Импорт сборки", hint: ".mrpack / zip / Prism", run: () => setImporting(true) },
+    { id: "a-theme", label: "Сменить тему", hint: "светлая / тёмная", run: () => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") },
+  ];
 
   return (
     <div className="app">
+      <a href="#main" className="skip">Перейти к содержимому</a>
       <aside className="side">
         <div className="logo"><i /><div>Quarry<small>рабочее название · v{info.version}</small></div></div>
         <nav className="nav" aria-label="Разделы">
@@ -133,10 +165,27 @@ function Shell() {
             <span className="dl">Запущено профилей: {runningCount}</span>
           ) : <span className="dl" />}
           <div className="sp" />
+          <button className="btn small search" onClick={() => setPalette(true)} aria-label="Палитра команд (Ctrl+K)">Поиск <kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd></button>
+          <div className="bellwrap">
+            <button className="iconbtn" aria-label={`Уведомления${notes.unread ? `: новых ${notes.unread}` : ""}`} aria-expanded={bell} onClick={() => { setBell(!bell); markRead(); }}>
+              🔔{notes.unread > 0 && <span className="dot">{notes.unread}</span>}
+            </button>
+            {bell && (
+              <div className="bellpanel" role="region" aria-label="Уведомления">
+                <div className="row" style={{ justifyContent: "space-between" }}><b>Уведомления</b>{notes.notes.length > 0 && <button className="btn link small" onClick={clearNotes}>Очистить</button>}</div>
+                {notes.notes.length === 0 ? <p className="muted small">Пока ничего нового.</p> : notes.notes.map((n) => (
+                  <div key={n.id} className={`note ${n.kind}`}>
+                    <b>{n.title}</b>{n.body && <span className="small">{n.body}</span>}
+                    <span className="muted small">{n.profile ? `${instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button className="iconbtn" aria-label="Переключить тему" title="Тема" onClick={() => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>◐</button>
         </header>
 
-        <main className="content">
+        <main className="content" id="main" tabIndex={-1}>
           {loadError && <div className="alert err"><div className="h">Не удалось прочитать профили</div><span>{loadError}</span></div>}
           {screen === "home" && (
             <Home info={info} instances={instances} broken={broken} accounts={accounts} states={states} selected={selected}
@@ -163,7 +212,7 @@ function Shell() {
           ))}
           {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
           {screen === "accounts" && <Accounts info={info} accounts={accounts} defaultKey={defaultKey} onChanged={refreshAccounts} />}
-          {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} />}
+          {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} onAppearance={applyAppearance} />}
         </main>
 
         <footer className="foot">
@@ -172,6 +221,7 @@ function Shell() {
         </footer>
       </div>
 
+      {palette && <Palette commands={commands} onClose={() => setPalette(false)} />}
       {importing && (
         <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />
       )}

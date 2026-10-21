@@ -209,7 +209,8 @@ export function Home(p: Props) {
             <thead><tr><th>Профиль</th><th>Версия</th><th>Загрузчик</th><th>Последний запуск</th></tr></thead>
             <tbody>
               {shown.map((i) => (
-                <tr key={i.id} className={i.id === inst?.id ? "sel" : ""} onClick={() => p.onSelect(i.id)} onDoubleClick={() => p.onOpen(i.id)}>
+                <tr key={i.id} className={i.id === inst?.id ? "sel" : ""} tabIndex={0} aria-selected={i.id === inst?.id} onClick={() => p.onSelect(i.id)} onDoubleClick={() => p.onOpen(i.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter") p.onOpen(i.id); else if (e.key === " ") { e.preventDefault(); p.onSelect(i.id); } }}>
                   <td><div className="row"><ProfileIcon id={i.id} color={i.color} size={22} className="" /> {i.favorite && <span className="star">★</span>}{i.name}{i.group && <span className="muted small">· {i.group}</span>}</div></td>
                   <td>{i.game_version}</td>
                   <td>{loaderName[i.loader]} {i.loader_version ?? ""}</td>
