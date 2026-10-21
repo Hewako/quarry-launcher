@@ -21,6 +21,8 @@ async fn e2e_launch() {
         asset_index: inst.asset_index.clone(),
         min_memory_mb: 1024,
         max_memory_mb: 2048,
+        authlib_injector_jar: None,
+        required_java: inst.required_java,
     };
     let cmd = crate::launch::build_command(&cfg);
 

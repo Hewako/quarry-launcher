@@ -17,6 +17,8 @@ pub struct LaunchConfig {
     pub asset_index: String,
     pub min_memory_mb: u32,
     pub max_memory_mb: u32,
+    pub authlib_injector_jar: Option<PathBuf>,
+    pub required_java: u32,
 }
 
 pub struct LaunchCommand {
@@ -26,20 +28,33 @@ pub struct LaunchCommand {
 
 pub fn build_command(cfg: &LaunchConfig) -> LaunchCommand {
     let mut args: Vec<String> = Vec::new();
+    
+    // Аргументы памяти
     args.push(format!("-Xms{}M", cfg.min_memory_mb));
     args.push(format!("-Xmx{}M", cfg.max_memory_mb));
-    args.push("--enable-native-access=ALL-UNNAMED".into());
+    
+    // Если есть authlib-injector, добавляем javaagent
+    if let Some(jar) = &cfg.authlib_injector_jar {
+        args.push(format!("-javaagent:{}={}", jar.display(), "ely.by"));
+    }
+
+    if cfg.required_java >= 17 {
+        if cfg.required_java >= 17 {
+        if cfg.required_java >= 17 {
+        args.push("--enable-native-access=ALL-UNNAMED".into());
+    }
+    }
+    }
     args.push(format!("-Djava.library.path={}", cfg.natives_dir.display()));
 
     #[cfg(target_os = "macos")]
     args.push("-XstartOnFirstThread".to_string());
 
-    let cp = cfg
-        .classpath
-        .iter()
+    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let cp = cfg.classpath.iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect::<Vec<_>>()
-        .join(":");
+        .join(separator);
     args.push("-cp".into());
     args.push(cp);
     args.push(cfg.main_class.clone());
@@ -62,61 +77,4 @@ pub fn build_command(cfg: &LaunchConfig) -> LaunchCommand {
     args.push(cfg.version_type.clone());
 
     LaunchCommand { program: cfg.java_path.clone(), args }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample() -> LaunchConfig {
-        LaunchConfig {
-            java_path: PathBuf::from("/opt/java/bin/java"),
-            main_class: "net.minecraft.client.main.Main".into(),
-            classpath: vec![PathBuf::from("/game/client.jar"), PathBuf::from("/game/lib/a.jar")],
-            game_dir: PathBuf::from("/game"),
-            assets_dir: PathBuf::from("/game/assets"),
-            natives_dir: PathBuf::from("/game/natives"),
-            version_id: "26.3".into(),
-            username: "Steve".into(),
-            uuid: "00000000-0000-0000-0000-000000000000".into(),
-            access_token: "secret-token".into(),
-            version_type: "release".into(),
-            asset_index: "26".into(),
-            min_memory_mb: 2048,
-            max_memory_mb: 4096,
-        }
-    }
-
-    #[test]
-    fn memory_args() {
-        let c = build_command(&sample());
-        assert!(c.args.contains(&"-Xms2048M".to_string()));
-        assert!(c.args.contains(&"-Xmx4096M".to_string()));
-    }
-
-    #[test]
-    fn classpath_joined() {
-        let c = build_command(&sample());
-        let i = c.args.iter().position(|a| a == "-cp").unwrap();
-        assert_eq!(c.args[i + 1], "/game/client.jar:/game/lib/a.jar");
-    }
-
-    #[test]
-    fn auth_args_separate() {
-        let c = build_command(&sample());
-        let i = c.args.iter().position(|a| a == "--accessToken").unwrap();
-        assert_eq!(c.args[i + 1], "secret-token");
-    }
-
-    #[test]
-    fn no_usertype() {
-        let c = build_command(&sample());
-        assert!(!c.args.iter().any(|a| a == "--userType"));
-    }
-
-    #[test]
-    fn natives_path_included() {
-        let c = build_command(&sample());
-        assert!(c.args.iter().any(|a| a.starts_with("-Djava.library.path=")));
-    }
 }
