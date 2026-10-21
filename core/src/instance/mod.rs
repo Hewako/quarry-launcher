@@ -75,6 +75,9 @@ pub struct Instance {
     pub pack_settings: LaunchOverrides,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_launch: Option<LastLaunch>,
+    /// Папка игры вне Quarry (подключённая `.minecraft` без копирования). Корзина её не трогает.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_game_dir: Option<PathBuf>,
 }
 
 fn format_version() -> u32 {
@@ -126,7 +129,15 @@ impl InstanceStore {
         Ok(self.data.instances().join(id))
     }
     pub fn game_dir(&self, id: &str) -> Result<PathBuf> {
-        Ok(self.dir(id)?.join("game"))
+        let dir = self.dir(id)?;
+        // Подключённая внешняя папка (без копирования) хранится в instance.toml.
+        if let Ok(text) = std::fs::read_to_string(dir.join("instance.toml"))
+            && let Ok(inst) = toml::from_str::<Instance>(&text)
+            && let Some(ext) = inst.external_game_dir
+        {
+            return Ok(ext);
+        }
+        Ok(dir.join("game"))
     }
     pub fn logs_dir(&self, id: &str) -> Result<PathBuf> {
         Ok(self.dir(id)?.join("logs"))
@@ -218,6 +229,7 @@ impl InstanceStore {
             settings: LaunchOverrides::default(),
             pack_settings: LaunchOverrides::default(),
             last_launch: None,
+            external_game_dir: None,
         };
         self.save(&inst)?;
         Ok(inst)
@@ -280,6 +292,7 @@ impl InstanceStore {
             settings: LaunchOverrides::default(),
             pack_settings: LaunchOverrides::default(),
             last_launch: None,
+            external_game_dir: None,
         };
         self.save(&inst)?;
         Ok(inst)

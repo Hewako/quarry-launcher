@@ -8,8 +8,10 @@ compile_error!(
 
 pub mod account;
 pub mod archive;
+pub mod catalog;
 pub mod download;
 pub mod error;
+pub mod import;
 pub mod install;
 pub mod instance;
 pub mod java;
@@ -17,10 +19,12 @@ pub mod launch;
 pub mod loader;
 pub mod logmask;
 pub mod metadata;
+pub mod mods;
 pub mod net;
 pub mod paths;
 pub mod settings;
 pub mod skin;
+pub mod snapshot;
 
 pub use error::{Error, Result};
 pub use net::USER_AGENT;

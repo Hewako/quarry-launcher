@@ -255,6 +255,7 @@ fn launch_instance(
     id: String,
     quick_play: Option<QuickPlay>,
     full_verify: bool,
+    safe_mode: Option<bool>,
 ) -> CmdResult<()> {
     if state.registry.is_running(&id) {
         return Err(format!("Профиль «{id}» уже запускается или запущен"));
@@ -281,6 +282,7 @@ fn launch_instance(
             LaunchOptions {
                 quick_play,
                 full_verify,
+                safe_mode: safe_mode.unwrap_or(false),
             },
             emit,
         )

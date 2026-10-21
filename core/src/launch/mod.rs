@@ -70,6 +70,44 @@ pub struct LaunchOptions {
     pub quick_play: Option<QuickPlay>,
     /// «Проверить файлы»: полный пересчёт хэшей перед запуском.
     pub full_verify: bool,
+    /// «Безопасный запуск»: моды на время игры откладываются, постоянная конфигурация не меняется.
+    pub safe_mode: bool,
+}
+
+const SAFE_MODE_DIR: &str = "mods.quarry-safe-mode";
+
+/// Если лаунчер закрылся во время безопасного запуска — вернуть моды на место.
+fn recover_safe_mode(game_dir: &std::path::Path) -> Option<String> {
+    let aside = game_dir.join(SAFE_MODE_DIR);
+    let mods = game_dir.join("mods");
+    if !aside.is_dir() {
+        return None;
+    }
+    if mods.exists()
+        && std::fs::read_dir(&mods)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+    {
+        let _ = std::fs::remove_dir(&mods);
+    }
+    if mods.exists() {
+        return Some(format!(
+            "После прошлого безопасного запуска моды остались в {SAFE_MODE_DIR}, а в mods/ уже есть файлы — разберите вручную"
+        ));
+    }
+    std::fs::rename(&aside, &mods).ok()?;
+    Some("Моды после прошлого безопасного запуска возвращены на место".into())
+}
+
+/// Возвращает моды на место при выходе из безопасного запуска (в том числе при ошибке).
+struct SafeModeGuard {
+    game_dir: PathBuf,
+}
+
+impl Drop for SafeModeGuard {
+    fn drop(&mut self) {
+        let _ = recover_safe_mode(&self.game_dir);
+    }
 }
 
 struct Running {
@@ -318,9 +356,10 @@ pub async fn launch(
             },
             exit_code: info.code,
             duration_secs: info.duration_secs,
-            message: info.crashed.then(|| match info.code {
-                Some(c) => format!("игра завершилась с кодом {c}"),
-                None => "игра завершилась аварийно".into(),
+            message: info.crashed.then(|| match (&info.analysis, info.code) {
+                (Some(a), _) => a.title.clone(),
+                (None, Some(c)) => format!("игра завершилась с кодом {c}"),
+                (None, None) => "игра завершилась аварийно".into(),
             }),
             log_file: Some(info.log_file.clone()),
         },
@@ -418,6 +457,37 @@ async fn run(
         cancel: cancel.clone(),
         on_event: Some(on_event.clone()),
     };
+    if let Some(note) = recover_safe_mode(&game_dir) {
+        emit(LaunchEvent::Warning { message: note });
+    }
+    // Mod Doctor до запуска: объявленные конфликты и недостающие моды останавливают запуск
+    // сразу, а не после минуты загрузки.
+    if inst.loader != crate::loader::LoaderKind::Vanilla && !options.safe_mode {
+        let files = crate::mods::inventory(&game_dir, &store.dir(&inst.id)?)?;
+        let report = crate::mods::doctor::check(
+            &files,
+            inst.loader,
+            &inst.game_version,
+            inst.loader_version.as_deref(),
+        );
+        if !report.can_launch {
+            let list: Vec<String> = report
+                .findings
+                .iter()
+                .filter(|f| f.severity == crate::mods::doctor::Severity::Blocking)
+                .map(|f| format!("• {}", f.title))
+                .collect();
+            return Err(Error::invalid(format!(
+                "Mod Doctor нашёл проблемы, из-за которых игра не запустится:\n{}\nИсправьте их на вкладке «Моды» или запустите профиль без модов.",
+                list.join("\n")
+            )));
+        }
+        for f in report.findings.iter().take(3) {
+            emit(LaunchEvent::Warning {
+                message: format!("Mod Doctor: {}", f.title),
+            });
+        }
+    }
     let installed = installer
         .install(version, &inst.game_version, &game_dir)
         .await?;
@@ -508,6 +578,19 @@ async fn run(
         GameEvent::Log { line, .. } => line_cb(LaunchEvent::Log { line }),
         GameEvent::Started { .. } => {}
     });
+    let safe_guard = if options.safe_mode && game_dir.join("mods").is_dir() {
+        let aside = game_dir.join(SAFE_MODE_DIR);
+        std::fs::rename(game_dir.join("mods"), &aside).map_err(|e| Error::io(&aside, e))?;
+        emit(LaunchEvent::Warning {
+            message: "Безопасный запуск: моды отложены на время игры и вернутся после выхода"
+                .into(),
+        });
+        Some(SafeModeGuard {
+            game_dir: game_dir.clone(),
+        })
+    } else {
+        None
+    };
     let proc = process::spawn(&cmd, &log_file, masker, Some(game_cb)).await?;
     registry.set_stop(&inst.id, proc.stopper());
     emit(LaunchEvent::Started {
@@ -515,7 +598,17 @@ async fn run(
         command: preview,
     });
     let _ = account; // аккаунт уже показан событием Account
-    let info = proc.wait().await?;
+    let mut info = proc.wait().await?;
+    drop(safe_guard);
+    if info.crashed && !options.safe_mode {
+        let mut lines = info.tail.clone();
+        if let Some(cr) = &info.crash_report {
+            lines.extend(crate::mods::crash::read_crash_report(cr));
+        }
+        let files = crate::mods::inventory(&game_dir, &store.dir(&inst.id)?).unwrap_or_default();
+        let packages = crate::mods::crash::package_index(&game_dir, &files).unwrap_or_default();
+        info.analysis = Some(crate::mods::crash::analyze(&lines, &files, &packages));
+    }
     emit(LaunchEvent::Exited { info: info.clone() });
     Ok(info)
 }
@@ -671,6 +764,22 @@ mod tests {
         assert!(reg.stop("p"));
         assert!(cancel.is_cancelled());
         assert!(!reg.stop("missing"));
+    }
+
+    #[test]
+    fn safe_mode_mods_come_back() {
+        let d = std::env::temp_dir().join(format!("quarry-safe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join(SAFE_MODE_DIR)).unwrap();
+        std::fs::write(d.join(SAFE_MODE_DIR).join("a.jar"), b"x").unwrap();
+        {
+            let _g = SafeModeGuard {
+                game_dir: d.clone(),
+            };
+        }
+        assert!(d.join("mods/a.jar").exists());
+        assert!(recover_safe_mode(&d).is_none());
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

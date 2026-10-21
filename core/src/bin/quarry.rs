@@ -62,14 +62,45 @@ enum Command {
         /// Проверить хэши всех файлов
         #[arg(long)]
         verify: bool,
+        /// Безопасный запуск: без модов (моды вернутся после выхода)
+        #[arg(long)]
+        safe: bool,
     },
     /// Итоговая команда запуска профиля (без токена и без запуска)
     Preview { id: String },
+    /// Импорт: папка Prism/MultiMC, .mrpack или zip CurseForge
+    Import { path: PathBuf },
+    /// Моды профиля и проверка Mod Doctor
+    Mods {
+        id: String,
+        #[command(subcommand)]
+        action: Option<ModsAction>,
+    },
+    /// Снимки профиля
+    Snapshots {
+        id: String,
+        /// Откатить к снимку с этим ID
+        #[arg(long)]
+        restore: Option<String>,
+    },
     /// Аккаунты
     Account {
         #[command(subcommand)]
         action: AccountAction,
     },
+}
+
+#[derive(Subcommand)]
+enum ModsAction {
+    /// Установить мод с Modrinth (slug или ID) вместе с зависимостями
+    Install { project: String },
+    /// Проверить и установить обновления
+    Update {
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Удалить мод (перед этим создаётся снимок)
+    Remove { file: String },
 }
 
 #[derive(Subcommand)]
@@ -239,6 +270,7 @@ async fn main() -> Result<()> {
             world,
             server,
             verify,
+            safe,
         } => {
             let quick_play = world
                 .map(QuickPlay::Singleplayer)
@@ -283,6 +315,7 @@ async fn main() -> Result<()> {
                 LaunchOptions {
                     quick_play,
                     full_verify: verify,
+                    safe_mode: safe,
                 },
                 emit,
             )
@@ -294,6 +327,165 @@ async fn main() -> Result<()> {
         }
         Command::Preview { id } => {
             println!("{}", launch::preview(&data, &KeyringStore, &id).await?);
+        }
+        Command::Import { path } => {
+            let store = InstanceStore::new(data.clone());
+            let r = if path.is_dir() {
+                quarry_core::import::import_mmc(&store, &path)?
+            } else if path.extension().is_some_and(|e| e == "mrpack") {
+                quarry_core::import::import_mrpack(&store, &path, &Cancel::new()).await?
+            } else {
+                quarry_core::import::import_curseforge(&store, &path)?
+            };
+            println!(
+                "Импортирован профиль «{}» (ID {}): {} · {}",
+                r.instance.name,
+                r.instance.id,
+                r.instance.game_version,
+                r.instance.loader.display()
+            );
+            for n in r.notes {
+                println!("  {n}");
+            }
+            for m in r.manual {
+                println!(
+                    "  скачать вручную: проект {} файл {} — {}",
+                    m.project_id, m.file_id, m.url
+                );
+            }
+        }
+        Command::Mods { id, action } => {
+            let store = InstanceStore::new(data.clone());
+            match action {
+                None => {
+                    let inst = store.get(&id)?;
+                    let files =
+                        quarry_core::mods::inventory(&store.game_dir(&id)?, &store.dir(&id)?)?;
+                    let report = quarry_core::mods::doctor::check(
+                        &files,
+                        inst.loader,
+                        &inst.game_version,
+                        inst.loader_version.as_deref(),
+                    );
+                    for (f, r) in files.iter().zip(&report.mods) {
+                        println!(
+                            "{:<28} {:<14} {:<10} {}",
+                            f.display_name(),
+                            f.primary().map(|m| m.version.as_str()).unwrap_or("?"),
+                            f.source
+                                .as_ref()
+                                .map(|s| format!("{:?}", s.source))
+                                .unwrap_or_else(|| "вручную".into()),
+                            r.state_label
+                        );
+                    }
+                    println!(
+                        "
+Всего {}: без замечаний {}, с предупреждением {}, блокируют запуск {}",
+                        report.total, report.ok, report.warnings, report.blocked
+                    );
+                    for f in &report.findings {
+                        println!(
+                            "{} {}
+   {}
+   основание: {}",
+                            if f.severity == quarry_core::mods::doctor::Severity::Blocking {
+                                "✖"
+                            } else {
+                                "⚠"
+                            },
+                            f.title,
+                            f.detail,
+                            f.evidence
+                        );
+                    }
+                }
+                Some(ModsAction::Install { project }) => {
+                    let plan =
+                        quarry_core::mods::manage::plan_install(&store, &id, &project).await?;
+                    for c in &plan.changes {
+                        println!(
+                            "+ {} {} ({})",
+                            c.title,
+                            c.new_version.clone().unwrap_or_default(),
+                            c.reason
+                        );
+                    }
+                    for n in &plan.notes {
+                        println!("  {n}");
+                    }
+                    let snap = quarry_core::mods::manage::apply(
+                        &store,
+                        &id,
+                        plan,
+                        &format!("Перед установкой {project}"),
+                        &Cancel::new(),
+                    )
+                    .await?;
+                    println!("Готово. Снимок до изменений: {}", snap.id);
+                }
+                Some(ModsAction::Update { apply }) => {
+                    let plan = quarry_core::mods::manage::check_updates(&store, &id).await?;
+                    for c in &plan.changes {
+                        println!(
+                            "~ {} {} → {}",
+                            c.title,
+                            c.old_version.clone().unwrap_or_default(),
+                            c.new_version.clone().unwrap_or_default()
+                        );
+                    }
+                    for n in &plan.notes {
+                        println!("  {n}");
+                    }
+                    if plan.changes.is_empty() {
+                        println!("Обновлений нет.");
+                    } else if apply {
+                        let snap = quarry_core::mods::manage::apply(
+                            &store,
+                            &id,
+                            plan,
+                            "Перед обновлением модов",
+                            &Cancel::new(),
+                        )
+                        .await?;
+                        println!("Обновлено. Снимок до изменений: {}", snap.id);
+                    }
+                }
+                Some(ModsAction::Remove { file }) => {
+                    let snap =
+                        quarry_core::mods::manage::remove(&store, &id, &file, "удалено через CLI")?;
+                    println!(
+                        "Удалено. Вернуть: quarry snapshots {id} --restore {}",
+                        snap.id
+                    );
+                }
+            }
+        }
+        Command::Snapshots { id, restore } => {
+            let store = InstanceStore::new(data.clone());
+            let (dir, game) = (store.dir(&id)?, store.game_dir(&id)?);
+            if let Some(sid) = restore {
+                let before = quarry_core::snapshot::restore(&dir, &game, &sid)?;
+                println!(
+                    "Откат выполнен. Состояние до отката сохранено: {}",
+                    before.id
+                );
+            } else {
+                for s in quarry_core::snapshot::list(&dir)? {
+                    println!(
+                        "{:<44} {}{} (модов {}, конфигов {})",
+                        s.id,
+                        s.reason,
+                        if s.pinned {
+                            " · закреплён"
+                        } else {
+                            ""
+                        },
+                        s.mods,
+                        s.configs
+                    );
+                }
+            }
         }
         Command::Account { action } => {
             let secrets = KeyringStore;

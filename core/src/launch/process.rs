@@ -41,6 +41,9 @@ pub struct ExitInfo {
     pub log_file: PathBuf,
     /// Последние строки вывода (уже маскированные) — для разбора краша.
     pub tail: Vec<String>,
+    /// Разбор причины краша (заполняет сценарий запуска).
+    #[serde(default)]
+    pub analysis: Option<crate::mods::crash::Analysis>,
 }
 
 /// Запущенная игра: ожидание завершения и остановка.
@@ -204,6 +207,7 @@ pub async fn spawn(
             crash_report,
             log_file: log_path,
             tail,
+            analysis: None,
         })
     });
 
