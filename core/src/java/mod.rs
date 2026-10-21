@@ -328,16 +328,12 @@ impl Requirement {
         }
     }
 
-    /// Подходит ли установленная Java. Java 8 нужна ровно 8: старые версии и моды
-    /// ломаются на 9+ (модульная система). Для остальных подходит та же или новее.
+    /// Подходит ли установленная Java: ровно та мажорная версия, что в `javaVersion`, и нужная
+    /// архитектура. Как в официальном лаунчере: на более новой Java игры и моды могут ломаться
+    /// (модули Java 9+, удалённые API), поэтому «новее» автоматически не выбирается — нужная
+    /// версия скачивается. Другую Java можно указать в настройках профиля вручную.
     pub fn accepts(&self, j: &JavaInstall) -> bool {
-        let arch_ok = j.arch() == Some(self.arch);
-        let version_ok = if self.major <= 8 {
-            j.major == 8
-        } else {
-            j.major >= self.major
-        };
-        arch_ok && version_ok
+        j.arch() == Some(self.arch) && j.major == self.major
     }
 }
 
@@ -348,33 +344,19 @@ pub struct Choice {
     pub reason: String,
 }
 
-/// Выбрать Java: сначала точное совпадение мажорной версии (скачанные лаунчером — первыми),
-/// потом ближайшая новее. `None` — подходящей нет, нужно скачать.
+/// Выбрать Java ровно нужной мажорной версии (скачанные лаунчером — первыми).
+/// `None` — подходящей нет, нужно скачать.
 pub fn choose(req: &Requirement, installs: &[JavaInstall]) -> Option<Choice> {
     let mut ok: Vec<&JavaInstall> = installs.iter().filter(|j| req.accepts(j)).collect();
-    ok.sort_by_key(|j| {
-        (
-            j.major != req.major,
-            j.major,
-            j.source != JavaSource::Managed,
-        )
-    });
+    // Скачанные лаунчером — первыми: их версия и происхождение известны.
+    ok.sort_by_key(|j| j.source != JavaSource::Managed);
     let best = ok.first()?;
-    let mut reason = if best.major == req.major {
-        format!(
-            "нужна Java {} ({}) — найдена {}",
-            req.major,
-            req.reason,
-            best.label()
-        )
-    } else {
-        format!(
-            "нужна Java {} ({}) — точной версии нет, выбрана ближайшая новее: {}",
-            req.major,
-            req.reason,
-            best.label()
-        )
-    };
+    let mut reason = format!(
+        "нужна Java {} ({}) — найдена {}",
+        req.major,
+        req.reason,
+        best.label()
+    );
     if let Some(a) = &req.arch_reason {
         reason.push_str("; ");
         reason.push_str(a);
@@ -568,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_preferred_then_closest_newer() {
+    fn only_exact_major_is_chosen() {
         let req =
             Requirement::for_platform(21, "javaVersion".into(), true, Os::Linux, Arch::X86_64);
         let installs = [
@@ -576,9 +558,10 @@ mod tests {
             java(22, "amd64", JavaSource::System),
             java(17, "amd64", JavaSource::System),
         ];
-        let c = choose(&req, &installs).unwrap();
-        assert_eq!(c.install.major, 22);
-        assert!(c.reason.contains("ближайшая новее"));
+        assert!(
+            choose(&req, &installs).is_none(),
+            "новее нужной — не выбирается, скачиваем 21"
+        );
         let mut with_exact = installs.to_vec();
         with_exact.push(java(21, "amd64", JavaSource::System));
         with_exact.push(java(21, "amd64", JavaSource::Managed));

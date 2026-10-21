@@ -67,6 +67,33 @@ pub async fn versions(kind: LoaderKind, game: &str) -> Result<Vec<LoaderVersion>
     }
 }
 
+/// Сравнение версий загрузчиков: `0.29.2` > `0.25.0-beta.1` > `0.24.0`; пред-релиз
+/// (`-beta.N`) младше релиза с теми же числами. Для версий игры не используется —
+/// там порядок берётся из манифеста.
+pub fn compare_loader_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    fn split(v: &str) -> (Vec<u64>, Option<Vec<u64>>) {
+        let (main, pre) = match v.split_once('-') {
+            Some((m, p)) => (m, Some(p)),
+            None => (v, None),
+        };
+        let nums = |s: &str| -> Vec<u64> {
+            s.split(|c: char| !c.is_ascii_digit())
+                .filter(|p| !p.is_empty())
+                .filter_map(|p| p.parse().ok())
+                .collect()
+        };
+        (nums(main), pre.map(nums))
+    }
+    let (am, ap) = split(a);
+    let (bm, bp) = split(b);
+    am.cmp(&bm).then_with(|| match (ap, bp) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(x), Some(y)) => x.cmp(&y),
+    })
+}
+
 /// Версия загрузчика по умолчанию — последняя стабильная, иначе последняя.
 pub fn default_version(list: &[LoaderVersion]) -> Option<&LoaderVersion> {
     list.iter().find(|v| v.stable).or_else(|| list.first())
@@ -208,7 +235,8 @@ mod quilt {
     pub async fn versions(game: &str) -> Result<Vec<LoaderVersion>> {
         let url = format!("{META}/versions/loader/{}", urlencoding::encode(game));
         let list: Vec<LoaderEntry> = crate::net::get_json(&url).await?;
-        Ok(list
+        // meta.quiltmc.org отдаёт версии не по порядку (проверено 21.10.2026) — сортируем.
+        let mut out: Vec<LoaderVersion> = list
             .into_iter()
             .map(|e| LoaderVersion {
                 stable: e
@@ -217,7 +245,9 @@ mod quilt {
                     .unwrap_or_else(|| is_stable(&e.loader.version)),
                 version: e.loader.version,
             })
-            .collect())
+            .collect();
+        out.sort_by(|a, b| compare_loader_versions(&b.version, &a.version));
+        Ok(out)
     }
 
     #[cfg(test)]
@@ -239,6 +269,34 @@ mod tests {
         assert!(LoaderKind::parse("rift").is_err());
         assert!(LoaderKind::NeoForge.is_supported());
         assert!(!LoaderKind::Forge.is_supported());
+    }
+
+    #[test]
+    fn loader_version_order() {
+        let mut v = vec![
+            "0.20.0-beta.9",
+            "0.24.0",
+            "0.25.0-beta.1",
+            "0.20.0-beta.10",
+            "0.29.2",
+            "0.16.1-beta.3",
+        ];
+        v.sort_by(|a, b| compare_loader_versions(b, a));
+        assert_eq!(
+            v,
+            [
+                "0.29.2",
+                "0.25.0-beta.1",
+                "0.24.0",
+                "0.20.0-beta.10",
+                "0.20.0-beta.9",
+                "0.16.1-beta.3"
+            ]
+        );
+        assert_eq!(
+            compare_loader_versions("1.0", "1.0-beta"),
+            std::cmp::Ordering::Greater
+        );
     }
 
     #[test]
