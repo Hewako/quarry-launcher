@@ -35,8 +35,8 @@ cargo build -p quarry-core --features dev-launch && ./target/debug/quarry launch
 Ветка `stage-0-baseline` построена от `origin/main`, текущее (уже без секрета) состояние
 закоммичено заново. Ветка `main` не тронута и **по-прежнему содержит секрет**.
 
-Коммиты `stage-0-baseline`: `15e8df7` `64c6525` `47c1f82` `55ad4e2` `e1c7fcc` (ядро как было),
-`9c92096` (монорепозиторий, workspace, GPL-3.0, единая версия 0.1.0), `docs` — журнал и сверка API.
+Коммиты `stage-0-baseline`: `7492854` `6da4cdb` `39e5d88` `0cf18bb` `c3bd1e1` (ядро как было),
+`8ffd756` (монорепозиторий, workspace, GPL-3.0, единая версия 0.1.0), `docs` — журнал и сверка API.
 
 Базовая линия (до исправлений), macOS arm64, rustc 1.99.1, node 26.12.0:
 
@@ -50,7 +50,7 @@ cargo build -p quarry-core --features dev-launch && ./target/debug/quarry launch
 
 ## Этап 1 — починить и очистить ✅ (ветка `stage-1-cleanup`)
 
-Коммиты: `e98e5a9` (ядро), `9792040` + `81cc620` (находки ручного запуска), `2909e12` (интерфейс),
+Коммиты: `0a74459` (ядро), `060850d` + `ad21b7a` (находки ручного запуска), `dfb4737` (интерфейс),
 затем CI и документация.
 
 ### Находки ревью
@@ -114,7 +114,7 @@ cargo build -p quarry-core --features dev-launch && ./target/debug/quarry launch
 
 1. **Секрет Ely.by в локальной истории.** Ветка `main` содержит `client_secret` Ely.by в трёх
    непубликованных коммитах. Перед любым `git push` переставьте `main` на чистую ветку
-   (например, `git branch -f main stage-2-accounts`) и **смените секрет в кабинете Ely.by**.
+   (уже сделано 21.10.2026: старая ветка переименована в `local-old-main-with-ely-secret` и не публикуется) и **смените секрет в кабинете Ely.by**.
 2. **Токен Ely.by в открытом виде** в `~/.quarry/active_account.toml` (записан старой версией).
    Новый код этот файл не читает. Удалите файл и завершите сессию в кабинете Ely.by.
 3. Регистрация приложения Microsoft и заявка Mojang — `docs/MICROSOFT_SETUP.md`.
