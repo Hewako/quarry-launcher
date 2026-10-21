@@ -1,6 +1,7 @@
 //! Моды профиля: инвентаризация (метаданные из JAR, хэши, источник из pack.lock),
 //! включение/выключение, Mod Doctor и разбор крашей.
 
+pub mod bisect;
 pub mod crash;
 pub mod doctor;
 pub mod groups;

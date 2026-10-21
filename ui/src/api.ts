@@ -104,6 +104,8 @@ export const diagnostics = {
 
 export interface PackUpdatePlan { from: string; to: string; add: string[]; update: string[]; remove: string[]; kept_mods: string[]; kept_configs: string[]; optional: string[]; game_change?: string }
 
+export interface Bisect { suspects: string[]; disabled: string[]; half: string[]; round: number; snapshot: string }
+
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
   max_memory_mb: Resolved<number>;
@@ -294,6 +296,9 @@ export const mods = {
   addFiles: (id: string, paths: string[]) => invoke<{ file_name: string; title: string; known: boolean }[]>("mods_add_files", { id, paths }),
   search: (id: string, query: string, kind: ProjectKind, offset = 0, category = "", source: CatalogSource = "modrinth") =>
     invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset, category: category || null, source }),
+  bisectStatus: (id: string) => invoke<Bisect | null>("bisect_status", { id }),
+  bisectStep: (id: string, action: "start" | "answer" | "cancel", crashed?: boolean) =>
+    invoke<{ kind: "next"; state: Bisect } | { kind: "found"; file: string } | null>("bisect_step", { id, action, crashed: crashed ?? null }),
   groups: (id: string) => invoke<{ names: string[]; groups: Record<string, string> }>("mods_groups", { id }),
   setGroup: (id: string, file: string, group: string | null) => invoke<void>("mods_set_group", { id, file, group }),
   toggleGroup: (id: string, group: string, enabled: boolean) => invoke<string[]>("mods_toggle_group", { id, group, enabled }),

@@ -1436,6 +1436,35 @@ fn first_run_done(state: State<AppState>, language: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
+fn bisect_status(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Option<quarry_core::mods::bisect::Bisect>> {
+    quarry_core::mods::bisect::load(&InstanceStore::new(state.data.clone()), &id).map_err(err)
+}
+
+/// Начать (`start`), ответить (`answer`) или прекратить поиск виновника краша.
+#[tauri::command]
+fn bisect_step(
+    state: State<AppState>,
+    id: String,
+    action: String,
+    crashed: Option<bool>,
+) -> CmdResult<Option<quarry_core::mods::bisect::Step>> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    use quarry_core::mods::bisect;
+    match action.as_str() {
+        "start" => bisect::start(&store, &id).map(|b| Some(bisect::Step::Next { state: b })),
+        "answer" => bisect::answer(&store, &id, crashed.unwrap_or(true)).map(Some),
+        _ => bisect::cancel(&store, &id).map(|_| None),
+    }
+    .map_err(err)
+}
+
+#[tauri::command]
 fn servers_list(
     state: State<AppState>,
     id: String,
@@ -1695,6 +1724,8 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            bisect_status,
+            bisect_step,
             mrpack_preview,
             export_mrpack,
             pack_update_plan,

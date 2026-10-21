@@ -2,7 +2,7 @@
 // Любое изменение модов — через предпросмотр и автоматический снимок.
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, errText, mods, sizeText, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
+import { api, errText, mods, sizeText, type Bisect, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { t } from "../i18n";
 
@@ -191,9 +191,11 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
 
   const [groups, setGroups] = useState<{ names: string[]; groups: Record<string, string> }>({ names: [], groups: {} });
   const [grouping, setGrouping] = useState(false);
+  const [bisect, setBisect] = useState<Bisect | null>(null);
   const load = useCallback(() => {
     mods.view(inst.id).then((d) => { setData(d); setError(""); }).catch((e) => setError(errText(e)));
     mods.groups(inst.id).then(setGroups).catch(() => {});
+    mods.bisectStatus(inst.id).then(setBisect).catch(() => setBisect(null));
   }, [inst.id]);
   useEffect(load, [load]);
   const refreshUpdates = useCallback(() => {
@@ -247,6 +249,26 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   if (error) return <div className="alert err"><span>{error}</span></div>;
   if (!data) return <p className="muted"><span className="spinner" /> {t("Проверяем моды…")}</p>;
 
+  const bisectStep = async (action: "start" | "answer" | "cancel", crashed?: boolean) => {
+    if (action === "start" && !(await dialog.confirm({
+      title: t("Найти мод, из-за которого падает игра?"),
+      body: t("Лаунчер будет по очереди выключать половину модов (вместе с теми, кому они нужны). После каждого шага запустите игру и ответьте, повторился ли краш. Обычно хватает 3–6 запусков. Перед началом сохраняется снимок."),
+      confirm: t("Начать"),
+    }))) return;
+    try {
+      const r = await mods.bisectStep(inst.id, action, crashed);
+      load();
+      if (r?.kind === "found") {
+        const off = await dialog.confirm({
+          title: t("Вероятный виновник: {0}", r.file),
+          body: t("Все моды снова включены. Выключить этот мод? Его можно будет включить обратно в любой момент."),
+          confirm: t("Выключить"),
+          cancel: t("Оставить"),
+        });
+        if (off) await toggle(r.file, false);
+      }
+    } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); load(); }
+  };
   const toggleGroup = async (g: string, enabled: boolean) => {
     try { await mods.toggleGroup(inst.id, g, enabled); load(); } catch (e) { await dialog.alert(t("Не получилось"), errText(e)); }
   };
@@ -302,6 +324,17 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         <div className="kpi warn"><b>{r.warnings}</b><span>{t("есть предупреждение")}</span></div>
         <div className="kpi err"><b>{r.blocked}</b><span>{t("блокирует запуск")}</span></div>
       </div>
+      {bisect && (
+        <div className="alert warn" style={{ marginBottom: 12 }}>
+          <div className="h">{t("Поиск виновника краша · шаг {0}", bisect.round)}</div>
+          <span>{t("Выключено модов: {0}. Подозреваемых осталось: {1}. Запустите игру и ответьте:", bisect.disabled.length, bisect.suspects.length)}</span>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn" disabled={running} onClick={() => bisectStep("answer", true)}>{t("Игра снова упала")}</button>
+            <button className="btn" disabled={running} onClick={() => bisectStep("answer", false)}>{t("Игра работает")}</button>
+            <button className="btn link small" disabled={running} onClick={() => bisectStep("cancel")}>{t("Прекратить поиск")}</button>
+          </div>
+        </div>
+      )}
       {data.files.length > 0 && (
         <div className="groupbar" role="group" aria-label={t("Наборы модов")}>
           <span className="muted small">{t("Наборы:")}</span>
@@ -316,6 +349,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
               </label>
             );
           })}
+          {!bisect && data.files.filter((f) => f.enabled).length > 1 && <button className="btn link small" disabled={running} onClick={() => bisectStep("start")}>{t("Найти виновника краша…")}</button>}
           <button className="btn link small" disabled={grouping} onClick={autoGroups}>{grouping ? t("Раскладываем…") : t("Разложить автоматически")}</button>
         </div>
       )}
