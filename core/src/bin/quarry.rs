@@ -1,233 +1,357 @@
+//! CLI лаунчера: установка, проверка и запуск профилей без интерфейса.
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use quarry_core::account::{load_active_account, AccountKind};
-use quarry_core::profile::ProfileStore;
+use quarry_core::account::{AccountStore, KeyringStore, Provider, account_key};
+use quarry_core::download::Cancel;
+use quarry_core::instance::InstanceStore;
+use quarry_core::launch::{self, LaunchEvent, LaunchOptions, LaunchRegistry, args::QuickPlay};
+use quarry_core::loader::{self, LoaderKind};
+use quarry_core::paths::DataDir;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "quarry", version, about = "Minecraft Java launcher")]
+#[command(
+    name = "quarry",
+    version,
+    about = "Quarry — открытый лаунчер Minecraft Java Edition"
+)]
 struct Cli {
+    /// Папка данных (по умолчанию ~/.quarry)
+    #[arg(long, global = true)]
+    root: Option<PathBuf>,
     #[command(subcommand)]
-    command: Commands,
+    command: Command,
 }
 
 #[derive(Subcommand)]
-enum Commands {
-    Profile {
-        #[command(subcommand)]
-        action: ProfileAction,
-    },
+enum Command {
+    /// Список версий Minecraft из манифеста Mojang
     Versions {
         #[arg(long)]
-        all: bool,
+        snapshots: bool,
+        /// Показать также alpha/beta
+        #[arg(long)]
+        old: bool,
         #[arg(long, default_value = "30")]
         limit: usize,
     },
-    Launch {
-        profile_id: String,
-        #[arg(short, long, default_value = "Player")]
-        username: String,
-        #[arg(long)]
-        root: Option<PathBuf>,
-        /// Использовать аккаунт Ely.by (включает authlib-injector)
-        #[arg(long)]
-        ely: bool,
+    /// Версии загрузчика для версии игры
+    Loaders {
+        loader: String,
+        game_version: String,
     },
-    /// Войти в аккаунт Ely.by через браузер
-    LoginEly,
-    /// Скачать скин и аватар Ely.by по нику
-    SkinGet {
-        username: String,
+    /// Найденные на компьютере Java
+    Java,
+    /// Профили
+    Instance {
+        #[command(subcommand)]
+        action: InstanceAction,
+    },
+    /// Подготовить и запустить профиль
+    Launch {
+        id: String,
+        /// Сразу в мир (имя папки в saves/)
+        #[arg(long, conflicts_with = "server")]
+        world: Option<String>,
+        /// Сразу на сервер (адрес[:порт])
+        #[arg(long)]
+        server: Option<String>,
+        /// Проверить хэши всех файлов
+        #[arg(long)]
+        verify: bool,
+    },
+    /// Аккаунты
+    Account {
+        #[command(subcommand)]
+        action: AccountAction,
     },
 }
 
 #[derive(Subcommand)]
-enum ProfileAction {
+enum InstanceAction {
     Create {
         name: String,
         #[arg(short, long)]
         version: String,
+        #[arg(long, default_value = "vanilla")]
+        loader: String,
         #[arg(long)]
-        loader: Option<String>,
-        #[arg(long)]
-        root: Option<PathBuf>,
+        loader_version: Option<String>,
     },
-    List {
-        #[arg(long)]
-        root: Option<PathBuf>,
-    },
-    Delete {
+    List,
+    /// Убрать профиль в корзину (миры сохраняются)
+    Trash {
         id: String,
-        #[arg(long)]
-        root: Option<PathBuf>,
     },
 }
 
-fn data_root(root: Option<PathBuf>) -> Result<PathBuf> {
-    let r = root
-        .or_else(|| dirs::home_dir().map(|h| h.join(".quarry")))
+#[derive(Subcommand)]
+enum AccountAction {
+    List,
+    /// Вход Microsoft (код на microsoft.com/link)
+    LoginMicrosoft,
+    /// Вход Ely.by (только при Microsoft-аккаунте с купленной игрой)
+    LoginEly,
+    /// Выйти: provider = microsoft | elyby
+    Logout {
+        provider: String,
+        uuid: String,
+    },
+}
+
+fn data_dir(root: Option<PathBuf>) -> Result<DataDir> {
+    let root = root
+        .or_else(DataDir::default_root)
         .context("Не удалось определить домашнюю папку")?;
-    std::fs::create_dir_all(&r)?;
-    Ok(r)
+    Ok(DataDir::open(root)?)
 }
 
-fn to_anyhow(e: Box<dyn std::error::Error + Send + Sync>) -> anyhow::Error {
-    anyhow::anyhow!("{e}")
-}
-
-async fn ensure_authlib_injector(root: &PathBuf) -> Result<PathBuf> {
-    let cache_dir = root.join("libraries");
-    std::fs::create_dir_all(&cache_dir)?;
-    let jar_path = cache_dir.join("authlib-injector.jar");
-
-    if jar_path.exists() {
-        return Ok(jar_path);
-    }
-
-    println!("Скачиваем authlib-injector.jar...");
-    let client = reqwest::Client::new();
-    
-    // Получаем URL последней версии с официального API
-    let meta_resp = client.get("https://authlib-injector.yushi.moe/artifact/latest.json")
-        .send().await?
-        .json::<serde_json::Value>().await?;
-    
-    let download_url = meta_resp["download_url"].as_str()
-        .context("Не удалось найти download_url в ответе API")?;
-
-    let bytes = client.get(download_url).send().await?.bytes().await?;
-    
-    if bytes.len() < 2 || &bytes[..2] != b"PK" {
-        anyhow::bail!("Скачанный файл не является JAR-архивом");
-    }
-
-    std::fs::write(&jar_path, &bytes)?;
-    println!("authlib-injector скачан: {}", jar_path.display());
-    Ok(jar_path)
+fn mb(bytes: u64) -> f64 {
+    bytes as f64 / 1_048_576.0
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let data = data_dir(cli.root)?;
     match cli.command {
-        Commands::Versions { all, limit } => {
-            let manifest = quarry_core::metadata::fetch_manifest().await.map_err(to_anyhow)?;
-            let filtered = quarry_core::metadata::filter_versions(&manifest.versions, all);
-            println!("{:<25} {:<15} {}", "ID", "Тип", "Дата релиза");
-            for v in filtered.iter().take(limit) {
-                let date = v.release_time.get(0..10).unwrap_or(&v.release_time);
-                println!("{:<25} {:<15} {}", v.id, v.version_type, date);
+        Command::Versions {
+            snapshots,
+            old,
+            limit,
+        } => {
+            let (m, fresh) = quarry_core::metadata::manifest(&data).await?;
+            if fresh == quarry_core::metadata::Freshness::Cached {
+                eprintln!("Нет сети — показан сохранённый список.");
             }
-            println!("\nВсего: {}", filtered.len());
+            println!("{:<24} {:<10} Дата", "Версия", "Тип");
+            let list = m.filtered(snapshots, old);
+            for v in list.iter().take(limit) {
+                println!(
+                    "{:<24} {:<10} {}",
+                    v.id,
+                    v.kind,
+                    v.release_time.get(..10).unwrap_or("")
+                );
+            }
+            println!("\nВсего: {}", list.len());
         }
-        Commands::SkinGet { username } => {
-            println!("Скачиваем скин для '{}'...", username);
-            match quarry_core::skin::download_ely_skin(&username).await {
-                Ok(path) => println!("Скин сохранен: {}", path.display()),
-                Err(e) => eprintln!("Ошибка скачивания скина: {:#}", e),
+        Command::Loaders {
+            loader,
+            game_version,
+        } => {
+            let kind = LoaderKind::parse(&loader)?;
+            let list = loader::versions(kind, &game_version).await?;
+            if list.is_empty() {
+                println!(
+                    "{} не поддерживает Minecraft {game_version}",
+                    kind.display()
+                );
             }
-            match quarry_core::skin::download_ely_avatar(&username).await {
-                Ok(path) => println!("Аватарка сохранена: {}", path.display()),
-                Err(e) => eprintln!("Ошибка создания аватарки: {:#}", e),
+            for v in list.iter().take(20) {
+                println!(
+                    "{}{}",
+                    v.version,
+                    if v.stable {
+                        ""
+                    } else {
+                        "  (нестабильная)"
+                    }
+                );
             }
         }
-        Commands::LoginEly => {
-            println!("Запуск авторизации Ely.by...");
-            match quarry_core::account::ely::login().await {
-                Ok(acc) => {
-                    println!("Успешный вход!");
-                    println!("Ник: {}", acc.username);
-                    println!("UUID: {}", acc.uuid);
-                    println!("Токен сохранён.");
+        Command::Java => {
+            for j in quarry_core::java::discover(Some(&data)).await {
+                println!(
+                    "Java {:<3} {:<40} {:?}  {}",
+                    j.major,
+                    j.label(),
+                    j.source,
+                    j.path.display()
+                );
+            }
+        }
+        Command::Instance { action } => {
+            let store = InstanceStore::new(data.clone());
+            match action {
+                InstanceAction::Create {
+                    name,
+                    version,
+                    loader: l,
+                    loader_version,
+                } => {
+                    let kind = LoaderKind::parse(&l)?;
+                    let lv =
+                        loader::resolve_version(kind, &version, loader_version.as_deref()).await?;
+                    let i = store.create(&name, &version, kind, lv)?;
+                    println!(
+                        "Создан профиль «{}» (ID {}): Minecraft {} · {}{}",
+                        i.name,
+                        i.id,
+                        i.game_version,
+                        i.loader.display(),
+                        i.loader_version
+                            .map(|v| format!(" {v}"))
+                            .unwrap_or_default()
+                    );
                 }
-                Err(e) => eprintln!("Ошибка входа: {:#}", e),
-            }
-        }
-        Commands::Launch { profile_id, username, root, ely } => {
-            let root = data_root(root)?;
-            let store = ProfileStore::new(root.clone());
-            let profile = store.get(&profile_id).map_err(to_anyhow)?;
-            let game_dir = store.game_dir(&profile_id);
-            println!("Запускаем '{}' ({})", profile.name, profile.mc_version);
-
-            let (auth_name, auth_uuid, auth_token, authlib_jar) = if ely {
-                let acc = load_active_account()?.context("Аккаунт Ely.by не найден. Сначала выполните login-ely.")?;
-                if acc.kind != AccountKind::ElyBy {
-                    anyhow::bail!("Активный аккаунт не является Ely.by");
-                }
-                let jar = ensure_authlib_injector(&root).await?;
-                let token = quarry_core::account::get_token_from_keyring(&format!("ely_{}", acc.uuid))?;
-                (acc.username, acc.uuid, token, Some(jar))
-            } else {
-                (username, "00000000000000000000000000000001".into(), "0".into(), None)
-            };
-
-            let inst = quarry_core::instance::prepare(
-                &profile.mc_version,
-                &root,
-                &game_dir,
-                profile.loader.as_deref(),
-            )
-            .await
-            .map_err(to_anyhow)?;
-
-            let cfg = quarry_core::launch::LaunchConfig {
-                java_path: inst.java_path.clone(),
-                main_class: inst.main_class.clone(),
-                classpath: inst.classpath.clone(),
-                game_dir: inst.game_dir.clone(),
-                assets_dir: inst.assets_dir.clone(),
-                natives_dir: inst.natives_dir.clone(),
-                version_id: inst.version_id.clone(),
-                username: auth_name,
-                uuid: auth_uuid,
-                access_token: auth_token,
-                version_type: "release".into(),
-                asset_index: inst.asset_index.clone(),
-                min_memory_mb: 2048,
-                max_memory_mb: 4096,
-                authlib_injector_jar: authlib_jar,
-                required_java: inst.required_java,
-            };
-            let cmd = quarry_core::launch::build_command(&cfg);
-
-            let status = std::process::Command::new(&cmd.program)
-                .args(&cmd.args)
-                .current_dir(&inst.game_dir)
-                .status()
-                .context("Не удалось запустить процесс игры")?;
-            println!("Игра завершилась с кодом {:?}", status.code());
-        }
-        Commands::Profile { action } => match action {
-            ProfileAction::Create { name, version, loader, root } => {
-                let root = data_root(root)?;
-                let store = ProfileStore::new(root);
-                let p = store.create(&name, &version, loader.as_deref()).map_err(to_anyhow)?;
-                match &p.loader {
-                    Some(l) => println!("Создан профиль '{}' (ID: {}) с загрузчиком {}", p.name, p.id, l),
-                    None => println!("Создан профиль '{}' (ID: {})", p.name, p.id),
-                }
-            }
-            ProfileAction::List { root } => {
-                let root = data_root(root)?;
-                let store = ProfileStore::new(root);
-                let list = store.list().map_err(to_anyhow)?;
-                if list.is_empty() {
-                    println!("Профилей нет.");
-                } else {
-                    println!("{:<20} {:<25} {}", "ID", "Имя", "Версия");
-                    for p in list {
-                        println!("{:<20} {:<25} {}", p.id, p.name, p.mc_version);
+                InstanceAction::List => {
+                    let (list, broken) = store.list()?;
+                    if list.is_empty() && broken.is_empty() {
+                        println!("Профилей нет.");
+                    }
+                    for i in list {
+                        let last = i
+                            .last_launch
+                            .map(|l| format!("{:?}", l.outcome))
+                            .unwrap_or_else(|| "ещё не запускался".into());
+                        println!(
+                            "{:<24} {:<28} {:<10} {:<8} {}",
+                            i.id,
+                            i.name,
+                            i.game_version,
+                            i.loader.display(),
+                            last
+                        );
+                    }
+                    for b in broken {
+                        eprintln!("Не прочитан {}: {}", b.dir.display(), b.reason);
                     }
                 }
+                InstanceAction::Trash { id } => {
+                    let to = store.trash(&id)?;
+                    println!("Профиль убран в корзину: {}", to.display());
+                }
             }
-            ProfileAction::Delete { id, root } => {
-                let root = data_root(root)?;
-                let store = ProfileStore::new(root);
-                store.delete(&id).map_err(to_anyhow)?;
-                println!("Профиль '{}' удалён", id);
+        }
+        Command::Launch {
+            id,
+            world,
+            server,
+            verify,
+        } => {
+            let quick_play = world
+                .map(QuickPlay::Singleplayer)
+                .or(server.map(QuickPlay::Multiplayer));
+            let emit: launch::LaunchEventFn = Arc::new(|e| match e {
+                LaunchEvent::Stage { label, .. } => eprintln!("→ {label}"),
+                LaunchEvent::Progress { progress: p, .. } => {
+                    eprint!(
+                        "\r   {}/{} файлов, {:.1}/{:.1} МБ   ",
+                        p.files_done,
+                        p.files_total,
+                        mb(p.bytes_done),
+                        mb(p.bytes_total)
+                    );
+                    let _ = std::io::stderr().flush();
+                    if p.files_done == p.files_total {
+                        eprintln!();
+                    }
+                }
+                LaunchEvent::Account { provider, name } => {
+                    eprintln!("Аккаунт: {name} ({provider})")
+                }
+                LaunchEvent::Java { label, reason } => eprintln!("Java: {label}\n   {reason}"),
+                LaunchEvent::Warning { message } => eprintln!("⚠ {message}"),
+                LaunchEvent::Started { pid, command } => {
+                    eprintln!("Игра запущена (PID {:?})\n   {command}", pid)
+                }
+                LaunchEvent::Log { line } => println!("{line}"),
+                LaunchEvent::Exited { info } => eprintln!(
+                    "Игра завершилась: код {:?}, {} с{}",
+                    info.code,
+                    info.duration_secs,
+                    if info.crashed { " — краш" } else { "" }
+                ),
+            });
+            let registry = LaunchRegistry::default();
+            let info = launch::launch(
+                &data,
+                &KeyringStore,
+                &registry,
+                &id,
+                LaunchOptions {
+                    quick_play,
+                    full_verify: verify,
+                },
+                emit,
+            )
+            .await?;
+            eprintln!("Лог: {}", info.log_file.display());
+            if let Some(cr) = info.crash_report {
+                eprintln!("Crash report: {}", cr.display());
             }
-        },
+        }
+        Command::Account { action } => {
+            let secrets = KeyringStore;
+            let store = AccountStore::new(&data, &secrets);
+            match action {
+                AccountAction::List => {
+                    for a in store.list()? {
+                        println!(
+                            "{:<10} {:<20} {}  {}",
+                            a.provider.display(),
+                            a.name,
+                            a.uuid,
+                            match (a.provider, a.owns_java_edition) {
+                                (Provider::Microsoft, true) => "Java Edition куплена",
+                                (Provider::Microsoft, false) => "Java Edition НЕ куплена",
+                                (Provider::ElyBy, _) => "только совместимые серверы",
+                            }
+                        );
+                    }
+                }
+                AccountAction::LoginMicrosoft => {
+                    let code = quarry_core::account::microsoft::start_device_code().await?;
+                    println!(
+                        "Откройте {} и введите код {}",
+                        code.verification_uri, code.user_code
+                    );
+                    let _ = open::that(&code.verification_uri);
+                    let acc = quarry_core::account::microsoft::complete_login(
+                        &store,
+                        &code,
+                        &Cancel::new(),
+                    )
+                    .await?;
+                    println!(
+                        "Вход выполнен: {} — {}",
+                        acc.name,
+                        if acc.owns_java_edition {
+                            "Java Edition куплена"
+                        } else {
+                            "Java Edition не куплена"
+                        }
+                    );
+                }
+                AccountAction::LoginEly => {
+                    let acc = quarry_core::account::ely::login(
+                        &store,
+                        |url| {
+                            println!("Открываем браузер для входа Ely.by…");
+                            open::that(url).map_err(|e| {
+                                quarry_core::Error::Auth(format!("Не удалось открыть браузер: {e}"))
+                            })
+                        },
+                        &Cancel::new(),
+                    )
+                    .await?;
+                    println!("Вход Ely.by: {} (только совместимые серверы)", acc.name);
+                }
+                AccountAction::Logout { provider, uuid } => {
+                    let p = match provider.as_str() {
+                        "microsoft" => Provider::Microsoft,
+                        "elyby" => Provider::ElyBy,
+                        other => anyhow::bail!("Неизвестный провайдер: {other}"),
+                    };
+                    store.remove(&account_key(p, &uuid))?;
+                    println!("Аккаунт удалён из лаунчера.");
+                }
+            }
+        }
     }
     Ok(())
 }

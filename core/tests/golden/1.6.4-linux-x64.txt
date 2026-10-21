@@ -1,0 +1,19 @@
+program: /java/bin/java
+cwd: /q/instances/test/game
+-Djava.library.path=/q/cache/natives/test
+-cp
+/q/cache/libraries/net/sf/jopt-simple/jopt-simple/4.5/jopt-simple-4.5.jar:/q/cache/libraries/com/paulscode/codecjorbis/20101023/codecjorbis-20101023.jar:/q/cache/libraries/com/paulscode/codecwav/20101023/codecwav-20101023.jar:/q/cache/libraries/com/paulscode/libraryjavasound/20101123/libraryjavasound-20101123.jar:/q/cache/libraries/com/paulscode/librarylwjglopenal/20100824/librarylwjglopenal-20100824.jar:/q/cache/libraries/com/paulscode/soundsystem/20120107/soundsystem-20120107.jar:/q/cache/libraries/argo/argo/2.25_fixed/argo-2.25_fixed.jar:/q/cache/libraries/org/bouncycastle/bcprov-jdk15on/1.47/bcprov-jdk15on-1.47.jar:/q/cache/libraries/com/google/guava/guava/14.0/guava-14.0.jar:/q/cache/libraries/org/apache/commons/commons-lang3/3.1/commons-lang3-3.1.jar:/q/cache/libraries/commons-io/commons-io/2.4/commons-io-2.4.jar:/q/cache/libraries/net/java/jinput/jinput/2.0.5/jinput-2.0.5.jar:/q/cache/libraries/net/java/jutils/jutils/1.0.0/jutils-1.0.0.jar:/q/cache/libraries/com/google/code/gson/gson/2.2.2/gson-2.2.2.jar:/q/cache/libraries/org/lwjgl/lwjgl/lwjgl/2.9.0/lwjgl-2.9.0.jar:/q/cache/libraries/org/lwjgl/lwjgl/lwjgl_util/2.9.0/lwjgl_util-2.9.0.jar:/q/cache/versions/1.6.4/1.6.4.jar
+-Xms4096M
+-Xmx4096M
+-XX:+UseG1GC
+net.minecraft.client.main.Main
+--username
+Steve
+--session
+token:SECRET-ACCESS-TOKEN-0123456789:0123456789abcdef0123456789abcdef
+--version
+1.6.4
+--gameDir
+/q/instances/test/game
+--assetsDir
+/q/cache/assets

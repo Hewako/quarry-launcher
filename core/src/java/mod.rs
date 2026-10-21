@@ -1,117 +1,599 @@
-use flate2::read::GzDecoder;
+//! Java Manager: поиск установленных Java, проверка версии и архитектуры, выбор под версию
+//! игры с понятной причиной, загрузка Temurin (Adoptium) с проверкой SHA-256.
+
+use crate::download::{self, Cancel, Expected, ProgressFn, Task, Verify};
+use crate::error::{Error, IoContext, Result};
+use crate::metadata::{Arch, Os};
+use crate::paths::DataDir;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use tar::Archive;
-use tokio::process::Command;
 
-type BoxErr = Box<dyn std::error::Error + Send + Sync>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JavaSource {
+    /// Скачана лаунчером в `runtimes/`.
+    Managed,
+    JavaHome,
+    Path,
+    /// Стандартная папка установки ОС.
+    System,
+    /// Путь указан пользователем в настройках.
+    User,
+}
 
-pub async fn find_java() -> Result<Option<(PathBuf, u32)>, BoxErr> {
-    let output = Command::new("java").arg("-version").output().await;
-    match output {
-        Ok(out) => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            Ok(parse_java_version(&stderr).map(|v| (PathBuf::from("java"), v)))
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JavaInstall {
+    pub path: PathBuf,
+    pub major: u32,
+    /// Полная версия, например `21.0.8` или `1.8.0_503`.
+    pub version: String,
+    /// `os.arch` самой Java: `aarch64`, `x86_64`/`amd64`, `x86`.
+    pub arch: String,
+    pub vendor: String,
+    pub source: JavaSource,
+}
+
+impl JavaInstall {
+    pub fn arch(&self) -> Option<Arch> {
+        match self.arch.as_str() {
+            "aarch64" | "arm64" => Some(Arch::Arm64),
+            "x86_64" | "amd64" => Some(Arch::X86_64),
+            "x86" | "i386" | "i686" => Some(Arch::X86),
+            "arm" => Some(Arch::Arm32),
+            _ => None,
         }
-        Err(_) => Ok(None),
+    }
+    pub fn label(&self) -> String {
+        let vendor = if self.vendor.is_empty() {
+            "Java"
+        } else {
+            &self.vendor
+        };
+        format!("{vendor} {} ({})", self.version, self.arch)
     }
 }
 
-pub fn parse_java_version(output: &str) -> Option<u32> {
+/// Мажорная версия из `java.version`: `1.8.0_503` → 8, `21.0.8` → 21, `25` → 25.
+pub fn parse_major(version: &str) -> Option<u32> {
+    let mut parts = version.split(['.', '_', '-', '+']);
+    let first: u32 = parts.next()?.parse().ok()?;
+    if first == 1 {
+        parts.next()?.parse().ok()
+    } else {
+        Some(first)
+    }
+}
+
+/// Разбор вывода `java -XshowSettings:properties -version` (идёт в stderr).
+pub fn parse_properties(output: &str) -> Option<(String, String, String)> {
+    let mut version = None;
+    let mut arch = None;
+    let mut vendor = String::new();
     for line in output.lines() {
-        if line.contains("version") {
-            if let Some(start) = line.find('"') {
-                if let Some(end) = line[start + 1..].find('"') {
-                    let ver = &line[start + 1..start + 1 + end];
-                    if ver.starts_with("1.") {
-                        return ver.split('.').nth(1)?.parse().ok();
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("java.version = ") {
+            version = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("os.arch = ") {
+            arch = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("java.vendor = ") {
+            vendor = v.trim().to_string();
+        }
+    }
+    Some((version?, arch?, vendor))
+}
+
+/// Запустить Java и узнать версию, архитектуру и производителя.
+pub async fn probe(path: &Path, source: JavaSource) -> Result<JavaInstall> {
+    let mut cmd = tokio::process::Command::new(path);
+    cmd.args(["-XshowSettings:properties", "-version"]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let out = tokio::time::timeout(std::time::Duration::from_secs(15), cmd.output())
+        .await
+        .map_err(|_| Error::Java(format!("{} не ответила за 15 секунд", path.display())))?
+        .map_err(|e| Error::Java(format!("Не удалось запустить {}: {e}", path.display())))?;
+    let text = String::from_utf8_lossy(&out.stderr);
+    let (version, arch, vendor) = parse_properties(&text)
+        .ok_or_else(|| Error::Java(format!("{} не сообщила свою версию", path.display())))?;
+    let major = parse_major(&version)
+        .ok_or_else(|| Error::Java(format!("Непонятная версия Java: {version}")))?;
+    Ok(JavaInstall {
+        path: path.to_path_buf(),
+        major,
+        version,
+        arch,
+        vendor,
+        source,
+    })
+}
+
+fn java_exe() -> &'static str {
+    if cfg!(windows) { "java.exe" } else { "java" }
+}
+
+/// Пути-кандидаты, без запуска: JAVA_HOME, PATH, стандартные папки ОС, `runtimes/`.
+pub fn candidate_paths(data: Option<&DataDir>) -> Vec<(PathBuf, JavaSource)> {
+    let mut out = Vec::new();
+    if let Some(home) = std::env::var_os("JAVA_HOME") {
+        out.push((
+            PathBuf::from(home).join("bin").join(java_exe()),
+            JavaSource::JavaHome,
+        ));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            out.push((dir.join(java_exe()), JavaSource::Path));
+        }
+    }
+    let mut roots: Vec<PathBuf> = Vec::new();
+    match Os::current() {
+        Os::Osx => {
+            roots.push("/Library/Java/JavaVirtualMachines".into());
+            if let Some(h) = dirs::home_dir() {
+                roots.push(h.join("Library/Java/JavaVirtualMachines"));
+            }
+            roots.push("/opt/homebrew/opt".into());
+            roots.push("/usr/local/opt".into());
+            out.push((
+                "/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home/bin/java".into(),
+                JavaSource::System,
+            ));
+        }
+        Os::Windows => {
+            for var in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
+                if let Some(pf) = std::env::var_os(var) {
+                    let pf = PathBuf::from(pf);
+                    for vendor in [
+                        "Java",
+                        "Eclipse Adoptium",
+                        "Eclipse Foundation",
+                        "Microsoft",
+                        "Zulu",
+                        "BellSoft",
+                        "Amazon Corretto",
+                    ] {
+                        roots.push(pf.join(vendor));
                     }
-                    return ver.split('.').next()?.parse().ok();
                 }
             }
         }
+        Os::Linux => {
+            roots.push("/usr/lib/jvm".into());
+            roots.push("/usr/lib64/jvm".into());
+            roots.push("/opt/java".into());
+        }
     }
-    None
-}
-
-pub fn detect_platform() -> Result<(&'static str, &'static str), BoxErr> {
-    let os = if cfg!(target_os = "macos") { "mac" }
-        else if cfg!(target_os = "windows") { "windows" }
-        else if cfg!(target_os = "linux") { "linux" }
-        else { return Err("неподдерживаемая ОС".into()); };
-    let arch = if cfg!(target_arch = "aarch64") { "aarch64" }
-        else if cfg!(target_arch = "x86_64") { "x64" }
-        else { return Err("неподдерживаемая архитектура".into()); };
-    Ok((os, arch))
-}
-
-pub async fn download_jre(feature_version: u32, dest_dir: &Path) -> Result<PathBuf, BoxErr> {
-    let version_dir = dest_dir.join(feature_version.to_string());
-
-    // Если уже скачано и работает — возвращаем
-    if version_dir.exists() {
-        if let Ok(path) = find_java_binary(&version_dir) {
-            if verify_java_binary(&path, feature_version).await.unwrap_or(false) {
-                return Ok(path);
+    for root in roots {
+        for home in subdirs(&root) {
+            for bin in java_bins_in_home(&home) {
+                out.push((bin, JavaSource::System));
             }
         }
     }
-
-    let (os, arch) = detect_platform()?;
-    let url = format!(
-        "https://api.adoptium.net/v3/binary/latest/{}/ga/{}/{}/jdk/hotspot/normal/eclipse",
-        feature_version, os, arch
-    );
-    tokio::fs::create_dir_all(&version_dir).await?;
-    let archive_name = if cfg!(target_os = "windows") { "jdk.zip" } else { "jdk.tar.gz" };
-    let archive_path = version_dir.join(archive_name);
-
-    crate::downloader::download_raw(&url, &archive_path).await?;
-
-    if cfg!(target_os = "windows") {
-        let archive_clone = archive_path.clone();
-        let dest_clone = version_dir.clone();
-        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-            let file = std::fs::File::open(&archive_clone)?;
-            let mut zip = zip::ZipArchive::new(file)?;
-            zip.extract(&dest_clone)?;
-            Ok(())
-        }).await??;
-    } else {
-        let archive_clone = archive_path.clone();
-        let dest_clone = version_dir.clone();
-        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-            let file = std::fs::File::open(&archive_clone)?;
-            let mut archive = Archive::new(GzDecoder::new(file));
-            archive.unpack(&dest_clone)?;
-            Ok(())
-        }).await??;
-    }
-
-    let _ = tokio::fs::remove_file(&archive_path).await;
-    find_java_binary(&version_dir)
-}
-
-pub fn find_java_binary(root: &Path) -> Result<PathBuf, BoxErr> {
-    for entry in walkdir::WalkDir::new(root) {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() && path.file_name().map_or(false, |n| n == "java" || n == "java.exe") {
-            return Ok(path.to_path_buf());
+    if let Some(data) = data {
+        for bin in managed_binaries(&data.runtimes()) {
+            out.push((bin, JavaSource::Managed));
         }
     }
-    Err("исполняемый файл java не найден".into())
+    out
 }
 
-pub async fn verify_java_binary(java_path: &Path, expected_major: u32) -> Result<bool, BoxErr> {
-    let output = Command::new(java_path).arg("-version").output().await?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    Ok(parse_java_version(&stderr) == Some(expected_major))
+fn subdirs(dir: &Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir())
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// Где может лежать `bin/java` внутри домашней папки JDK (включая раскладку macOS и Homebrew).
+fn java_bins_in_home(home: &Path) -> Vec<PathBuf> {
+    [
+        home.join("bin"),
+        home.join("Contents/Home/bin"),
+        home.join("libexec/openjdk.jdk/Contents/Home/bin"),
+    ]
+    .into_iter()
+    .map(|b| b.join(java_exe()))
+    .filter(|p| p.is_file())
+    .collect()
+}
+
+/// Детерминированный поиск java в распакованной сборке: `<root>/<папка>/bin/java` или
+/// `<root>/<папка>/Contents/Home/bin/java`. Не «первый найденный файл».
+pub fn find_java_binary(root: &Path) -> Option<PathBuf> {
+    let direct = java_bins_in_home(root);
+    if let Some(p) = direct.into_iter().next() {
+        return Some(p);
+    }
+    subdirs(root)
+        .into_iter()
+        .find_map(|d| java_bins_in_home(&d).into_iter().next())
+}
+
+fn managed_binaries(runtimes: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for dir in subdirs(runtimes) {
+        if let Some(bin) = find_java_binary(&dir) {
+            out.push(bin);
+        } else {
+            // Старая раскладка: runtimes/legacy-java/<major>/<jdk>/…
+            out.extend(subdirs(&dir).iter().filter_map(|d| find_java_binary(d)));
+        }
+    }
+    out
+}
+
+/// Найти и проверить все Java. Неработающие тихо пропускаются; одинаковые пути — один раз.
+pub async fn discover(data: Option<&DataDir>) -> Vec<JavaInstall> {
+    let mut seen = BTreeSet::new();
+    let mut found = Vec::new();
+    for (path, source) in candidate_paths(data) {
+        if !path.is_file() {
+            continue;
+        }
+        let canonical = std::fs::canonicalize(&path).unwrap_or(path.clone());
+        if !seen.insert(canonical) {
+            continue;
+        }
+        if let Ok(install) = probe(&path, source).await {
+            found.push(install);
+        }
+    }
+    found
+}
+
+/// Что нужно версии игры.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Requirement {
+    pub major: u32,
+    /// Откуда известно требование (для пользователя).
+    pub reason: String,
+    /// Нужная архитектура Java (на Apple Silicon старые версии требуют x64 под Rosetta).
+    pub arch: Arch,
+    pub arch_reason: Option<String>,
+}
+
+impl Requirement {
+    /// Требование для версии игры на этой машине.
+    pub fn for_version(major: u32, reason: String, has_macos_arm64_natives: bool) -> Self {
+        Self::for_platform(
+            major,
+            reason,
+            has_macos_arm64_natives,
+            Os::current(),
+            Arch::current(),
+        )
+    }
+
+    pub fn for_platform(
+        major: u32,
+        reason: String,
+        has_macos_arm64_natives: bool,
+        os: Os,
+        host: Arch,
+    ) -> Self {
+        if os == Os::Osx && host == Arch::Arm64 && !has_macos_arm64_natives {
+            return Self {
+                major,
+                reason,
+                arch: Arch::X86_64,
+                arch_reason: Some(
+                    "в версии нет нативных библиотек для Apple Silicon — нужна x64-Java, она работает через Rosetta 2"
+                        .into(),
+                ),
+            };
+        }
+        Self {
+            major,
+            reason,
+            arch: host,
+            arch_reason: None,
+        }
+    }
+
+    /// Подходит ли установленная Java. Java 8 нужна ровно 8: старые версии и моды
+    /// ломаются на 9+ (модульная система). Для остальных подходит та же или новее.
+    pub fn accepts(&self, j: &JavaInstall) -> bool {
+        let arch_ok = j.arch() == Some(self.arch);
+        let version_ok = if self.major <= 8 {
+            j.major == 8
+        } else {
+            j.major >= self.major
+        };
+        arch_ok && version_ok
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Choice {
+    pub install: JavaInstall,
+    /// Почему выбрана именно эта Java — показывается в интерфейсе.
+    pub reason: String,
+}
+
+/// Выбрать Java: сначала точное совпадение мажорной версии (скачанные лаунчером — первыми),
+/// потом ближайшая новее. `None` — подходящей нет, нужно скачать.
+pub fn choose(req: &Requirement, installs: &[JavaInstall]) -> Option<Choice> {
+    let mut ok: Vec<&JavaInstall> = installs.iter().filter(|j| req.accepts(j)).collect();
+    ok.sort_by_key(|j| {
+        (
+            j.major != req.major,
+            j.major,
+            j.source != JavaSource::Managed,
+        )
+    });
+    let best = ok.first()?;
+    let mut reason = if best.major == req.major {
+        format!(
+            "нужна Java {} ({}) — найдена {}",
+            req.major,
+            req.reason,
+            best.label()
+        )
+    } else {
+        format!(
+            "нужна Java {} ({}) — точной версии нет, выбрана ближайшая новее: {}",
+            req.major,
+            req.reason,
+            best.label()
+        )
+    };
+    if let Some(a) = &req.arch_reason {
+        reason.push_str("; ");
+        reason.push_str(a);
+    }
+    Some(Choice {
+        install: (*best).clone(),
+        reason,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct AdoptiumAsset {
+    binary: AdoptiumBinary,
+    version: AdoptiumVersion,
+}
+#[derive(Debug, Deserialize)]
+struct AdoptiumBinary {
+    package: AdoptiumPackage,
+}
+#[derive(Debug, Deserialize)]
+struct AdoptiumPackage {
+    checksum: String,
+    link: String,
+    name: String,
+    size: u64,
+}
+#[derive(Debug, Deserialize)]
+struct AdoptiumVersion {
+    openjdk_version: String,
+}
+
+fn adoptium_os(os: Os) -> &'static str {
+    match os {
+        Os::Osx => "mac",
+        Os::Windows => "windows",
+        Os::Linux => "linux",
+    }
+}
+
+fn adoptium_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "aarch64",
+        Arch::X86_64 => "x64",
+        Arch::X86 => "x86-32",
+        Arch::Arm32 => "arm",
+    }
+}
+
+/// Скачать Temurin JRE нужной версии и архитектуры в `runtimes/temurin-<major>-<arch>`.
+/// Хэш берётся из API Adoptium (`binary.package.checksum`, SHA-256).
+pub async fn install_temurin(
+    data: &DataDir,
+    major: u32,
+    arch: Arch,
+    on_progress: Option<ProgressFn>,
+    cancel: &Cancel,
+) -> Result<JavaInstall> {
+    let os = Os::current();
+    let dir = data
+        .runtimes()
+        .join(format!("temurin-{major}-{}", adoptium_arch(arch)));
+    if let Some(bin) = find_java_binary(&dir)
+        && let Ok(j) = probe(&bin, JavaSource::Managed).await
+        && j.major == major
+    {
+        return Ok(j);
+    }
+
+    let api = format!(
+        "https://api.adoptium.net/v3/assets/latest/{major}/hotspot?os={}&architecture={}&image_type=jre&vendor=eclipse",
+        adoptium_os(os),
+        adoptium_arch(arch)
+    );
+    let assets: Vec<AdoptiumAsset> = crate::net::get_json(&api).await?;
+    let asset = assets.into_iter().next().ok_or_else(|| {
+        Error::Java(format!(
+            "У Adoptium нет Java {major} для {} {}. Установите её вручную и укажите путь в настройках профиля.",
+            adoptium_os(os),
+            adoptium_arch(arch)
+        ))
+    })?;
+
+    let pkg = &asset.binary.package;
+    let tmp_root = data.tmp();
+    let archive = tmp_root.join(&pkg.name);
+    download::download_all(
+        vec![Task {
+            url: pkg.link.clone(),
+            dest: archive.clone(),
+            expected: Expected::Sha256(pkg.checksum.to_ascii_lowercase()),
+            size: Some(pkg.size),
+        }],
+        1,
+        Verify::Full,
+        on_progress,
+        cancel,
+    )
+    .await?;
+
+    // Распаковка во временную папку и переименование — чтобы недораспакованная Java
+    // никогда не оказалась в runtimes/.
+    let staging = crate::paths::unique_sibling(&dir, "staging");
+    let archive_c = archive.clone();
+    let staging_c = staging.clone();
+    tokio::task::spawn_blocking(move || {
+        if archive_c.extension().is_some_and(|e| e == "zip") {
+            crate::archive::extract_zip(&archive_c, &staging_c)
+        } else {
+            crate::archive::extract_tar_gz(&archive_c, &staging_c)
+        }
+    })
+    .await
+    .map_err(|e| Error::Java(format!("Распаковка Java прервана: {e}")))??;
+    let _ = std::fs::remove_file(&archive);
+
+    if dir.exists() {
+        // Старая сломанная копия: не удаляем, а откладываем рядом.
+        let aside = crate::paths::unique_sibling(&dir, "broken");
+        std::fs::rename(&dir, &aside).at(&dir)?;
+    }
+    std::fs::rename(&staging, &dir).at(&dir)?;
+
+    let bin = find_java_binary(&dir).ok_or_else(|| {
+        Error::Java(format!(
+            "В архиве {} не найден bin/java",
+            asset.version.openjdk_version
+        ))
+    })?;
+    let j = probe(&bin, JavaSource::Managed).await?;
+    if j.major != major {
+        return Err(Error::Java(format!(
+            "Скачанная Java сообщает версию {}, ожидалась {major}",
+            j.version
+        )));
+    }
+    Ok(j)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn t_modern() { assert_eq!(parse_java_version("openjdk version \"21.0.8\""), Some(21)); }
-    #[test] fn t_legacy() { assert_eq!(parse_java_version("java version \"1.8.0_381\""), Some(8)); }
-    #[test] fn t_25() { assert_eq!(parse_java_version("openjdk version \"25.0.1\""), Some(25)); }
+
+    fn java(major: u32, arch: &str, source: JavaSource) -> JavaInstall {
+        JavaInstall {
+            path: PathBuf::from(format!("/j/{major}-{arch}-{source:?}")),
+            major,
+            version: format!("{major}.0.1"),
+            arch: arch.into(),
+            vendor: "Eclipse Adoptium".into(),
+            source,
+        }
+    }
+
+    #[test]
+    fn major_versions() {
+        assert_eq!(parse_major("1.8.0_503"), Some(8));
+        assert_eq!(parse_major("21.0.8"), Some(21));
+        assert_eq!(parse_major("25"), Some(25));
+        assert_eq!(parse_major("17-ea"), Some(17));
+        assert_eq!(parse_major("abc"), None);
+    }
+
+    #[test]
+    fn properties_output() {
+        let out = "Property settings:\n    java.vendor = Oracle Corporation\n    java.version = 1.8.0_503\n    os.arch = aarch64\n\njava version \"1.8.0_503\"\n";
+        assert_eq!(
+            parse_properties(out),
+            Some((
+                "1.8.0_503".into(),
+                "aarch64".into(),
+                "Oracle Corporation".into()
+            ))
+        );
+        assert_eq!(parse_properties("garbage"), None);
+    }
+
+    #[test]
+    fn java8_must_be_exact() {
+        let req = Requirement::for_platform(8, "test".into(), true, Os::Linux, Arch::X86_64);
+        let installs = [
+            java(17, "amd64", JavaSource::System),
+            java(8, "amd64", JavaSource::System),
+        ];
+        assert_eq!(choose(&req, &installs).unwrap().install.major, 8);
+        assert!(
+            choose(&req, &installs[..1]).is_none(),
+            "Java 17 для версии на Java 8 не подходит"
+        );
+    }
+
+    #[test]
+    fn exact_preferred_then_closest_newer() {
+        let req =
+            Requirement::for_platform(21, "javaVersion".into(), true, Os::Linux, Arch::X86_64);
+        let installs = [
+            java(25, "amd64", JavaSource::System),
+            java(22, "amd64", JavaSource::System),
+            java(17, "amd64", JavaSource::System),
+        ];
+        let c = choose(&req, &installs).unwrap();
+        assert_eq!(c.install.major, 22);
+        assert!(c.reason.contains("ближайшая новее"));
+        let mut with_exact = installs.to_vec();
+        with_exact.push(java(21, "amd64", JavaSource::System));
+        with_exact.push(java(21, "amd64", JavaSource::Managed));
+        let c = choose(&req, &with_exact).unwrap();
+        assert_eq!(c.install.major, 21);
+        assert_eq!(
+            c.install.source,
+            JavaSource::Managed,
+            "скачанная лаунчером — первой"
+        );
+    }
+
+    #[test]
+    fn apple_silicon_old_version_needs_x64() {
+        let req = Requirement::for_platform(8, "x".into(), false, Os::Osx, Arch::Arm64);
+        assert_eq!(req.arch, Arch::X86_64);
+        let arm = java(8, "aarch64", JavaSource::System);
+        let x64 = java(8, "x86_64", JavaSource::Managed);
+        assert!(!req.accepts(&arm));
+        let c = choose(&req, &[arm, x64]).unwrap();
+        assert_eq!(c.install.arch, "x86_64");
+        assert!(c.reason.contains("Rosetta"));
+
+        let modern = Requirement::for_platform(25, "x".into(), true, Os::Osx, Arch::Arm64);
+        assert_eq!(modern.arch, Arch::Arm64);
+    }
+
+    #[test]
+    fn binary_layout_is_deterministic() {
+        let root = std::env::temp_dir().join(format!("quarry-java-layout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = root.join("jdk-21.0.8+9-jre/Contents/Home/bin");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(java_exe()), b"").unwrap();
+        // Посторонний java глубже — не должен выбираться.
+        let decoy = root.join("jdk-21.0.8+9-jre/Contents/Home/lib/x/bin");
+        std::fs::create_dir_all(&decoy).unwrap();
+        std::fs::write(decoy.join(java_exe()), b"").unwrap();
+        assert_eq!(find_java_binary(&root), Some(home.join(java_exe())));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "запускает установленные Java"]
+    async fn discover_local_javas() {
+        for j in discover(None).await {
+            println!("{:?} {} {}", j.source, j.label(), j.path.display());
+        }
+    }
 }

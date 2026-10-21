@@ -1,140 +1,217 @@
-use crate::metadata::{self, VersionDetails};
+//! Загрузчики модов. Каждый — отдельный адаптер со своей схемой установки, без «универсальной
+//! магии». Fabric и Quilt описывают установку профилем JSON поверх ванили (без запуска
+//! установщика). NeoForge и Forge требуют процессоров установщика — пока не реализованы.
 
-type BoxErr = Box<dyn std::error::Error + Send + Sync>;
+use crate::error::{Error, Result};
+use crate::metadata::{self, VersionJson};
+use crate::paths::DataDir;
+use serde::{Deserialize, Serialize};
 
-const FABRIC_META: &str = "https://meta.fabricmc.net/v2";
-const FABRIC_MAVEN: &str = "https://maven.fabricmc.net/";
-
-#[derive(Debug, serde::Deserialize)]
-struct LoaderEntry {
-    loader: LoaderVersion,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoaderKind {
+    Vanilla,
+    Fabric,
+    Quilt,
+    NeoForge,
+    Forge,
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct LoaderVersion {
-    version: String,
-    #[serde(default)]
-    stable: bool,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct FabricProfile {
-    #[serde(rename = "mainClass")]
-    main_class: String,
-    #[serde(default)]
-    libraries: Vec<FabricLibraryRaw>,
-    #[serde(rename = "inheritsFrom")]
-    inherits_from: String,
-    #[serde(default)]
-    arguments: Option<serde_json::Value>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct FabricLibraryRaw {
-    name: String,
-    #[serde(default)]
-    url: Option<String>,
-}
-
-#[derive(Debug)]
-pub struct MavenLib {
-    pub path: String,
-    pub url: String,
-}
-
-#[derive(Debug)]
-pub struct FabricInstall {
-    pub details: VersionDetails,
-    pub maven_libs: Vec<MavenLib>,
-    pub loader_version: String,
-}
-
-pub async fn latest_fabric_loader(game_version: &str) -> Result<String, BoxErr> {
-    let url = format!("{}/versions/loader/{}", FABRIC_META, game_version);
-    let client = reqwest::Client::builder().user_agent(crate::USER_AGENT).build()?;
-    let resp = client.get(&url).send().await?;
-    if !resp.status().is_success() {
-        return Err(format!("Fabric meta вернул HTTP {}", resp.status()).into());
-    }
-    let list: Vec<LoaderEntry> = resp.json().await?;
-    let stable = list.iter().find(|e| e.loader.stable).map(|e| e.loader.version.clone());
-    let any = list.first().map(|e| e.loader.version.clone());
-    stable.or(any).ok_or_else(|| format!("Нет загрузчика Fabric для {}", game_version).into())
-}
-
-fn maven_path(name: &str) -> Option<String> {
-    let parts: Vec<&str> = name.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let group = parts[0].replace('.', "/");
-    let artifact = parts[1];
-    let version = parts[2];
-    let file = format!("{}-{}.jar", artifact, version);
-    Some(format!("{}/{}/{}/{}", group, artifact, version, file))
-}
-
-pub async fn install_fabric(
-    game_version: &str,
-    loader_version: Option<&str>,
-) -> Result<FabricInstall, BoxErr> {
-    let loader = match loader_version {
-        Some(v) => v.to_string(),
-        None => latest_fabric_loader(game_version).await?,
-    };
-
-    let manifest = metadata::fetch_manifest().await?;
-    let vanilla_entry = manifest
-        .versions
-        .iter()
-        .find(|v| v.id == game_version)
-        .ok_or_else(|| format!("Ванильная версия {} не найдена", game_version))?;
-    let mut vanilla = metadata::fetch_version_details(&vanilla_entry.url).await?;
-
-    let url = format!(
-        "{}/versions/loader/{}/{}/profile/json",
-        FABRIC_META, game_version, loader
-    );
-    let client = reqwest::Client::builder().user_agent(crate::USER_AGENT).build()?;
-    let resp = client.get(&url).send().await?;
-    if !resp.status().is_success() {
-        return Err(format!("Fabric profile вернул HTTP {}", resp.status()).into());
-    }
-    let fabric: FabricProfile = resp.json().await?;
-
-    if fabric.inherits_from != game_version {
-        return Err(format!(
-            "Fabric profile наследует {}, а не {}",
-            fabric.inherits_from, game_version
-        )
-        .into());
-    }
-
-    let mut maven_libs = Vec::new();
-    for lib in &fabric.libraries {
-        if let Some(path) = maven_path(&lib.name) {
-            let base = lib.url.as_deref().unwrap_or(FABRIC_MAVEN);
-            let base = if base.ends_with('/') {
-                base.to_string()
-            } else {
-                format!("{}/", base)
-            };
-            maven_libs.push(MavenLib {
-                path: path.clone(),
-                url: format!("{}{}", base, path),
-            });
+impl LoaderKind {
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "vanilla" | "" => Ok(Self::Vanilla),
+            "fabric" => Ok(Self::Fabric),
+            "quilt" => Ok(Self::Quilt),
+            "neoforge" => Ok(Self::NeoForge),
+            "forge" => Ok(Self::Forge),
+            other => Err(Error::invalid(format!("Неизвестный загрузчик: {other}"))),
         }
     }
+    pub fn display(self) -> &'static str {
+        match self {
+            Self::Vanilla => "Vanilla",
+            Self::Fabric => "Fabric",
+            Self::Quilt => "Quilt",
+            Self::NeoForge => "NeoForge",
+            Self::Forge => "Forge",
+        }
+    }
+    pub fn is_supported(self) -> bool {
+        matches!(self, Self::Vanilla | Self::Fabric | Self::Quilt)
+    }
+}
 
-    vanilla.main_class = fabric.main_class;
-    vanilla.arguments = fabric.arguments;
-    vanilla.inherits_from = Some(game_version.to_string());
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LoaderVersion {
+    pub version: String,
+    pub stable: bool,
+}
 
-    Ok(FabricInstall {
-        details: vanilla,
-        maven_libs,
-        loader_version: loader,
-    })
+/// Версии загрузчика для версии игры (новые первыми). Пустой список — загрузчик эту версию
+/// игры не поддерживает.
+pub async fn versions(kind: LoaderKind, game: &str) -> Result<Vec<LoaderVersion>> {
+    metadata::file_safe(game)?;
+    match kind {
+        LoaderKind::Vanilla => Ok(Vec::new()),
+        LoaderKind::Fabric => fabric::versions(game).await,
+        LoaderKind::Quilt => quilt::versions(game).await,
+        LoaderKind::NeoForge | LoaderKind::Forge => Err(unsupported(kind)),
+    }
+}
+
+/// Версия загрузчика по умолчанию — последняя стабильная, иначе последняя.
+pub fn default_version(list: &[LoaderVersion]) -> Option<&LoaderVersion> {
+    list.iter().find(|v| v.stable).or_else(|| list.first())
+}
+
+fn unsupported(kind: LoaderKind) -> Error {
+    Error::invalid(format!(
+        "{} пока не поддерживается: его установщик требует выполнения процессоров, это отдельная работа (этап 3).",
+        kind.display()
+    ))
+}
+
+/// Проверить совместимость и выбрать версию загрузчика — до скачивания чего-либо.
+pub async fn resolve_version(
+    kind: LoaderKind,
+    game: &str,
+    requested: Option<&str>,
+) -> Result<Option<String>> {
+    if kind == LoaderKind::Vanilla {
+        return Ok(None);
+    }
+    let list = versions(kind, game).await?;
+    if list.is_empty() {
+        return Err(Error::invalid(format!(
+            "{} не поддерживает Minecraft {game}. Выберите другую версию игры или загрузчик.",
+            kind.display()
+        )));
+    }
+    match requested {
+        Some(v) if list.iter().any(|l| l.version == v) => Ok(Some(v.to_string())),
+        Some(v) => Err(Error::invalid(format!(
+            "{} {v} нет для Minecraft {game}",
+            kind.display()
+        ))),
+        None => Ok(default_version(&list).map(|v| v.version.clone())),
+    }
+}
+
+/// Полный JSON версии с загрузчиком (профиль загрузчика наложен на ваниль).
+pub async fn resolve_profile(
+    data: &DataDir,
+    kind: LoaderKind,
+    game: &str,
+    loader_version: Option<&str>,
+) -> Result<VersionJson> {
+    let vanilla = metadata::vanilla_version(data, game).await?;
+    let (child, cache_name) = match kind {
+        LoaderKind::Vanilla => return Ok(vanilla),
+        LoaderKind::Fabric | LoaderKind::Quilt => {
+            let lv =
+                loader_version.ok_or_else(|| Error::invalid("Не указана версия загрузчика"))?;
+            metadata::file_safe(lv)?;
+            let name = format!("{}-{lv}-{game}", kind.display().to_ascii_lowercase());
+            let url = match kind {
+                LoaderKind::Fabric => fabric::profile_url(game, lv),
+                _ => quilt::profile_url(game, lv),
+            };
+            let text = match crate::net::get_text(&url).await {
+                Ok(t) => {
+                    metadata::cache_json(data, "loaders", &name, &t)?;
+                    t
+                }
+                Err(e) => metadata::read_cached_json(data, "loaders", &name).ok_or(e)?,
+            };
+            (VersionJson::parse(&text)?, name)
+        }
+        LoaderKind::NeoForge | LoaderKind::Forge => return Err(unsupported(kind)),
+    };
+    if child.inherits_from.as_deref() != Some(game) {
+        return Err(Error::invalid(format!(
+            "Профиль {cache_name} наследует {:?}, а не {game}",
+            child.inherits_from
+        )));
+    }
+    Ok(child.merged_onto(vanilla))
+}
+
+#[derive(Debug, Deserialize)]
+struct LoaderEntry {
+    loader: LoaderInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoaderInfo {
+    version: String,
+    #[serde(default)]
+    stable: Option<bool>,
+}
+
+mod fabric {
+    use super::*;
+    const META: &str = "https://meta.fabricmc.net/v2";
+
+    pub fn profile_url(game: &str, loader: &str) -> String {
+        format!(
+            "{META}/versions/loader/{}/{}/profile/json",
+            urlencoding::encode(game),
+            urlencoding::encode(loader)
+        )
+    }
+
+    pub async fn versions(game: &str) -> Result<Vec<LoaderVersion>> {
+        let url = format!("{META}/versions/loader/{}", urlencoding::encode(game));
+        let list: Vec<LoaderEntry> = crate::net::get_json(&url).await?;
+        Ok(list
+            .into_iter()
+            .map(|e| LoaderVersion {
+                stable: e.loader.stable.unwrap_or(false),
+                version: e.loader.version,
+            })
+            .collect())
+    }
+}
+
+mod quilt {
+    use super::*;
+    const META: &str = "https://meta.quiltmc.org/v3";
+
+    pub fn profile_url(game: &str, loader: &str) -> String {
+        format!(
+            "{META}/versions/loader/{}/{}/profile/json",
+            urlencoding::encode(game),
+            urlencoding::encode(loader)
+        )
+    }
+
+    /// У Quilt нет флага stable: предварительные версии видны по суффиксу (`-beta.9`).
+    pub fn is_stable(version: &str) -> bool {
+        !version.contains('-')
+    }
+
+    pub async fn versions(game: &str) -> Result<Vec<LoaderVersion>> {
+        let url = format!("{META}/versions/loader/{}", urlencoding::encode(game));
+        let list: Vec<LoaderEntry> = crate::net::get_json(&url).await?;
+        Ok(list
+            .into_iter()
+            .map(|e| LoaderVersion {
+                stable: e
+                    .loader
+                    .stable
+                    .unwrap_or_else(|| is_stable(&e.loader.version)),
+                version: e.loader.version,
+            })
+            .collect())
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn beta_is_not_stable() {
+        assert!(!is_stable("0.20.0-beta.9"));
+        assert!(is_stable("0.29.2"));
+    }
 }
 
 #[cfg(test)]
@@ -142,28 +219,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maven_path_basic() {
-        assert_eq!(
-            maven_path("net.fabricmc:fabric-loader:0.16.0"),
-            Some("net/fabricmc/fabric-loader/0.16.0/fabric-loader-0.16.0.jar".to_string())
-        );
+    fn kinds_parse() {
+        assert_eq!(LoaderKind::parse("Fabric").unwrap(), LoaderKind::Fabric);
+        assert_eq!(LoaderKind::parse("vanilla").unwrap(), LoaderKind::Vanilla);
+        assert!(LoaderKind::parse("rift").is_err());
+        assert!(!LoaderKind::NeoForge.is_supported());
     }
 
     #[test]
-    fn maven_path_invalid() {
-        assert_eq!(maven_path("bad"), None);
+    fn default_prefers_stable() {
+        let list = vec![
+            LoaderVersion {
+                version: "0.20.1".into(),
+                stable: false,
+            },
+            LoaderVersion {
+                version: "0.19.2".into(),
+                stable: true,
+            },
+        ];
+        assert_eq!(default_version(&list).unwrap().version, "0.19.2");
+        let only_beta = vec![LoaderVersion {
+            version: "0.1-beta".into(),
+            stable: false,
+        }];
+        assert_eq!(default_version(&only_beta).unwrap().version, "0.1-beta");
+        assert!(default_version(&[]).is_none());
+    }
+
+    #[test]
+    fn quilt_profile_parses_and_merges() {
+        let dir = format!("{}/tests/fixtures/versions", env!("CARGO_MANIFEST_DIR"));
+        let child = VersionJson::parse(
+            &std::fs::read_to_string(format!("{dir}/quilt-loader-1.21.11.json")).unwrap(),
+        )
+        .unwrap();
+        let parent =
+            VersionJson::parse(&std::fs::read_to_string(format!("{dir}/1.21.11.json")).unwrap())
+                .unwrap();
+        assert_eq!(child.inherits_from.as_deref(), Some("1.21.11"));
+        let merged = child.merged_onto(parent);
+        assert!(merged.main_class.unwrap().starts_with("org.quiltmc"));
+        // У библиотек Quilt хэшей в профиле нет — установщик возьмёт их из Maven.
+        assert!(merged.libraries[0].main_artifact().unwrap().sha1.is_none());
     }
 
     #[tokio::test]
-    #[ignore]
-    async fn fabric_profile_merges() {
-        let install = install_fabric("26.3", None).await.unwrap();
-        println!("main_class: {}", install.details.main_class);
-        println!("загрузчик: {}", install.loader_version);
-        println!("ванильных библиотек: {}", install.details.libraries.len());
-        println!("maven-библиотек: {}", install.maven_libs.len());
-        assert!(install.details.main_class.contains("fabricmc"));
-        assert!(!install.maven_libs.is_empty(), "Должны быть maven-библиотеки");
-        assert!(install.maven_libs.iter().any(|m| m.path.contains("fabric-loader")));
+    #[ignore = "сеть: meta.fabricmc.net и meta.quiltmc.org"]
+    async fn real_loader_lists() {
+        let f = versions(LoaderKind::Fabric, "26.3").await.unwrap();
+        assert!(!f.is_empty());
+        let q = versions(LoaderKind::Quilt, "1.21.11").await.unwrap();
+        assert!(!q.is_empty());
+        assert!(
+            resolve_version(LoaderKind::Fabric, "rd-132211", None)
+                .await
+                .is_err()
+        );
     }
 }
