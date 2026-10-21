@@ -69,14 +69,16 @@ fn installed(version: VersionJson, game_version: &str, env: &Environment) -> Ins
     }
 }
 
+/// Разделители путей хоста приводятся к `/`: эталоны одинаковы при прогоне на любой ОС
+/// (целевая ОС задаётся Environment, а не машиной, где идёт тест).
 fn render(cmd: &args::LaunchCommand) -> String {
     let mut out = format!(
         "program: {}\ncwd: {}\n",
-        cmd.program.display(),
-        cmd.cwd.display()
+        cmd.program.display().to_string().replace('\\', "/"),
+        cmd.cwd.display().to_string().replace('\\', "/")
     );
     for a in &cmd.args {
-        out.push_str(a);
+        out.push_str(&a.replace('\\', "/"));
         out.push('\n');
     }
     out
