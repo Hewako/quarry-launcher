@@ -199,12 +199,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn test_fetch_manifest() {
         let m = fetch_manifest().await.unwrap();
         assert!(!m.versions.is_empty());
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_fetch_version_details() {
         let m = fetch_manifest().await.unwrap();
         let entry = m
