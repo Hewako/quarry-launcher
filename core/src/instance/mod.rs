@@ -6,6 +6,8 @@ use crate::paths::{DataDir, write_atomic};
 use crate::settings::LaunchOverrides;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+pub mod ops;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const FORMAT: u32 = 1;
@@ -62,6 +64,16 @@ pub struct Instance {
     /// Папка для порядка в списке (не уровень настроек).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// Короткая заметка о профиле и цвет значка.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub favorite: bool,
+    /// В архиве: скрыт из основного списка, файлы на месте.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archived: bool,
     #[serde(default)]
     pub auth_mode: AuthMode,
     /// Аккаунт профиля (`провайдер:uuid`); пусто — аккаунт по умолчанию.
@@ -224,6 +236,10 @@ impl InstanceStore {
             loader_version: None,
             created_at: 0,
             group: None,
+            description: None,
+            color: None,
+            favorite: false,
+            archived: false,
             auth_mode: AuthMode::Microsoft,
             account: None,
             settings: LaunchOverrides::default(),
@@ -287,6 +303,10 @@ impl InstanceStore {
             loader_version,
             created_at: now(),
             group: None,
+            description: None,
+            color: None,
+            favorite: false,
+            archived: false,
             auth_mode: AuthMode::Microsoft,
             account: None,
             settings: LaunchOverrides::default(),

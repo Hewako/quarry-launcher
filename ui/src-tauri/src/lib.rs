@@ -102,6 +102,7 @@ fn update_instance(
     auth_mode: Option<AuthMode>,
     // `None` — не менять, пустая строка — аккаунт по умолчанию.
     account: Option<String>,
+    meta: Option<ProfileMeta>,
 ) -> CmdResult<Instance> {
     let store = InstanceStore::new(state.data.clone());
     let mut inst = store.get(&id).map_err(err)?;
@@ -126,8 +127,88 @@ fn update_instance(
     if let Some(a) = account {
         inst.account = (!a.is_empty()).then_some(a);
     }
+    if let Some(m) = meta {
+        let text = |v: Option<String>, max: usize| -> CmdResult<Option<String>> {
+            let v = v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            if v.as_ref().is_some_and(|s| s.chars().count() > max) {
+                return Err(format!("Не длиннее {max} символов"));
+            }
+            Ok(v)
+        };
+        inst.group = text(m.group, 40)?;
+        inst.description = text(m.description, 300)?;
+        inst.color = text(m.color, 16)?;
+        if inst
+            .color
+            .as_ref()
+            .is_some_and(|c| !c.starts_with('#') || !c[1..].chars().all(|c| c.is_ascii_hexdigit()))
+        {
+            return Err("Цвет — в виде #RRGGBB".into());
+        }
+        inst.favorite = m.favorite;
+        inst.archived = m.archived;
+    }
     store.save(&inst).map_err(err)?;
     Ok(inst)
+}
+
+/// Оформление профиля: группа, заметка, цвет, избранное, архив.
+#[derive(serde::Deserialize)]
+struct ProfileMeta {
+    group: Option<String>,
+    description: Option<String>,
+    color: Option<String>,
+    favorite: bool,
+    archived: bool,
+}
+
+#[tauri::command]
+fn clone_instance(
+    state: State<AppState>,
+    id: String,
+    name: String,
+    parts: quarry_core::instance::ops::CloneParts,
+) -> CmdResult<Instance> {
+    quarry_core::instance::ops::clone_instance(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        &name,
+        parts,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+async fn disk_usage(
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<quarry_core::instance::ops::DiskUsage> {
+    let store = InstanceStore::new(state.data.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        quarry_core::instance::ops::disk_usage(&store, &id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(err)
+}
+
+#[tauri::command]
+fn copy_between(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    items: Vec<String>,
+) -> CmdResult<()> {
+    if state.registry.is_running(&to) {
+        return Err("Сначала закройте игру в профиле, куда переносите".into());
+    }
+    quarry_core::instance::ops::copy_between(
+        &InstanceStore::new(state.data.clone()),
+        &from,
+        &to,
+        &items,
+    )
+    .map_err(err)
 }
 
 #[derive(Serialize)]
@@ -901,6 +982,9 @@ pub fn run() {
             worlds_list,
             world_backup,
             world_restore,
+            clone_instance,
+            disk_usage,
+            copy_between,
             import_sources,
             import_path,
             link_minecraft,

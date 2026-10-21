@@ -7,10 +7,11 @@ import { LogView } from "../ui/LogView";
 import { CrashCard } from "../ui/CrashCard";
 import { ModsTab } from "./ModsTab";
 import { SnapshotsTab } from "./SnapshotsTab";
+import { ProfileTab } from "./ProfileTab";
 
-export type Tab = "mods" | "launch" | "snapshots" | "logs";
+export type Tab = "mods" | "launch" | "snapshots" | "logs" | "profile";
 
-const TABS: [Tab, string][] = [["mods", "Моды · Mod Doctor"], ["launch", "Запуск и память"], ["snapshots", "Снимки"], ["logs", "Логи"]];
+const TABS: [Tab, string][] = [["mods", "Моды · Mod Doctor"], ["launch", "Запуск и память"], ["snapshots", "Снимки и миры"], ["logs", "Логи"], ["profile", "Профиль"]];
 
 function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }) {
   return (
@@ -151,8 +152,10 @@ function LogsTab({ inst, state }: { inst: Instance; state?: LaunchState }) {
   );
 }
 
-export function InstancePage({ inst, state, accounts, initialTab, onChanged, onTrashed }: {
+export function InstancePage({ inst, instances, state, accounts, initialTab, onChanged, onTrashed, onCloned }: {
   inst: Instance;
+  instances: Instance[];
+  onCloned: (i: Instance) => void;
   state?: LaunchState;
   accounts: AccountRef[];
   initialTab?: Tab;
@@ -207,6 +210,7 @@ export function InstancePage({ inst, state, accounts, initialTab, onChanged, onT
       {tab === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
       {tab === "snapshots" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
       {tab === "logs" && <LogsTab inst={inst} state={state} />}
+      {tab === "profile" && <ProfileTab key={inst.id} inst={inst} instances={instances} running={isActive(state)} onChanged={onChanged} onCloned={onCloned} />}
     </>
   );
 }

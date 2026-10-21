@@ -46,24 +46,6 @@ fn cleanup_on_error<T>(store: &InstanceStore, id: &str, r: Result<T>) -> Result<
     r
 }
 
-/// Рекурсивно скопировать папку (символические ссылки пропускаются).
-fn copy_dir(from: &Path, to: &Path) -> Result<u64> {
-    let mut n = 0;
-    std::fs::create_dir_all(to).at(to)?;
-    for e in std::fs::read_dir(from).at(from)?.flatten() {
-        let src = e.path();
-        let dst = to.join(e.file_name());
-        let ft = e.file_type().at(&src)?;
-        if ft.is_dir() {
-            n += copy_dir(&src, &dst)?;
-        } else if ft.is_file() {
-            std::fs::copy(&src, &dst).at(&dst)?;
-            n += 1;
-        }
-    }
-    Ok(n)
-}
-
 // ---------- Prism / MultiMC ----------
 
 #[derive(Debug, Deserialize)]
@@ -183,7 +165,7 @@ pub fn import_mmc(store: &InstanceStore, dir: &Path) -> Result<ImportResult> {
             .find(|p| p.is_dir());
         let mut notes = Vec::new();
         if let Some(src) = src_game {
-            let n = copy_dir(&src, &store.game_dir(&id)?)?;
+            let n = crate::paths::copy_dir(&src, &store.game_dir(&id)?)?;
             notes.push(format!("Скопировано файлов: {n} (оригинал не изменён)"));
         }
         if cfg.get("OverrideMemory").is_some_and(|v| v == "true") {

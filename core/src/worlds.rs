@@ -65,19 +65,6 @@ pub fn game_jar_info(client_jar: &Path) -> Result<GameJarInfo> {
     })
 }
 
-fn dir_size(p: &Path) -> u64 {
-    let Ok(rd) = std::fs::read_dir(p) else {
-        return 0;
-    };
-    rd.flatten()
-        .map(|e| match e.file_type() {
-            Ok(t) if t.is_dir() => dir_size(&e.path()),
-            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
-            _ => 0,
-        })
-        .sum()
-}
-
 fn mode_name(v: i64) -> &'static str {
     match v {
         0 => "выживание",
@@ -142,7 +129,7 @@ pub fn read_world(game_dir: &Path, backups_dir: &Path, folder: &str) -> Result<W
             .and_then(|t| t.as_i64())
             .map(|ms| (ms / 1000).max(0) as u64)
             .unwrap_or(0),
-        size: dir_size(&dir),
+        size: crate::paths::dir_size(&dir),
         backups: backups_of(backups_dir, folder),
     })
 }
@@ -163,7 +150,7 @@ pub fn list(game_dir: &Path, backups_dir: &Path) -> Vec<WorldInfo> {
                         game_mode: "level.dat не прочитан".into(),
                         hardcore: false,
                         last_played: 0,
-                        size: dir_size(&e.path()),
+                        size: crate::paths::dir_size(&e.path()),
                         backups: Vec::new(),
                     })
                 })

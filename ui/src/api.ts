@@ -32,12 +32,28 @@ export interface Instance {
   loader_version?: string;
   created_at: number;
   group?: string;
+  description?: string;
+  color?: string;
+  favorite?: boolean;
+  archived?: boolean;
   auth_mode: AuthMode;
   account?: string;
   settings: LaunchOverrides;
   pack_settings: LaunchOverrides;
   last_launch?: LastLaunch;
 }
+
+export interface ProfileMeta { group?: string; description?: string; color?: string; favorite: boolean; archived: boolean }
+export interface CloneParts { mods: boolean; configs: boolean; resources: boolean; worlds: boolean }
+export const metaOf = (i: Instance): ProfileMeta => ({ group: i.group, description: i.description, color: i.color, favorite: !!i.favorite, archived: !!i.archived });
+/** Что можно перенести между профилями (совпадает с ядром, instance::ops::SHARABLE). */
+export const SHARABLE: [string, string][] = [
+  ["options.txt", "Настройки игры (управление, графика, звук)"],
+  ["servers.dat", "Список серверов"],
+  ["resourcepacks", "Ресурспаки"],
+  ["shaderpacks", "Шейдеры"],
+  ["config", "Настройки модов"],
+];
 
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
@@ -95,7 +111,7 @@ export const api = {
   createInstance: (name: string, gameVersion: string, loader: LoaderKind, loaderVersion?: string) =>
     invoke<Instance>("create_instance", { name, gameVersion, loader, loaderVersion: loaderVersion ?? null }),
   trashInstance: (id: string) => invoke<string>("trash_instance", { id }),
-  updateInstance: (id: string, patch: { name?: string; settings?: LaunchOverrides; authMode?: AuthMode; account?: string | null }) =>
+  updateInstance: (id: string, patch: { name?: string; settings?: LaunchOverrides; authMode?: AuthMode; account?: string | null; meta?: ProfileMeta }) =>
     invoke<Instance>("update_instance", {
       id,
       name: patch.name ?? null,
@@ -103,7 +119,11 @@ export const api = {
       authMode: patch.authMode ?? null,
       // "" — аккаунт по умолчанию, null — не менять.
       account: patch.account === undefined ? null : (patch.account ?? ""),
+      meta: patch.meta ?? null,
     }),
+  cloneInstance: (id: string, name: string, parts: CloneParts) => invoke<Instance>("clone_instance", { id, name, parts }),
+  diskUsage: (id: string) => invoke<{ parts: { label: string; size: number }[]; total: number }>("disk_usage", { id }),
+  copyBetween: (from: string, to: string, items: string[]) => invoke<void>("copy_between", { from, to, items }),
   launchSettings: (id: string) =>
     invoke<{ resolved: ResolvedLaunch; profile: LaunchOverrides; global: LaunchOverrides; total_memory_mb?: number }>("launch_settings", { id }),
   globalSettings: () => invoke<GlobalSettings>("global_settings"),

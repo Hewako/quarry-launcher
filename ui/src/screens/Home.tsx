@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { duration, loaderName, relTime, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
 import { CrashCard } from "../ui/CrashCard";
 import type { Tab } from "./InstancePage";
+
+type Sort = "recent" | "name" | "version" | "created";
 
 interface Props {
   info: AppInfo;
@@ -41,6 +43,33 @@ function remarks(inst: Instance, accounts: AccountRef[], info: AppInfo) {
 export function Home(p: Props) {
   const [view, setView] = useState<"cards" | "list">(() => (localStorage.getItem("profilesView") as "cards" | "list") ?? "cards");
   const setViewSaved = (v: "cards" | "list") => { setView(v); try { localStorage.setItem("profilesView", v); } catch { /* недоступно — не страшно */ } };
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>(() => (localStorage.getItem("profilesSort") as Sort) ?? "recent");
+  const [filter, setFilter] = useState("all");
+  const setSortSaved = (v: Sort) => { setSort(v); try { localStorage.setItem("profilesSort", v); } catch { /* не страшно */ } };
+  const groups = useMemo(() => [...new Set(p.instances.map((i) => i.group).filter((g): g is string => !!g))].sort(), [p.instances]);
+  const archived = p.instances.filter((i) => i.archived).length;
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = p.instances.filter((i) => {
+      if (filter === "archive" ? !i.archived : i.archived) return false;
+      if (filter === "fav" && !i.favorite) return false;
+      if (filter.startsWith("g:") && i.group !== filter.slice(2)) return false;
+      return !q || [i.name, i.game_version, loaderName[i.loader], i.group ?? "", i.description ?? ""].some((x) => x.toLowerCase().includes(q));
+    });
+    const key: Record<Sort, (i: Instance) => string | number> = {
+      recent: (i) => -(i.last_launch?.at ?? 0),
+      name: (i) => i.name.toLowerCase(),
+      version: (i) => i.game_version,
+      created: (i) => -i.created_at,
+    };
+    return list.sort((a, b) => {
+      if (!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1;
+      const ka = key[sort](a), kb = key[sort](b);
+      if (sort === "version") return String(kb).localeCompare(String(ka), undefined, { numeric: true });
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+  }, [p.instances, query, sort, filter]);
   const inst = p.selected;
   const state = inst ? p.states.get(inst.id) : undefined;
 
@@ -67,7 +96,7 @@ export function Home(p: Props) {
           <div className="card feature">
             <div className="art" />
             <div className="body">
-              <ProfileIcon id={inst.id} size={64} className="ficon" />
+              <ProfileIcon id={inst.id} color={inst.color} size={64} className="ficon" />
               <h3>{inst.name}</h3>
               <div className="chips">
                 <span className="chip">Minecraft {inst.game_version}</span>
@@ -129,8 +158,21 @@ export function Home(p: Props) {
       )}
 
       <div className="sect">
-        <h4>Профили · {p.instances.length}</h4>
+        <h4>Профили · {p.instances.length - archived}</h4>
         <div className="row">
+          <input className="field" type="search" placeholder="Поиск профиля…" aria-label="Поиск профиля" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 170 }} />
+          <select className="field auto" aria-label="Показывать" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">Все</option>
+            <option value="fav">Избранные</option>
+            {groups.map((g) => <option key={g} value={`g:${g}`}>Группа: {g}</option>)}
+            {archived > 0 && <option value="archive">Архив ({archived})</option>}
+          </select>
+          <select className="field auto" aria-label="Сортировка" value={sort} onChange={(e) => setSortSaved(e.target.value as Sort)}>
+            <option value="recent">Недавние</option>
+            <option value="name">По имени</option>
+            <option value="version">По версии</option>
+            <option value="created">Новые</option>
+          </select>
           <div className="seg" role="group" aria-label="Вид списка">
             <button className={view === "cards" ? "on" : ""} onClick={() => setViewSaved("cards")}>Карточки</button>
             <button className={view === "list" ? "on" : ""} onClick={() => setViewSaved("list")}>Список</button>
@@ -142,16 +184,16 @@ export function Home(p: Props) {
 
       {view === "cards" ? (
         <div className="cards">
-          {p.instances.map((i) => {
+          {shown.map((i) => {
             const ls = p.states.get(i.id);
             const st = statusOf(i, isActive(ls) ? ls!.phase : undefined);
             return (
               <button key={i.id} className={`pcard ${i.id === inst?.id ? "sel" : ""}`} onClick={() => p.onSelect(i.id)} onDoubleClick={() => p.onOpen(i.id)}>
                 <div className="t">
-                  <ProfileIcon id={i.id} />
+                  <ProfileIcon id={i.id} color={i.color} />
                   <div style={{ minWidth: 0 }}>
-                    <b>{i.name}</b>
-                    <span className="muted small">{i.game_version} · {loaderName[i.loader]}</span>
+                    <b>{i.favorite && <span className="star" aria-label="в избранном">★ </span>}{i.name}</b>
+                    <span className="muted small">{i.game_version} · {loaderName[i.loader]}{i.group ? ` · ${i.group}` : ""}</span>
                   </div>
                 </div>
                 <span><span className={`badge ${st.cls}`}>{st.text}</span></span>
@@ -164,9 +206,9 @@ export function Home(p: Props) {
           <table className="plist">
             <thead><tr><th>Профиль</th><th>Версия</th><th>Загрузчик</th><th>Последний запуск</th></tr></thead>
             <tbody>
-              {p.instances.map((i) => (
+              {shown.map((i) => (
                 <tr key={i.id} className={i.id === inst?.id ? "sel" : ""} onClick={() => p.onSelect(i.id)} onDoubleClick={() => p.onOpen(i.id)}>
-                  <td><div className="row"><ProfileIcon id={i.id} size={22} className="" /> {i.name}</div></td>
+                  <td><div className="row"><ProfileIcon id={i.id} color={i.color} size={22} className="" /> {i.favorite && <span className="star">★</span>}{i.name}{i.group && <span className="muted small">· {i.group}</span>}</div></td>
                   <td>{i.game_version}</td>
                   <td>{loaderName[i.loader]} {i.loader_version ?? ""}</td>
                   <td><StatusBadge inst={i} state={p.states.get(i.id)} /></td>
@@ -176,6 +218,7 @@ export function Home(p: Props) {
           </table>
         </div>
       )}
+      {shown.length === 0 && <p className="muted">Ничего не найдено{query ? ` по запросу «${query}»` : ""}.</p>}
       {p.broken.length > 0 && (
         <div className="alert warn" style={{ marginTop: 14 }}>
           <div className="h">Не удалось прочитать профили: {p.broken.length}</div>

@@ -154,7 +154,9 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
     if (inst.loader === "vanilla" || running) return;
     let off: (() => void) | undefined;
     let alive = true;
-    getCurrentWebview()
+    let webview: ReturnType<typeof getCurrentWebview>;
+    try { webview = getCurrentWebview(); } catch { return; } // в предпросмотре без Tauri окна нет
+    webview
       .onDragDropEvent(async (e) => {
         if (e.payload.type === "over" || e.payload.type === "enter") setDragging(true);
         else if (e.payload.type === "leave") setDragging(false);
@@ -179,7 +181,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         }
       })
       .then((u) => { if (alive) off = u; else u(); })
-      .catch(() => {}); // в предпросмотре без Tauri перетаскивания нет
+      .catch(() => {});
     return () => { alive = false; off?.(); };
   }, [inst.id, inst.loader, running, dialog, load, refreshUpdates]);
 

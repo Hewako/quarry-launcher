@@ -151,7 +151,8 @@ function Shell() {
                   <button className="btn" onClick={() => setCreating(true)}>+ Новый профиль</button>
                 </div>
               )}
-              <InstancePage key={selected.id} inst={selected} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
+              <InstancePage key={selected.id} inst={selected} instances={instances} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
+                onCloned={async (i) => { await refresh(); open(i.id, "profile"); }}
                 onChanged={(i) => setInstances((list) => list.map((x) => (x.id === i.id ? i : x)))}
                 onTrashed={() => { refresh(); setScreen("home"); }} />
             </>

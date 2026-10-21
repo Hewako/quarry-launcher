@@ -11,7 +11,7 @@ import "./styles.css";
 
 const now = Math.floor(Date.now() / 1000);
 const instances: Instance[] = [
-  { id: "tech", name: "Технология+", game_version: "26.3", loader: "fabric", loader_version: "0.19.5", created_at: now - 864000, auth_mode: "microsoft", settings: { max_memory_mb: 6144 }, pack_settings: {}, last_launch: { at: now - 86400, outcome: "success", duration_secs: 8040 } },
+  { id: "tech", name: "Технология+", game_version: "26.3", loader: "fabric", loader_version: "0.19.5", created_at: now - 864000, favorite: true, group: "С друзьями", color: "#3b7dd8", auth_mode: "microsoft", settings: { max_memory_mb: 6144 }, pack_settings: {}, last_launch: { at: now - 86400, outcome: "success", duration_secs: 8040 } },
   { id: "shaders", name: "Шейдеры", game_version: "1.21.11", loader: "quilt", loader_version: "0.29.2", created_at: now - 864000, auth_mode: "microsoft", settings: {}, pack_settings: {}, last_launch: { at: now - 3600, outcome: "crashed", exit_code: -1, duration_secs: 31, message: "игра завершилась с кодом -1" } },
   { id: "vanilla", name: "Ванилла 26.3", game_version: "26.3", loader: "vanilla", created_at: now - 864000, auth_mode: "microsoft", settings: {}, pack_settings: {} },
   { id: "old", name: "Хардкор 1.16.5", game_version: "1.16.5", loader: "vanilla", created_at: now - 864000, auth_mode: "microsoft", settings: {}, pack_settings: {}, last_launch: { at: now - 3 * 86400, outcome: "failed_to_start", duration_secs: 0, message: "Нет аккаунта Microsoft. Войдите на экране «Аккаунты»" } },
@@ -25,6 +25,8 @@ mockIPC((cmd, args) => {
   switch (cmd) {
     case "app_info": return { version: "0.1.0", dev_launch: params.has("dev"), data_dir: "/Users/player/.quarry", microsoft_configured: params.has("ms"), os: "macos" };
     case "list_instances": return { instances, broken: [], running: [] };
+    case "update_instance": return { ...instances.find((i) => i.id === a.id)!, ...((a.meta as object) ?? {}) };
+    case "disk_usage": return { total: 1_480_000_000, parts: [{ label: "Миры", size: 820_000_000 }, { label: "Моды", size: 410_000_000 }, { label: "Ресурспаки и шейдеры", size: 160_000_000 }, { label: "Снимки модов", size: 70_000_000 }, { label: "Скриншоты", size: 20_000_000 }] };
     case "list_accounts": return withAccount ? [{ provider: "microsoft", uuid: "0123", name: "Steve_Builder", owns_java_edition: true, checked_at: now }] : [];
     case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: "ru", ui_scale: 100, first_run_done: true, backup_before_risky_launch: true, backup_after_exit: false, check_launcher_updates: true };
     case "save_global_settings": return null;

@@ -190,6 +190,38 @@ pub fn safe_join(base: &Path, relative: &str) -> Option<PathBuf> {
     Some(out)
 }
 
+/// Рекурсивно скопировать папку (символические ссылки пропускаются).
+pub fn copy_dir(from: &Path, to: &Path) -> Result<u64> {
+    let mut n = 0;
+    std::fs::create_dir_all(to).at(to)?;
+    for e in std::fs::read_dir(from).at(from)?.flatten() {
+        let src = e.path();
+        let dst = to.join(e.file_name());
+        let ft = e.file_type().at(&src)?;
+        if ft.is_dir() {
+            n += copy_dir(&src, &dst)?;
+        } else if ft.is_file() {
+            std::fs::copy(&src, &dst).at(&dst)?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// Размер папки со всем содержимым (символические ссылки не считаются).
+pub fn dir_size(p: &Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(p) else {
+        return 0;
+    };
+    rd.flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => dir_size(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

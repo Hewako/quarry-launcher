@@ -120,6 +120,7 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .pcard .t { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .pcard .pi { width: 36px; height: 36px; border-radius: 8px; flex: none; }
 .pcard b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.star { color: #e3b341; }
 .pcard .meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
 .plist { width: 100%; }
 .plist tr { cursor: pointer; }
@@ -151,6 +152,7 @@ td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle;
 .setting .srcbox { display: flex; gap: 8px; align-items: center; justify-content: flex-end; min-width: 150px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 .field { border: 1px solid var(--line); background: var(--panel2); border-radius: 7px; padding: 7px 10px; color: var(--text); width: 100%; }
+.field.auto { width: auto; }
 .field.mono { font: 12.5px var(--mono); }
 select.field { padding: 6px 8px; }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; min-width: 130px; }
@@ -217,3 +219,13 @@ select.field { padding: 6px 8px; }
 .add { color: var(--accent); } .del { color: var(--err); } .chg { color: var(--warn); }
 .pin { font-size: 11px; color: var(--warn); }
 .trace { font: 12px/1.55 var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; overflow: auto; user-select: text; white-space: pre-wrap; word-break: break-word; }
+
+/* Вкладка «Профиль» */
+.swatch { width: 24px; height: 24px; border-radius: 6px; border: 2px solid transparent; padding: 0; cursor: pointer; }
+.swatch.on { border-color: var(--text); }
+.swatch.auto { background: var(--panel2); color: var(--muted); font-size: 11px; }
+.usage { display: grid; gap: 8px; }
+.urow { display: grid; grid-template-columns: 210px 1fr 80px; gap: 12px; align-items: center; }
+.urow .bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+.urow .bar i { display: block; height: 100%; background: var(--accent); }
+.urow > :last-child { text-align: right; }

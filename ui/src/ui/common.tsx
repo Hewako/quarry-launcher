@@ -18,8 +18,8 @@ export function iconFor(id: string): string {
   return ICONS[h % ICONS.length];
 }
 
-export function ProfileIcon({ id, size = 36, className = "pi" }: { id: string; size?: number; className?: string }) {
-  return <div className={className} style={{ width: size, height: size, background: iconFor(id) }} aria-hidden />;
+export function ProfileIcon({ id, color, size = 36, className = "pi" }: { id: string; color?: string; size?: number; className?: string }) {
+  return <div className={className} style={{ width: size, height: size, background: color ?? iconFor(id) }} aria-hidden />;
 }
 
 export function StatusBadge({ inst, state }: { inst: Instance; state?: LaunchState }) {

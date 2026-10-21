@@ -1,0 +1,227 @@
+//! Операции над профилями: копия профиля, место на диске, перенос файлов между профилями.
+
+use super::{Instance, InstanceStore};
+use crate::error::{Error, IoContext, Result};
+use crate::paths::{copy_dir, dir_size};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+/// Что взять в копию профиля. Настройки запуска копируются всегда.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub struct CloneParts {
+    /// Моды и pack.lock.
+    #[serde(default)]
+    pub mods: bool,
+    /// Настройки модов и игры: config/, options.txt, servers.dat.
+    #[serde(default)]
+    pub configs: bool,
+    /// Ресурспаки и шейдеры.
+    #[serde(default)]
+    pub resources: bool,
+    #[serde(default)]
+    pub worlds: bool,
+}
+
+/// Скопировать профиль под новым именем. Аккаунт, журнал и история запусков не копируются.
+pub fn clone_instance(
+    store: &InstanceStore,
+    id: &str,
+    name: &str,
+    parts: CloneParts,
+) -> Result<Instance> {
+    let src = store.get(id)?;
+    let src_game = store.game_dir(id)?;
+    let mut inst = store.create(
+        name,
+        &src.game_version,
+        src.loader,
+        src.loader_version.clone(),
+    )?;
+    inst.settings = src.settings.clone();
+    inst.pack_settings = src.pack_settings.clone();
+    inst.group = src.group.clone();
+    inst.description = src.description.clone();
+    inst.color = src.color.clone();
+    store.save(&inst)?;
+
+    let dst_game = store.game_dir(&inst.id)?;
+    let mut items: Vec<&str> = Vec::new();
+    if parts.mods {
+        items.push("mods");
+        let lock = store.dir(id)?.join("pack.lock");
+        if lock.is_file() {
+            let to = store.dir(&inst.id)?.join("pack.lock");
+            std::fs::copy(&lock, &to).at(&to)?;
+        }
+    }
+    if parts.configs {
+        items.extend(["config", "options.txt", "servers.dat"]);
+    }
+    if parts.resources {
+        items.extend(["resourcepacks", "shaderpacks"]);
+    }
+    if parts.worlds {
+        items.push("saves");
+    }
+    for item in items {
+        copy_item(&src_game.join(item), &dst_game.join(item))?;
+    }
+    Ok(inst)
+}
+
+fn copy_item(from: &Path, to: &Path) -> Result<()> {
+    if from.is_dir() {
+        copy_dir(from, to)?;
+    } else if from.is_file() {
+        if let Some(p) = to.parent() {
+            std::fs::create_dir_all(p).at(p)?;
+        }
+        std::fs::copy(from, to).at(to)?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskPart {
+    pub label: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskUsage {
+    pub parts: Vec<DiskPart>,
+    pub total: u64,
+}
+
+/// Сколько места занимает профиль — по частям, от большего к меньшему.
+pub fn disk_usage(store: &InstanceStore, id: &str) -> Result<DiskUsage> {
+    let game = store.game_dir(id)?;
+    let dir = store.dir(id)?;
+    let mut parts = Vec::new();
+    let mut counted = 0;
+    for (label, rel) in [
+        ("Миры", &["saves"][..]),
+        ("Моды", &["mods"]),
+        ("Ресурспаки и шейдеры", &["resourcepacks", "shaderpacks"]),
+        ("Скриншоты", &["screenshots"]),
+        ("Настройки модов", &["config"]),
+        ("Логи и отчёты о крашах", &["logs", "crash-reports"]),
+    ] {
+        let size: u64 = rel.iter().map(|r| dir_size(&game.join(r))).sum();
+        counted += size;
+        parts.push(DiskPart {
+            label: label.into(),
+            size,
+        });
+    }
+    let game_total = dir_size(&game);
+    parts.push(DiskPart {
+        label: "Прочее в папке игры".into(),
+        size: game_total.saturating_sub(counted),
+    });
+    parts.push(DiskPart {
+        label: "Снимки модов".into(),
+        size: dir_size(&dir.join("snapshots")),
+    });
+    parts.push(DiskPart {
+        label: "Бэкапы миров".into(),
+        size: dir_size(&crate::worlds::backups_dir(store.data(), id)),
+    });
+    parts.retain(|p| p.size > 0);
+    parts.sort_by_key(|p| std::cmp::Reverse(p.size));
+    Ok(DiskUsage {
+        total: parts.iter().map(|p| p.size).sum(),
+        parts,
+    })
+}
+
+/// Что можно перенести из одного профиля в другой.
+pub const SHARABLE: [(&str, &str); 5] = [
+    ("options.txt", "Настройки игры (управление, графика, звук)"),
+    ("servers.dat", "Список серверов"),
+    ("resourcepacks", "Ресурспаки"),
+    ("shaderpacks", "Шейдеры"),
+    ("config", "Настройки модов"),
+];
+
+/// Перенести файлы из профиля `from` в `to`. Перед этим у `to` создаётся снимок,
+/// а заменяемые папки ресурсов не удаляются — новые файлы добавляются к ним.
+pub fn copy_between(store: &InstanceStore, from: &str, to: &str, items: &[String]) -> Result<()> {
+    if from == to {
+        return Err(Error::invalid("Нужно выбрать другой профиль"));
+    }
+    let src = store.game_dir(from)?;
+    let dst = store.game_dir(to)?;
+    for item in items {
+        if !SHARABLE.iter().any(|(k, _)| k == item) {
+            return Err(Error::invalid(format!("Нельзя перенести {item}")));
+        }
+    }
+    let name = store.get(from)?.name;
+    crate::snapshot::create(
+        &store.dir(to)?,
+        &dst,
+        &format!("Перед переносом из «{name}»"),
+        true,
+    )?;
+    for item in items {
+        copy_item(&src.join(item), &dst.join(item))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loader::LoaderKind;
+    use crate::paths::DataDir;
+
+    #[test]
+    fn clone_usage_and_copy() {
+        let root = std::env::temp_dir().join(format!("quarry-ops-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = InstanceStore::new(DataDir::open(&root).unwrap());
+        let mut a = store
+            .create("База", "26.3", LoaderKind::Fabric, Some("0.19".into()))
+            .unwrap();
+        a.color = Some("#4a8".into());
+        a.settings.max_memory_mb = Some(6144);
+        store.save(&a).unwrap();
+        let g = store.game_dir(&a.id).unwrap();
+        for (f, n) in [
+            ("mods/x.jar", 10),
+            ("saves/W/level.dat", 30),
+            ("options.txt", 5),
+        ] {
+            std::fs::create_dir_all(g.join(f).parent().unwrap()).unwrap();
+            std::fs::write(g.join(f), vec![0u8; n]).unwrap();
+        }
+
+        let b = clone_instance(
+            &store,
+            &a.id,
+            "Копия",
+            CloneParts {
+                mods: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let gb = store.game_dir(&b.id).unwrap();
+        assert!(gb.join("mods/x.jar").is_file());
+        assert!(!gb.join("saves").exists());
+        assert!(!gb.join("options.txt").exists());
+        assert_eq!(b.settings.max_memory_mb, Some(6144));
+        assert_eq!(b.color.as_deref(), Some("#4a8"));
+        assert!(b.last_launch.is_none());
+
+        let u = disk_usage(&store, &a.id).unwrap();
+        assert_eq!(u.parts[0].label, "Миры");
+        assert_eq!(u.total, 45);
+
+        copy_between(&store, &a.id, &b.id, &["options.txt".into()]).unwrap();
+        assert!(gb.join("options.txt").is_file());
+        assert!(copy_between(&store, &a.id, &b.id, &["saves".into()]).is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+}
