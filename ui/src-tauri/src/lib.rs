@@ -1399,6 +1399,42 @@ async fn cache_clean(state: State<'_, AppState>) -> CmdResult<u64> {
         .map_err(err)
 }
 
+#[derive(Serialize)]
+struct FirstRunInfo {
+    data_dir: String,
+    free_bytes: Option<u64>,
+    javas: Vec<quarry_core::java::JavaInstall>,
+}
+
+#[tauri::command]
+async fn first_run_info(state: State<'_, AppState>) -> CmdResult<FirstRunInfo> {
+    let data = state.data.clone();
+    let root = data.root().to_path_buf();
+    Ok(FirstRunInfo {
+        data_dir: root.display().to_string(),
+        free_bytes: tauri::async_runtime::spawn_blocking(move || {
+            quarry_core::paths::free_space(&root)
+        })
+        .await
+        .ok()
+        .flatten(),
+        javas: quarry_core::java::discover(Some(&data)).await,
+    })
+}
+
+/// Мастер пройден: запомнить язык и больше не показывать.
+#[tauri::command]
+fn first_run_done(state: State<AppState>, language: String) -> CmdResult<()> {
+    let mut g = GlobalSettings::load(&state.data).map_err(err)?;
+    g.first_run_done = true;
+    g.language = if language == "en" {
+        "en".into()
+    } else {
+        "ru".into()
+    };
+    g.save(&state.data).map_err(err)
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1566,6 +1602,8 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            first_run_info,
+            first_run_done,
             crash_reports,
             crash_report_read,
             support_report_preview,

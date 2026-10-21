@@ -54,6 +54,8 @@ mockIPC((cmd, args) => {
     case "cache_clean": return 240_000_000;
     case "crash_reports": return [{ file: "crash-2026-10-21_09.30.00-client.txt", when: "2026-10-21 09:30:00", size: 18_000, description: "Rendering overlay" }];
     case "support_report_preview": return [{ name: "summary.txt", content: "Отчёт поддержки Quarry\n\nQuarry: 0.1.0\nВерсия игры: 26.3" }, { name: "mods.txt", content: "[вкл] Sodium 0.8.14 (sodium.jar)" }];
+    case "first_run_info": return { data_dir: "/Users/player/.quarry", free_bytes: 84_000_000_000, javas: [{ path: "/usr/bin/java", major: 21, version: "21.0.4", arch: "aarch64" }] };
+    case "first_run_done": return null;
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }
@@ -61,7 +63,7 @@ mockIPC((cmd, args) => {
     case "servers_save": return null;
     case "disk_usage": return { total: 1_480_000_000, parts: [{ label: "Миры", size: 820_000_000 }, { label: "Моды", size: 410_000_000 }, { label: "Ресурспаки и шейдеры", size: 160_000_000 }, { label: "Снимки модов", size: 70_000_000 }, { label: "Скриншоты", size: 20_000_000 }] };
     case "list_accounts": return withAccount ? [{ provider: "microsoft", uuid: "0123", name: "Steve_Builder", owns_java_edition: true, checked_at: now }] : [];
-    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: "ru", ui_scale: 100, compact: false, first_run_done: true, backup_before_risky_launch: true, backup_after_exit: false, backup_every_days: 0, download_limit_kbps: 0, check_launcher_updates: true };
+    case "global_settings": return { launch: {}, theme: params.get("theme") ?? "dark", streamer_mode: false, language: "ru", ui_scale: 100, compact: false, first_run_done: !params.has("firstrun"), backup_before_risky_launch: true, backup_after_exit: false, backup_every_days: 0, download_limit_kbps: 0, check_launcher_updates: true };
     case "save_global_settings": return null;
     case "launch_settings": {
       const i = instances.find((x) => x.id === a.id)!;

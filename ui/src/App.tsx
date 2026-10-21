@@ -9,6 +9,7 @@ import { ImportDialog } from "./screens/Import";
 import { InstancePage, type Tab } from "./screens/InstancePage";
 import { Logs } from "./screens/Logs";
 import { Settings } from "./screens/Settings";
+import { FirstRun } from "./screens/FirstRun";
 import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
@@ -57,6 +58,7 @@ function Shell() {
   const [theme, setTheme] = useState("dark");
   const [loadError, setLoadError] = useState("");
   const [palette, setPalette] = useState(false);
+  const [firstRun, setFirstRun] = useState(false);
   const [bell, setBell] = useState(false);
   const notes = useNotes();
 
@@ -80,7 +82,7 @@ function Shell() {
   useEffect(() => {
     launches.start();
     api.appInfo().then(setInfo);
-    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); }).catch(() => applyTheme("dark"));
+    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); setFirstRun(!g.first_run_done); }).catch(() => applyTheme("dark"));
     refresh();
     refreshAccounts();
     const off = listen("launch-finished", () => refresh());
@@ -221,6 +223,14 @@ function Shell() {
         </footer>
       </div>
 
+      {firstRun && (
+        <FirstRun onDone={(next) => {
+          setFirstRun(false);
+          if (next === "accounts") setScreen("accounts");
+          else if (next === "create") setCreating(true);
+          else if (next === "import") setImporting(true);
+        }} />
+      )}
       {palette && <Palette commands={commands} onClose={() => setPalette(false)} />}
       {importing && (
         <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />

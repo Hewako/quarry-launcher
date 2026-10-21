@@ -208,6 +208,41 @@ pub fn copy_dir(from: &Path, to: &Path) -> Result<u64> {
     Ok(n)
 }
 
+/// Свободное место на диске, где лежит `path` (байты). Через `df` или PowerShell —
+/// без лишних зависимостей. Ближайшая существующая папка выше по пути тоже подходит.
+pub fn free_space(path: &Path) -> Option<u64> {
+    let mut p = path.to_path_buf();
+    while !p.exists() {
+        p = p.parent()?.to_path_buf();
+    }
+    if cfg!(windows) {
+        let script = format!(
+            "(Get-Item -LiteralPath '{}').PSDrive.Free",
+            p.display().to_string().replace('\'', "''")
+        );
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", &script])
+            .output()
+            .ok()?;
+        return String::from_utf8_lossy(&out.stdout).trim().parse().ok();
+    }
+    let out = std::process::Command::new("df")
+        .arg("-Pk")
+        .arg(&p)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    // Вторая строка: файловая система, размер, занято, свободно (КБ), …
+    let kb: u64 = text
+        .lines()
+        .nth(1)?
+        .split_whitespace()
+        .nth(3)?
+        .parse()
+        .ok()?;
+    Some(kb * 1024)
+}
+
 /// Размер папки со всем содержимым (символические ссылки не считаются).
 pub fn dir_size(p: &Path) -> u64 {
     let Ok(rd) = std::fs::read_dir(p) else {
@@ -292,5 +327,11 @@ mod tests {
             "временных файлов не осталось"
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn free_space_is_known() {
+        let free = free_space(&std::env::temp_dir()).expect("df/PowerShell доступны");
+        assert!(free > 1024 * 1024, "{free}");
     }
 }
