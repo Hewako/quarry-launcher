@@ -65,8 +65,8 @@ export interface DeviceCode { device_code: string; user_code: string; verificati
 export type QuickPlay = { kind: "singleplayer" | "multiplayer" | "realms"; target: string };
 
 export interface Progress { files_total: number; files_done: number; bytes_total: number; bytes_done: number; retries: number }
-export interface ExitInfo { code?: number; duration_secs: number; killed: boolean; crashed: boolean; crash_report?: string; log_file: string; tail: string[] }
-export type Stage = "metadata" | "libraries" | "assets" | "natives" | "java";
+export interface ExitInfo { code?: number; duration_secs: number; killed: boolean; crashed: boolean; crash_report?: string; log_file: string; tail: string[]; analysis?: CrashAnalysis }
+export type Stage = "metadata" | "libraries" | "assets" | "natives" | "java" | "loader";
 
 export type LaunchEvent =
   | { type: "stage"; stage: Stage; label: string }
@@ -103,8 +103,8 @@ export const api = {
     invoke<{ versions: VersionEntry[]; latest_release: string; offline: boolean }>("list_versions", { snapshots, old }),
   versionInfo: (id: string) => invoke<{ java_major: number; java_reason: string }>("version_info", { id }),
   loaderVersions: (loader: LoaderKind, gameVersion: string) => invoke<LoaderVersion[]>("loader_versions", { loader, gameVersion }),
-  launch: (id: string, quickPlay?: QuickPlay, fullVerify = false) =>
-    invoke<void>("launch_instance", { id, quickPlay: quickPlay ?? null, fullVerify }),
+  launch: (id: string, quickPlay?: QuickPlay, fullVerify = false, safeMode = false) =>
+    invoke<void>("launch_instance", { id, quickPlay: quickPlay ?? null, fullVerify, safeMode }),
   stop: (id: string) => invoke<boolean>("stop_instance", { id }),
   previewCommand: (id: string) => invoke<string>("preview_command", { id }),
   openFolder: (id: string, sub?: string) => invoke<void>("open_instance_folder", { id, sub: sub ?? null }),
@@ -170,3 +170,52 @@ export function statusOf(i: Instance, phase?: "preparing" | "running" | "done" |
     case "failed_to_start": return { text: `не запустился · ${relTime(l.at)}`, cls: "err" };
   }
 }
+
+// ---------- Моды, каталог, снимки, импорт ----------
+
+export type Side = "client" | "server" | "both" | "unknown";
+export interface ModMeta { loader: string; id: string; name: string; version: string; side: Side; dependencies: { id: string; range: string; kind: string }[]; mixins: string[] }
+export interface LockEntry { path: string; sha1: string; source: "modrinth" | "curseforge" | "import" | "manual"; project_id?: string; version_number?: string; title?: string; layer: "base" | "user" }
+export interface ModFile { file_name: string; rel_path: string; enabled: boolean; size: number; sha1: string; mods: ModMeta[]; read_error?: string; source?: LockEntry }
+export type ModState = "ok" | "warning" | "blocked" | "disabled" | "unknown";
+export type Fix = { kind: "install"; mod_id: string } | { kind: "disable"; file_name: string } | { kind: "keep_one"; file_names: string[] };
+export interface Finding { severity: "blocking" | "warning"; title: string; detail: string; evidence: string; files: string[]; fixes: Fix[] }
+export interface DoctorReport { findings: Finding[]; mods: { file_name: string; state: ModState; state_label: string; notes: string[] }[]; total: number; ok: number; warnings: number; blocked: number; can_launch: boolean }
+export interface JournalEntry { at: number; action: string; what: string; reason: string; snapshot?: string }
+export interface Change { kind: "add" | "update" | "remove"; title: string; file_name?: string; old_file?: string; old_version?: string; new_version?: string; reason: string; size: number; version?: unknown }
+export interface Plan { changes: Change[]; notes: string[] }
+export interface SnapshotInfo { id: string; reason: string; created_at: number; pinned: boolean; auto: boolean; mods: number; configs: number }
+export interface SnapshotDiff { added: string[]; removed: string[]; changed: string[]; options: [string, string, string][] }
+export interface SearchHit { project_id: string; slug: string; title: string; description: string; downloads: number; icon_url?: string; author: string; client_side: string; categories: string[] }
+export type ProjectKind = "mod" | "resourcepack" | "shader";
+export interface ImportResult { instance: Instance; manual: { project_id: number; file_id: number; url: string }[]; notes: string[] }
+export type CrashAction = { kind: "disable_mod"; file_name: string } | { kind: "increase_memory" } | { kind: "update_drivers" } | { kind: "open_mod_doctor" } | { kind: "safe_launch" };
+export interface CrashAnalysis { title: string; explanation: string; confidence: "high" | "medium" | "low"; confidence_label: string; evidence: string[]; suspects: string[]; actions: CrashAction[] }
+
+export const mods = {
+  view: (id: string) => invoke<{ files: ModFile[]; report: DoctorReport; journal: JournalEntry[] }>("mods_view", { id }),
+  toggle: (id: string, file: string, enabled: boolean) => invoke<void>("mods_toggle", { id, file, enabled }),
+  remove: (id: string, file: string) => invoke<SnapshotInfo>("mods_remove", { id, file }),
+  search: (id: string, query: string, kind: ProjectKind, offset = 0) => invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset }),
+  planInstall: (id: string, project: string) => invoke<Plan>("mods_plan_install", { id, project }),
+  checkUpdates: (id: string) => invoke<Plan>("mods_check_updates", { id }),
+  apply: (id: string, plan: Plan, reason: string) => invoke<SnapshotInfo>("mods_apply", { id, plan, reason }),
+};
+
+export const snapshots = {
+  list: (id: string) => invoke<SnapshotInfo[]>("snapshots_list", { id }),
+  create: (id: string, reason: string) => invoke<SnapshotInfo>("snapshot_create", { id, reason }),
+  diff: (id: string, snapshot: string) => invoke<SnapshotDiff>("snapshot_diff", { id, snapshot }),
+  restore: (id: string, snapshot: string) => invoke<SnapshotInfo>("snapshot_restore", { id, snapshot }),
+  pin: (id: string, snapshot: string, pinned: boolean) => invoke<void>("snapshot_pin", { id, snapshot, pinned }),
+  worlds: (id: string) => invoke<string[]>("worlds_list", { id }),
+  backupWorld: (id: string, world: string) => invoke<{ world: string; file: string; size: number }>("world_backup", { id, world }),
+};
+
+export const importer = {
+  sources: () => invoke<{ prism: [string, string][]; official?: string }>("import_sources"),
+  path: (path: string) => invoke<ImportResult>("import_path", { path }),
+  link: (path: string, name: string, gameVersion: string, loader: LoaderKind) => invoke<ImportResult>("link_minecraft", { path, name, gameVersion, loader }),
+};
+
+export const sizeText = (b: number) => (b > 1_048_576 ? `${mb(b)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`);

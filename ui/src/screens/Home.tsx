@@ -2,6 +2,8 @@ import { useState } from "react";
 import { duration, loaderName, relTime, statusOf, type AccountRef, type AppInfo, type Instance } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
+import { CrashCard } from "../ui/CrashCard";
+import type { Tab } from "./InstancePage";
 
 interface Props {
   info: AppInfo;
@@ -11,8 +13,9 @@ interface Props {
   states: Map<string, LaunchState>;
   selected?: Instance;
   onSelect: (id: string) => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, tab?: Tab) => void;
   onCreate: () => void;
+  onImport: () => void;
   onAccounts: () => void;
   onLogs: (id: string) => void;
 }
@@ -46,8 +49,10 @@ export function Home(p: Props) {
       <div className="card empty">
         <h2>Профилей пока нет</h2>
         <p>Профиль — отдельная папка игры со своей версией, загрузчиком, модами и мирами. Профили не мешают друг другу.</p>
-        <button className="btn pri" onClick={p.onCreate}>+ Новый профиль</button>
-        <p className="small">Импорт из Prism, MultiMC, .mrpack и CurseForge появится на следующем этапе.</p>
+        <div className="row" style={{ justifyContent: "center" }}>
+          <button className="btn pri" onClick={p.onCreate}>+ Новый профиль</button>
+          <button className="btn" onClick={p.onImport}>Импорт из Prism, .mrpack или CurseForge</button>
+        </div>
         {p.broken.length > 0 && <p className="small" style={{ color: "var(--warn)" }}>Не удалось прочитать профилей: {p.broken.length}</p>}
       </div>
     );
@@ -84,14 +89,20 @@ export function Home(p: Props) {
                 </div>
               )}
               {state?.phase === "done" && state.exit?.crashed && (
-                <div className="alert err" style={{ marginTop: 12 }}>
-                  <div className="h">Игра упала{state.exit.code != null ? ` (код ${state.exit.code})` : ""}</div>
-                  <div className="acts"><button className="btn" onClick={() => p.onLogs(inst.id)}>Открыть лог</button></div>
+                <div style={{ marginTop: 12 }}>
+                  {state.exit.analysis ? (
+                    <CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={(t) => p.onOpen(inst.id, t)} />
+                  ) : (
+                    <div className="alert err"><div className="h">Игра упала{state.exit.code != null ? ` (код ${state.exit.code})` : ""}</div></div>
+                  )}
+                  <button className="btn link small" style={{ marginTop: 6 }} onClick={() => p.onLogs(inst.id)}>Открыть полный лог</button>
                 </div>
               )}
               <div className="row" style={{ marginTop: 14 }}>
                 <span className="muted small">Быстро:</span>
-                <button className="btn" onClick={() => p.onOpen(inst.id)}>Настройки профиля</button>
+                {inst.loader !== "vanilla" && <button className="btn" onClick={() => p.onOpen(inst.id, "mods")}>Моды</button>}
+                <button className="btn" onClick={() => p.onOpen(inst.id, "launch")}>Настройки профиля</button>
+                <button className="btn" onClick={() => p.onOpen(inst.id, "snapshots")}>Снимки</button>
                 <button className="btn" onClick={() => p.onLogs(inst.id)}>Логи</button>
               </div>
             </div>
@@ -125,6 +136,7 @@ export function Home(p: Props) {
             <button className={view === "list" ? "on" : ""} onClick={() => setViewSaved("list")}>Список</button>
           </div>
           <button className="btn" onClick={p.onCreate}>+ Новый профиль</button>
+          <button className="btn" onClick={p.onImport}>Импорт .mrpack / zip / Prism</button>
         </div>
       </div>
 

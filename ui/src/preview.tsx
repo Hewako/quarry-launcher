@@ -52,6 +52,38 @@ mockIPC((cmd, args) => {
       }, 50);
       return null;
     }
+    case "mods_view": {
+      const fm = (id: string, name: string, version: string, side: string) => [{ loader: "fabric", id, name, version, side, dependencies: [], mixins: [] }];
+      const files = [
+        { file_name: "sodium.jar", rel_path: "mods/sodium.jar", enabled: true, size: 1, sha1: "a", mods: fm("sodium", "Sodium", "0.8.14", "client"), source: { path: "mods/sodium.jar", sha1: "a", source: "modrinth", layer: "base" } },
+        { file_name: "indium.jar", rel_path: "mods/indium.jar", enabled: true, size: 1, sha1: "b", mods: fm("indium", "Indium", "1.0.30", "client"), source: { path: "mods/indium.jar", sha1: "b", source: "modrinth", layer: "user" } },
+        { file_name: "iris.jar", rel_path: "mods/iris.jar", enabled: true, size: 1, sha1: "c", mods: fm("iris", "Iris Shaders", "1.10.8", "client"), source: { path: "mods/iris.jar", sha1: "c", source: "modrinth", layer: "base" } },
+        { file_name: "old.jar.disabled", rel_path: "mods/old.jar.disabled", enabled: false, size: 1, sha1: "d", mods: [], read_error: "в файле нет метаданных мода" },
+      ];
+      return {
+        files,
+        report: {
+          findings: [{ severity: "blocking", title: "Indium требует sodium <0.6, а стоит 0.8.14", detail: "Версии не подходят друг к другу — загрузчик остановит запуск.", evidence: "fabric.mod.json: зависимость sodium <0.6", files: ["indium.jar"], fixes: [{ kind: "disable", file_name: "indium.jar" }] }],
+          mods: [
+            { file_name: "sodium.jar", state: "ok", state_label: "конфликтов не найдено", notes: [] },
+            { file_name: "indium.jar", state: "blocked", state_label: "блокирует запуск", notes: ["Indium требует sodium <0.6, а стоит 0.8.14"] },
+            { file_name: "iris.jar", state: "ok", state_label: "конфликтов не найдено", notes: [] },
+            { file_name: "old.jar", state: "disabled", state_label: "выключен", notes: [] },
+          ],
+          total: 4, ok: 2, warnings: 0, blocked: 1, can_launch: false,
+        },
+        journal: [{ at: now - 3600, action: "Установлено", what: "Iris Shaders 1.10.8", reason: "выбран вами", snapshot: "s1" }],
+      };
+    }
+    case "snapshots_list": return [
+      { id: "s2", reason: "Перед установкой Distant Horizons", created_at: now - 3600, pinned: false, auto: true, mods: 44, configs: 121 },
+      { id: "s1", reason: "Чистая сборка 1.8", created_at: now - 9 * 86400, pinned: true, auto: false, mods: 42, configs: 118 },
+    ];
+    case "snapshot_diff": return { added: ["mods/DistantHorizons-2.3.4.jar"], removed: [], changed: [], options: [["renderDistance", "12", "16"]] };
+    case "worlds_list": return ["База у реки", "Творческий"];
+    case "import_sources": return { prism: [["/Users/player/Library/Application Support/PrismLauncher/instances/Tech", "Технология+ (1.21.11 · Fabric)"]], official: "/Users/player/Library/Application Support/minecraft" };
+    case "mods_check_updates": return { changes: [{ kind: "update", title: "Sodium", old_version: "0.8.12", new_version: "0.8.14", reason: "новая версия", size: 1914874 }], notes: ["Моды, которых нет на Modrinth, проверить на обновления нельзя"] };
+    case "catalog_search": return { hits: [{ project_id: "AANobbMI", slug: "sodium", title: "Sodium", description: "Современный движок отрисовки, заметно поднимает FPS", downloads: 250585660, author: "jellysquid3", client_side: "required", categories: [] }], total_hits: 1 };
     default: return null;
   }
 }, { shouldMockEvents: true });

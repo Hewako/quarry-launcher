@@ -187,3 +187,33 @@ select.field { padding: 6px 8px; }
 .empty p { margin: 0; color: var(--muted); max-width: 440px; }
 .spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; display: inline-block; animation: spin .8s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Моды и Mod Doctor */
+.summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.kpi.ok b { color: var(--accent); } .kpi.warn b { color: var(--warn); } .kpi.err b { color: var(--err); }
+.tog { width: 30px; height: 17px; border-radius: 10px; background: var(--line); position: relative; border: 0; padding: 0; flex: none; }
+.tog::after { content: ""; position: absolute; width: 13px; height: 13px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: .15s; }
+.tog.on { background: var(--accent); } .tog.on::after { left: 15px; }
+.modbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.modtable td small { display: block; color: var(--muted); font-size: 12px; }
+.modtable tr.off td { opacity: .55; }
+.layer { font-size: 11px; color: var(--muted); }
+.findings { display: grid; gap: 10px; margin-bottom: 14px; }
+.hits { display: grid; gap: 8px; max-height: 420px; overflow: auto; }
+.hit { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.hit img, .hit .noicon { width: 40px; height: 40px; border-radius: 8px; flex: none; background: var(--line); }
+.hit .grow { flex: 1; min-width: 0; }
+.hit .grow small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planlist { display: grid; gap: 6px; max-height: 340px; overflow: auto; }
+.planlist label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.planlist label small { display: block; color: var(--muted); font-size: 12px; }
+
+/* Снимки */
+.timeline { display: grid; position: relative; padding-left: 18px; }
+.timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+.snap { position: relative; padding: 0 0 16px; }
+.snap::before { content: ""; position: absolute; left: -17px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
+.snap .diff { font: 12px var(--mono); margin-top: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; display: grid; gap: 2px; user-select: text; }
+.add { color: var(--accent); } .del { color: var(--err); } .chg { color: var(--warn); }
+.pin { font-size: 11px; color: var(--warn); }
+.trace { font: 12px/1.55 var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; overflow: auto; user-select: text; white-space: pre-wrap; word-break: break-word; }

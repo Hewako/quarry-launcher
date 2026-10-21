@@ -82,12 +82,12 @@ export function PlayButton({ inst, state, compact }: { inst: Instance; state?: L
     return () => window.removeEventListener("mousedown", close);
   }, [menu]);
 
-  const go = async (quickPlay?: QuickPlay, fullVerify = false) => {
+  const go = async (quickPlay?: QuickPlay, fullVerify = false, safeMode = false) => {
     setMenu(false);
     setQuick(null);
     launches.begin(inst.id);
     try {
-      await api.launch(inst.id, quickPlay, fullVerify);
+      await api.launch(inst.id, quickPlay, fullVerify, safeMode);
     } catch (e) {
       await dialog.alert("Не удалось начать запуск", errText(e));
     }
@@ -124,6 +124,7 @@ export function PlayButton({ inst, state, compact }: { inst: Instance; state?: L
           <button role="menuitem" onClick={() => setQuick("singleplayer")}>Сразу в мир…<small>Quick Play: запуск сразу в выбранный мир</small></button>
           <button role="menuitem" onClick={() => setQuick("multiplayer")}>Сразу на сервер…<small>Quick Play или --server для старых версий</small></button>
           <button role="menuitem" onClick={() => go(undefined, true)}>Проверить файлы и играть<small>Пересчитать хэши всех файлов и докачать повреждённые</small></button>
+          {inst.loader !== "vanilla" && <button role="menuitem" onClick={() => go(undefined, false, true)}>Безопасный запуск<small>Без модов; моды вернутся после выхода из игры</small></button>}
           <button role="menuitem" onClick={() => { setMenu(false); api.openFolder(inst.id).catch((e) => dialog.alert("Не удалось открыть папку", errText(e))); }}>Открыть папку профиля</button>
         </div>
       )}

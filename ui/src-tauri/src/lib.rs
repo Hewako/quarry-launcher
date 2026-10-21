@@ -520,10 +520,292 @@ fn open_link(app: tauri::AppHandle, url: String) -> CmdResult<()> {
         .map_err(|e| e.to_string())
 }
 
+// ---------- Моды, каталог, снимки, импорт ----------
+
+#[derive(Serialize)]
+struct ModsView {
+    files: Vec<quarry_core::mods::ModFile>,
+    report: quarry_core::mods::doctor::Report,
+    journal: Vec<quarry_core::mods::manage::JournalEntry>,
+}
+
+#[tauri::command]
+fn mods_view(state: State<AppState>, id: String) -> CmdResult<ModsView> {
+    let store = InstanceStore::new(state.data.clone());
+    let inst = store.get(&id).map_err(err)?;
+    let (game, dir) = (
+        store.game_dir(&id).map_err(err)?,
+        store.dir(&id).map_err(err)?,
+    );
+    let files = quarry_core::mods::inventory(&game, &dir).map_err(err)?;
+    let report = quarry_core::mods::doctor::check(
+        &files,
+        inst.loader,
+        &inst.game_version,
+        inst.loader_version.as_deref(),
+    );
+    let mut journal = quarry_core::mods::manage::journal(&dir);
+    journal.reverse();
+    journal.truncate(50);
+    Ok(ModsView {
+        files,
+        report,
+        journal,
+    })
+}
+
+#[tauri::command]
+fn mods_toggle(state: State<AppState>, id: String, file: String, enabled: bool) -> CmdResult<()> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::toggle(&store, &id, &file, enabled, "вручную").map_err(err)
+}
+
+#[tauri::command]
+fn mods_remove(
+    state: State<AppState>,
+    id: String,
+    file: String,
+) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::remove(&store, &id, &file, "вручную").map_err(err)
+}
+
+#[tauri::command]
+async fn catalog_search(
+    state: State<'_, AppState>,
+    id: String,
+    query: String,
+    kind: quarry_core::catalog::ProjectType,
+    offset: u32,
+) -> CmdResult<quarry_core::catalog::SearchResult> {
+    let inst = InstanceStore::new(state.data.clone())
+        .get(&id)
+        .map_err(err)?;
+    let loaders = quarry_core::catalog::loaders_for(inst.loader);
+    quarry_core::catalog::search(&query, kind, &loaders, &inst.game_version, offset)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+async fn mods_plan_install(
+    state: State<'_, AppState>,
+    id: String,
+    project: String,
+) -> CmdResult<quarry_core::mods::manage::Plan> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::plan_install(&store, &id, &project)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+async fn mods_check_updates(
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<quarry_core::mods::manage::Plan> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::check_updates(&store, &id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+async fn mods_apply(
+    state: State<'_, AppState>,
+    id: String,
+    plan: quarry_core::mods::manage::Plan,
+    reason: String,
+) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::mods::manage::apply(&store, &id, plan, &reason, &Cancel::new())
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+fn snapshots_list(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::snapshot::SnapshotInfo>> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::snapshot::list(&store.dir(&id).map_err(err)?).map_err(err)
+}
+
+#[tauri::command]
+fn snapshot_create(
+    state: State<AppState>,
+    id: String,
+    reason: String,
+) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
+    let store = InstanceStore::new(state.data.clone());
+    let reason = if reason.trim().is_empty() {
+        "Создан вручную".to_string()
+    } else {
+        reason
+    };
+    quarry_core::snapshot::create(
+        &store.dir(&id).map_err(err)?,
+        &store.game_dir(&id).map_err(err)?,
+        &reason,
+        false,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn snapshot_diff(
+    state: State<AppState>,
+    id: String,
+    snapshot: String,
+) -> CmdResult<quarry_core::snapshot::Diff> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::snapshot::diff(
+        &store.dir(&id).map_err(err)?,
+        &store.game_dir(&id).map_err(err)?,
+        &snapshot,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn snapshot_restore(
+    state: State<AppState>,
+    id: String,
+    snapshot: String,
+) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::snapshot::restore(
+        &store.dir(&id).map_err(err)?,
+        &store.game_dir(&id).map_err(err)?,
+        &snapshot,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn snapshot_pin(
+    state: State<AppState>,
+    id: String,
+    snapshot: String,
+    pinned: bool,
+) -> CmdResult<()> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::snapshot::set_pinned(&store.dir(&id).map_err(err)?, &snapshot, pinned).map_err(err)
+}
+
+#[tauri::command]
+fn worlds_list(state: State<AppState>, id: String) -> CmdResult<Vec<String>> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    let mut out: Vec<String> = std::fs::read_dir(game.join("saves"))
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.path().join("level.dat").is_file())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    out.sort();
+    Ok(out)
+}
+
+#[tauri::command]
+fn world_backup(
+    state: State<AppState>,
+    id: String,
+    world: String,
+) -> CmdResult<quarry_core::snapshot::WorldBackup> {
+    let store = InstanceStore::new(state.data.clone());
+    let game = store.game_dir(&id).map_err(err)?;
+    quarry_core::snapshot::backup_world(&game, &state.data.backups().join(&id), &world).map_err(err)
+}
+
+#[derive(Serialize)]
+struct ImportSources {
+    prism: Vec<(String, String)>,
+    official: Option<String>,
+}
+
+#[tauri::command]
+fn import_sources() -> ImportSources {
+    ImportSources {
+        prism: quarry_core::import::find_prism_instances()
+            .into_iter()
+            .map(|p| {
+                let name = quarry_core::import::detect_mmc(&p)
+                    .map(|d| format!("{} ({} · {})", d.name, d.game_version, d.loader.display()))
+                    .unwrap_or_else(|_| {
+                        p.file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                    });
+                (p.display().to_string(), name)
+            })
+            .collect(),
+        official: quarry_core::import::official_minecraft_dir().map(|p| p.display().to_string()),
+    }
+}
+
+#[tauri::command]
+async fn import_path(
+    state: State<'_, AppState>,
+    path: String,
+) -> CmdResult<quarry_core::import::ImportResult> {
+    let store = InstanceStore::new(state.data.clone());
+    let p = std::path::PathBuf::from(&path);
+    if p.is_dir() {
+        quarry_core::import::import_mmc(&store, &p).map_err(err)
+    } else if p.extension().is_some_and(|e| e == "mrpack") {
+        quarry_core::import::import_mrpack(&store, &p, &Cancel::new())
+            .await
+            .map_err(err)
+    } else if p.extension().is_some_and(|e| e == "zip") {
+        quarry_core::import::import_curseforge(&store, &p).map_err(err)
+    } else {
+        Err("Поддерживаются папка инстанса Prism/MultiMC, .mrpack и .zip CurseForge".into())
+    }
+}
+
+#[tauri::command]
+fn link_minecraft(
+    state: State<AppState>,
+    path: String,
+    name: String,
+    game_version: String,
+    loader: String,
+) -> CmdResult<quarry_core::import::ImportResult> {
+    let store = InstanceStore::new(state.data.clone());
+    let kind = LoaderKind::parse(&loader).map_err(err)?;
+    quarry_core::import::link_existing(
+        &store,
+        std::path::Path::new(&path),
+        &name,
+        &game_version,
+        kind,
+        None,
+    )
+    .map_err(err)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let root = DataDir::default_root().ok_or("Не удалось определить домашнюю папку")?;
             let data = DataDir::open(root)?;
@@ -561,6 +843,23 @@ pub fn run() {
             ely_login_password,
             cancel_login,
             open_link,
+            mods_view,
+            mods_toggle,
+            mods_remove,
+            catalog_search,
+            mods_plan_install,
+            mods_check_updates,
+            mods_apply,
+            snapshots_list,
+            snapshot_create,
+            snapshot_diff,
+            snapshot_restore,
+            snapshot_pin,
+            worlds_list,
+            world_backup,
+            import_sources,
+            import_path,
+            link_minecraft,
         ])
         .run(tauri::generate_context!())
         .expect("ошибка запуска приложения Quarry");

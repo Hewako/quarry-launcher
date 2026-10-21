@@ -33,8 +33,9 @@ pub struct Change {
     /// Почему: «выбран вами», «нужен для Iris».
     pub reason: String,
     pub size: u64,
-    #[serde(skip)]
-    version: Option<Version>,
+    /// Версия Modrinth (план уходит в интерфейс на предпросмотр и возвращается обратно).
+    #[serde(default)]
+    pub version: Option<Version>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,6 +297,13 @@ pub async fn apply(
             let f = v
                 .primary_file()
                 .ok_or_else(|| Error::invalid("У версии нет файла"))?;
+            // План приходит из интерфейса: скачиваем только с CDN Modrinth.
+            if !f.url.starts_with("https://") || crate::net::host_of(&f.url) != "cdn.modrinth.com" {
+                return Err(Error::invalid(format!(
+                    "Файл {} предлагается скачать не с Modrinth — отменено",
+                    f.filename
+                )));
+            }
             let sha1 = f
                 .hashes
                 .get("sha1")

@@ -5,17 +5,20 @@ import { isActive, launches, useLaunches } from "./launches";
 import { Accounts } from "./screens/Accounts";
 import { CreateInstance } from "./screens/CreateInstance";
 import { Home } from "./screens/Home";
-import { InstancePage } from "./screens/InstancePage";
+import { ImportDialog } from "./screens/Import";
+import { InstancePage, type Tab } from "./screens/InstancePage";
 import { Logs } from "./screens/Logs";
 import { Settings } from "./screens/Settings";
 import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
 
-type Screen = "home" | "profile" | "logs" | "accounts" | "settings";
+type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
 
 const NAV: { id: Screen; label: string; ico: string }[] = [
   { id: "home", label: "Главная", ico: "⌂" },
   { id: "profile", label: "Профили", ico: "▦" },
+  { id: "doctor", label: "Mod Doctor", ico: "⚙" },
+  { id: "history", label: "Снимки и откат", ico: "↺" },
   { id: "logs", label: "Логи и краши", ico: "≡" },
   { id: "accounts", label: "Аккаунты", ico: "☺" },
   { id: "settings", label: "Настройки", ico: "✎" },
@@ -34,8 +37,9 @@ function Shell() {
   const [accounts, setAccounts] = useState<AccountRef[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [screen, setScreen] = useState<Screen>("home");
-  const [profileTab, setProfileTab] = useState<"launch" | "logs" | undefined>();
+  const [profileTab, setProfileTab] = useState<Tab | undefined>();
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [loadError, setLoadError] = useState("");
 
@@ -86,7 +90,7 @@ function Shell() {
   const ms = msAll.find((a) => `${a.provider}:${a.uuid}` === defaultKey) ?? msAll[0];
 
   if (!info) return <div className="content muted">Загрузка…</div>;
-  const open = (id: string, tab?: "launch" | "logs") => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
+  const open = (id: string, tab?: Tab) => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
 
   return (
     <div className="app">
@@ -94,7 +98,10 @@ function Shell() {
         <div className="logo"><i /><div>Quarry<small>рабочее название · v{info.version}</small></div></div>
         <nav className="nav" aria-label="Разделы">
           {NAV.map((n) => (
-            <button key={n.id} className={screen === n.id ? "on" : ""} aria-current={screen === n.id ? "page" : undefined} onClick={() => { setProfileTab(undefined); setScreen(n.id); }}>
+            <button key={n.id} className={(n.id === "doctor" ? screen === "profile" && profileTab === "mods" : n.id === "history" ? screen === "profile" && profileTab === "snapshots" : n.id === "profile" ? screen === "profile" && profileTab !== "mods" && profileTab !== "snapshots" : screen === n.id) ? "on" : ""} aria-current={screen === n.id ? "page" : undefined} onClick={() => {
+              if (n.id === "doctor" || n.id === "history") { setProfileTab(n.id === "doctor" ? "mods" : "snapshots"); setScreen("profile"); return; }
+              setProfileTab(undefined); setScreen(n.id);
+            }}>
               <span className="ico" aria-hidden>{n.ico}</span>{n.label}
               {n.id === "profile" && instances.length > 0 && <span className="count">{instances.length}</span>}
             </button>
@@ -131,7 +138,7 @@ function Shell() {
           {loadError && <div className="alert err"><div className="h">Не удалось прочитать профили</div><span>{loadError}</span></div>}
           {screen === "home" && (
             <Home info={info} instances={instances} broken={broken} accounts={accounts} states={states} selected={selected}
-              onSelect={setSelectedId} onOpen={(id) => open(id)} onCreate={() => setCreating(true)}
+              onSelect={setSelectedId} onOpen={(id, tab) => open(id, tab)} onCreate={() => setCreating(true)} onImport={() => setImporting(true)}
               onAccounts={() => setScreen("accounts")} onLogs={(id) => { setSelectedId(id); setScreen("logs"); }} />
           )}
           {screen === "profile" && (selected ? (
@@ -162,6 +169,9 @@ function Shell() {
         </footer>
       </div>
 
+      {importing && (
+        <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />
+      )}
       {creating && (
         <CreateInstance onClose={() => setCreating(false)} onCreated={(i) => { setCreating(false); refresh().then(() => { setSelectedId(i.id); setScreen("home"); }); }} />
       )}

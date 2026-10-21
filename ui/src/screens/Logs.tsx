@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, duration, errText, relTime, type Instance } from "../api";
 import type { LaunchState } from "../launches";
 import { LogView } from "../ui/LogView";
+import { CrashCard } from "../ui/CrashCard";
 
 /** Логи и краши: последний запуск выбранного профиля, живой или из файла. */
 export function Logs({ instances, states, id, onPick }: { instances: Instance[]; states: Map<string, LaunchState>; id?: string; onPick: (id: string) => void }) {
@@ -35,12 +36,12 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
           {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
       </div>
-      {crashed && (
+      {exit?.analysis && <CrashCard inst={inst} a={exit.analysis} code={exit.code} />}
+      {crashed && !exit?.analysis && (
         <div className="alert err">
           <div className="h">Игра упала{exit?.code != null ? ` с кодом ${exit.code}` : last?.exit_code != null ? ` с кодом ${last.exit_code}` : ""}</div>
-          <span className="small">
-            Разбор причины по стектрейсу (вероятный виновник среди модов) появится вместе с Mod Doctor. Пока: посмотрите строки на вкладке «Ошибки» — обычно причина в первой строке «Caused by».
-          </span>
+          {last?.message && <span>{last.message}</span>}
+          <span className="small">Подробный разбор виден сразу после краша. Здесь — сохранённый лог: посмотрите вкладку «Ошибки», обычно причина в первой строке «Caused by».</span>
           {exit?.crash_report && <span className="small mono" style={{ userSelect: "text" }}>Crash report: {exit.crash_report}</span>}
           <div className="acts">
             <button className="btn" onClick={() => api.openFolder(inst.id, "crash-reports")}>Открыть crash-reports</button>

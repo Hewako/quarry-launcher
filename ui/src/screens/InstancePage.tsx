@@ -4,8 +4,13 @@ import { isActive, type LaunchState } from "../launches";
 import { useDialog } from "../ui/Dialog";
 import { LaunchProgress, PlayButton, StatusBadge } from "../ui/common";
 import { LogView } from "../ui/LogView";
+import { CrashCard } from "../ui/CrashCard";
+import { ModsTab } from "./ModsTab";
+import { SnapshotsTab } from "./SnapshotsTab";
 
-type Tab = "launch" | "logs";
+export type Tab = "mods" | "launch" | "snapshots" | "logs";
+
+const TABS: [Tab, string][] = [["mods", "Моды · Mod Doctor"], ["launch", "Запуск и память"], ["snapshots", "Снимки"], ["logs", "Логи"]];
 
 function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }) {
   return (
@@ -155,7 +160,8 @@ export function InstancePage({ inst, state, accounts, initialTab, onChanged, onT
   onTrashed: () => void;
 }) {
   const dialog = useDialog();
-  const [tab, setTab] = useState<Tab>(initialTab ?? "launch");
+  const [tab, setTab] = useState<Tab>(initialTab ?? (inst.loader === "vanilla" ? "launch" : "mods"));
+  const [reload, setReload] = useState(0);
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
 
   const trash = async () => {
@@ -188,12 +194,19 @@ export function InstancePage({ inst, state, accounts, initialTab, onChanged, onT
         </div>
       </div>
       {state && isActive(state) && <LaunchProgress state={state} />}
-      {state?.phase === "failed" && state.error && <div className="alert err" style={{ marginTop: 12 }}><div className="h">Запуск не удался</div><span>{state.error}</span></div>}
+      {state?.phase === "failed" && state.error && <div className="alert err" style={{ marginTop: 12, whiteSpace: "pre-line" }}><div className="h">Запуск не удался</div><span>{state.error}</span></div>}
+      {state?.phase === "done" && state.exit?.analysis && (
+        <div style={{ marginTop: 12 }}><CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={setTab} /></div>
+      )}
       <div className="ptabs" role="tablist">
-        <button role="tab" aria-selected={tab === "launch"} className={tab === "launch" ? "on" : ""} onClick={() => setTab("launch")}>Запуск и память</button>
-        <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "on" : ""} onClick={() => setTab("logs")}>Логи</button>
+        {TABS.map(([t, label]) => (
+          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{label}</button>
+        ))}
       </div>
-      {tab === "launch" ? <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} /> : <LogsTab inst={inst} state={state} />}
+      {tab === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}
+      {tab === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
+      {tab === "snapshots" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
+      {tab === "logs" && <LogsTab inst={inst} state={state} />}
     </>
   );
 }
