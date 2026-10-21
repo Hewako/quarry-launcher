@@ -101,6 +101,13 @@ pub struct Project {
     pub server_side: String,
     #[serde(default)]
     pub categories: Vec<String>,
+    #[serde(default)]
+    pub license: Option<License>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct License {
+    pub id: String,
 }
 
 /// Подождать, если лимит запросов почти исчерпан.

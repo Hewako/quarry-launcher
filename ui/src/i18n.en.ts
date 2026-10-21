@@ -796,4 +796,9 @@ export const EN: Record<string, string> = {
   "необязательно:": "optional:",
   "Обновляем…": "Updating…",
   "Обновить": "Update",
+  "Экспорт в .mrpack": "Export to .mrpack",
+  "Экспорт в .mrpack…": "Export to .mrpack…",
+  "Сборка сохранена": "Pack saved",
+  "Модов ссылками на Modrinth: {0}. Рядом сохранён отчёт с лицензиями:": "Mods linked to Modrinth: {0}. A report with licenses is saved next to it:",
+  "Внутрь архива вложены файлы без источника — перед публикацией проверьте их лицензии:": "Files without a known source are bundled into the archive — check their licenses before publishing:",
 };

@@ -320,6 +320,8 @@ export const importer = {
   path: (path: string, skipOptional: string[] = []) => invoke<ImportResult>("import_path", { path, skipOptional }),
   preview: (path: string) => invoke<{ name: string; version: string; game: string; loader: string; optional: string[] }>("mrpack_preview", { path }),
   updatePlan: (id: string, path: string) => invoke<PackUpdatePlan>("pack_update_plan", { id, path }),
+  exportMrpack: (id: string, path: string, name: string, version: string) =>
+    invoke<{ linked: number; bundled: string[]; report_path: string }>("export_mrpack", { id, path, name, version }),
   updateApply: (id: string, path: string, skipOptional: string[]) => invoke<SnapshotInfo>("pack_update_apply", { id, path, skipOptional }),
   link: (path: string, name: string, gameVersion: string, loader: LoaderKind) => invoke<ImportResult>("link_minecraft", { path, name, gameVersion, loader }),
 };

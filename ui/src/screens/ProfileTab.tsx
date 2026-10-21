@@ -1,5 +1,5 @@
 // Вкладка «Профиль»: оформление, место на диске, копия профиля и перенос настроек из другого.
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, errText, importer, metaOf, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
@@ -92,6 +92,17 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
   const [moving, setMoving] = useState(false);
   const [update, setUpdate] = useState<{ path: string; plan: PackUpdatePlan; off: string[] } | null>(null);
   const [updating, setUpdating] = useState(false);
+  const exportPack = async () => {
+    const path = await saveDialog({ title: t("Экспорт в .mrpack"), defaultPath: `${inst.name}.mrpack`, filters: [{ name: ".mrpack", extensions: ["mrpack"] }] }).catch(() => null);
+    if (!path) return;
+    try {
+      const r = await importer.exportMrpack(inst.id, path, inst.pack?.name ?? inst.name, inst.pack?.version ?? "1.0");
+      await dialog.alert(t("Сборка сохранена"), <>
+        <p>{t("Модов ссылками на Modrinth: {0}. Рядом сохранён отчёт с лицензиями:", r.linked)} <span className="mono small">{r.report_path}</span></p>
+        {r.bundled.length > 0 && <p className="small" style={{ color: "var(--warn)" }}>{t("Внутрь архива вложены файлы без источника — перед публикацией проверьте их лицензии:")} {r.bundled.map((b) => b.split("/").pop()).join(", ")}</p>}
+      </>);
+    } catch (e) { await dialog.alert(t("Не сохранено"), errText(e)); }
+  };
   const pickUpdate = async () => {
     const path = await open({ title: t("Новая версия сборки"), filters: [{ name: ".mrpack", extensions: ["mrpack"] }] }).catch(() => null);
     if (typeof path !== "string") return;
@@ -224,6 +235,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
 
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
+        <button className="btn" onClick={exportPack}>{t("Экспорт в .mrpack…")}</button>
         <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
       </div>
       {update && (

@@ -703,6 +703,183 @@ pub async fn apply_pack_update(
     Ok(snap)
 }
 
+// ---------- Экспорт .mrpack ----------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportedMod {
+    pub title: String,
+    pub version: String,
+    pub project_id: Option<String>,
+    pub path: String,
+}
+
+/// Итог экспорта: сколько модов ссылками на Modrinth и какие файлы вложены в архив.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportReport {
+    pub linked: usize,
+    pub bundled: Vec<String>,
+    pub mods: Vec<ExportedMod>,
+}
+
+/// Сохранить профиль как .mrpack: моды с Modrinth — ссылками, остальное и config/ — в
+/// overrides. Миры и личные настройки (options.txt) не попадают.
+pub fn export_mrpack(
+    store: &InstanceStore,
+    id: &str,
+    out: &Path,
+    name: &str,
+    version: &str,
+) -> Result<ExportReport> {
+    use sha1::Sha1;
+    use sha2::Sha512;
+    use std::io::Write;
+    let inst = store.get(id)?;
+    let game_dir = store.game_dir(id)?;
+    let lock = PackLock::load(&store.dir(id)?)?;
+    let loader_key = match inst.loader {
+        LoaderKind::Fabric => "fabric-loader",
+        LoaderKind::Quilt => "quilt-loader",
+        LoaderKind::NeoForge => "neoforge",
+        LoaderKind::Forge => "forge",
+        LoaderKind::Vanilla => "",
+    };
+    let mut deps = serde_json::Map::new();
+    deps.insert("minecraft".into(), inst.game_version.clone().into());
+    if !loader_key.is_empty() {
+        let v = inst.loader_version.clone().ok_or_else(|| {
+            Error::invalid("Версия загрузчика ещё неизвестна — запустите профиль один раз")
+        })?;
+        deps.insert(loader_key.into(), v.into());
+    }
+    let mut report = ExportReport {
+        linked: 0,
+        bundled: Vec::new(),
+        mods: Vec::new(),
+    };
+    let mut files = Vec::new();
+    let mut names: Vec<String> = std::fs::read_dir(game_dir.join("mods"))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.ends_with(".jar"))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    for file in names {
+        let rel = format!("mods/{file}");
+        let full = game_dir.join(&rel);
+        let entry = lock.files.iter().find(|e| e.path == rel);
+        report.mods.push(ExportedMod {
+            title: entry
+                .and_then(|e| e.title.clone())
+                .unwrap_or_else(|| file.clone()),
+            version: entry
+                .and_then(|e| e.version_number.clone())
+                .unwrap_or_default(),
+            project_id: entry.and_then(|e| e.project_id.clone()),
+            path: rel.clone(),
+        });
+        match entry.and_then(|e| Some((e.project_id.as_ref()?, e.version_id.as_ref()?))) {
+            Some((p, v)) => {
+                files.push(serde_json::json!({
+                    "path": rel,
+                    "hashes": {
+                        "sha1": download::hash_file::<Sha1>(&full)?,
+                        "sha512": download::hash_file::<Sha512>(&full)?,
+                    },
+                    "downloads": [format!("https://cdn.modrinth.com/data/{p}/versions/{v}/{}", urlencoding::encode(&file))],
+                    "fileSize": std::fs::metadata(&full).map(|m| m.len()).unwrap_or(0),
+                }));
+                report.linked += 1;
+            }
+            None => report.bundled.push(rel),
+        }
+    }
+    let index = serde_json::json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": version, "name": name,
+        "files": files, "dependencies": deps,
+    });
+    let f = std::fs::File::create(out).at(out)?;
+    let mut z = zip::ZipWriter::new(f);
+    let opts = zip::write::SimpleFileOptions::default();
+    let zerr = |e: zip::result::ZipError| Error::parse("архив сборки", e);
+    z.start_file("modrinth.index.json", opts).map_err(zerr)?;
+    z.write_all(
+        serde_json::to_string_pretty(&index)
+            .unwrap_or_default()
+            .as_bytes(),
+    )
+    .at(out)?;
+    let mut extra: Vec<PathBuf> = report.bundled.iter().map(|r| game_dir.join(r)).collect();
+    let mut stack = vec![game_dir.join("config")];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            if e.path().is_dir() {
+                stack.push(e.path())
+            } else {
+                extra.push(e.path())
+            }
+        }
+    }
+    for p in extra {
+        let rel = p
+            .strip_prefix(&game_dir)
+            .unwrap_or(&p)
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        z.start_file(format!("overrides/{rel}"), opts)
+            .map_err(zerr)?;
+        z.write_all(&std::fs::read(&p).at(&p)?).at(out)?;
+    }
+    z.finish().map_err(zerr)?;
+    Ok(report)
+}
+
+/// Отчёт для автора сборки (Markdown): моды, источники, лицензии и что проверить перед
+/// распространением. `licenses` — ID проекта Modrinth → лицензия.
+pub fn modpack_report(
+    name: &str,
+    version: &str,
+    r: &ExportReport,
+    licenses: &BTreeMap<String, String>,
+) -> String {
+    let mut md = format!(
+        "# Сборка «{name}» {version}\n\nМодов: {}. Ссылками на Modrinth: {}. Вложено в архив: {}.\n\n",
+        r.mods.len(),
+        r.linked,
+        r.bundled.len()
+    );
+    md.push_str("| Мод | Версия | Источник | Лицензия |\n|---|---|---|---|\n");
+    for m in &r.mods {
+        let (src, lic) = match &m.project_id {
+            Some(p) => (
+                format!("[Modrinth](https://modrinth.com/project/{p})"),
+                licenses.get(p).cloned().unwrap_or_else(|| "?".into()),
+            ),
+            None => ("неизвестен".to_string(), "проверьте".to_string()),
+        };
+        md.push_str(&format!(
+            "| {} | {} | {src} | {lic} |\n",
+            m.title,
+            if m.version.is_empty() {
+                "—"
+            } else {
+                &m.version
+            }
+        ));
+    }
+    if !r.bundled.is_empty() {
+        md.push_str("\n## Файлы внутри архива\n\nЭти файлы распространяются вместе со сборкой. Перед публикацией проверьте лицензию каждого и разрешение автора:\n\n");
+        for b in &r.bundled {
+            md.push_str(&format!("- `{b}`\n"));
+        }
+    }
+    md
+}
+
 // ---------- CurseForge ----------
 
 #[derive(Debug, Deserialize)]
@@ -1192,11 +1369,63 @@ mod tests {
         );
         assert_eq!(store.get(&id).unwrap().pack.unwrap().version, "2.0");
         assert!(
-            crate::snapshot::list(&store.dir(&id).unwrap())
+            !crate::snapshot::list(&store.dir(&id).unwrap())
                 .unwrap()
-                .len()
-                >= 1,
+                .is_empty(),
             "перед обновлением снимок"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn export_mrpack_and_report() {
+        let (store, id, root) = installed_pack("mrexport");
+        let dir = store.dir(&id).unwrap();
+        let mut lock = PackLock::load(&dir).unwrap();
+        lock.upsert(LockEntry {
+            path: "mods/a.jar".into(),
+            sha1: "a1".into(),
+            sha512: Some("s512".into()),
+            source: Source::Modrinth,
+            project_id: Some("AAA".into()),
+            version_id: Some("VVV".into()),
+            version_number: Some("1.2".into()),
+            title: Some("Мод А".into()),
+            layer: Layer::Base,
+            installed_at: 0,
+            pinned: false,
+        });
+        lock.save(&dir).unwrap();
+        let out = root.join("export.mrpack");
+        let r = export_mrpack(&store, &id, &out, "Моя сборка", "1.0").unwrap();
+        // a.jar — с Modrinth (ссылкой), b.jar и mine.jar без проекта — в overrides.
+        assert_eq!(r.linked, 1);
+        assert_eq!(r.bundled, ["mods/b.jar", "mods/mine.jar"]);
+        let index = read_index(&out).unwrap();
+        assert_eq!(
+            index.files[0].downloads[0],
+            "https://cdn.modrinth.com/data/AAA/versions/VVV/a.jar"
+        );
+        assert_eq!(
+            index.dependencies.get("fabric-loader").map(String::as_str),
+            Some("0.19.5")
+        );
+        let names = zip_names(&out).unwrap();
+        assert!(
+            names.contains(&"overrides/config/x.toml".to_string())
+                && names.contains(&"overrides/mods/b.jar".to_string())
+        );
+        let md = modpack_report(
+            "Моя сборка",
+            "1.0",
+            &r,
+            &[("AAA".into(), "MIT".into())].into(),
+        );
+        assert!(
+            md.contains("Мод А")
+                && md.contains("MIT")
+                && md.contains("mine.jar")
+                && md.contains("проверьте")
         );
         std::fs::remove_dir_all(&root).unwrap();
     }

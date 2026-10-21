@@ -1561,6 +1561,47 @@ async fn pack_update_apply(
     .map_err(err)
 }
 
+#[derive(Serialize)]
+struct ExportDone {
+    linked: usize,
+    bundled: Vec<String>,
+    report_path: String,
+}
+
+/// Экспорт профиля в .mrpack и отчёт для автора (лицензии — с Modrinth, без сети «?»).
+#[tauri::command]
+async fn export_mrpack(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    name: String,
+    version: String,
+) -> CmdResult<ExportDone> {
+    let store = InstanceStore::new(state.data.clone());
+    let out = std::path::PathBuf::from(&path);
+    let report =
+        quarry_core::import::export_mrpack(&store, &id, &out, &name, &version).map_err(err)?;
+    let ids: Vec<String> = report
+        .mods
+        .iter()
+        .filter_map(|m| m.project_id.clone())
+        .collect();
+    let licenses = quarry_core::catalog::projects(&ids)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|p| Some((p.id, p.license?.id)))
+        .collect();
+    let md = quarry_core::import::modpack_report(&name, &version, &report, &licenses);
+    let report_path = out.with_extension("md");
+    std::fs::write(&report_path, md).map_err(|e| e.to_string())?;
+    Ok(ExportDone {
+        linked: report.linked,
+        bundled: report.bundled,
+        report_path: report_path.display().to_string(),
+    })
+}
+
 #[tauri::command]
 fn link_minecraft(
     state: State<AppState>,
@@ -1655,6 +1696,7 @@ pub fn run() {
             copy_between,
             servers_list,
             mrpack_preview,
+            export_mrpack,
             pack_update_plan,
             pack_update_apply,
             first_run_info,
