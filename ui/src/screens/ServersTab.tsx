@@ -132,7 +132,6 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
           </table>
         )}
       </div>
-      <p className="muted small">{t("Если сервер использует SRV-запись DNS, проверка здесь может не дойти до него, а в игре он откроется.")}</p>
       {edit !== null && (
         <ServerForm
           initial={edit === "new" ? { name: "", ip: "" } : list![edit]}

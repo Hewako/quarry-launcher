@@ -185,10 +185,45 @@ fn net_err(e: std::io::Error) -> Error {
     Error::invalid(format!("Сервер не ответил: {e}"))
 }
 
+/// Имя SRV-записи, как её ищет игра: только для имени без порта (не IP, не localhost).
+pub fn srv_query(addr: &str) -> Option<String> {
+    let a = addr.trim();
+    let (host, _) = parse_address(a).ok()?;
+    let explicit_port = a.starts_with('[') || a.contains(':');
+    (!explicit_port && host.parse::<std::net::IpAddr>().is_err() && host != "localhost")
+        .then(|| format!("_minecraft._tcp.{host}."))
+}
+
+/// Куда на самом деле подключаться: по SRV-записи `_minecraft._tcp`, если она есть.
+// shortcut: DNS-серверы берутся из системных настроек (/etc/resolv.conf, реестр Windows);
+// если они недоступны напрямую (VPN, частный DNS на macOS), SRV тихо пропускается —
+// нужен системный резолвер macOS (DNSServiceQueryRecord), если на это начнут жаловаться.
+async fn resolve_srv(addr: &str) -> Option<(String, u16)> {
+    let query = srv_query(addr)?;
+    let resolver = hickory_resolver::TokioResolver::builder_tokio()
+        .ok()?
+        .build()
+        .ok()?;
+    let lookup = tokio::time::timeout(Duration::from_secs(2), resolver.srv_lookup(query))
+        .await
+        .ok()?
+        .ok()?;
+    lookup.answers().iter().find_map(|r| match &r.data {
+        hickory_resolver::proto::rr::RData::SRV(srv) => Some((
+            srv.target.to_utf8().trim_end_matches('.').to_string(),
+            srv.port,
+        )),
+        _ => None,
+    })
+}
+
 /// Опросить сервер: версия, игроки, описание, задержка. Таймаут — 5 секунд.
-/// SRV-записи DNS не учитываются: такой сервер может не ответить здесь, но открыться в игре.
+/// Как и игра, для адреса без порта сначала смотрит SRV-запись `_minecraft._tcp`.
 pub async fn ping(addr: &str) -> Result<Status> {
-    let (host, port) = parse_address(addr)?;
+    let (host, port) = match resolve_srv(addr).await {
+        Some(hp) => hp,
+        None => parse_address(addr)?,
+    };
     tokio::time::timeout(Duration::from_secs(5), ping_inner(&host, port))
         .await
         .map_err(|_| Error::invalid("Сервер не ответил за 5 секунд"))?
@@ -408,5 +443,43 @@ mod tests {
         set_tags(&d, "mc.example.org", &[]).unwrap();
         assert!(load_tags(&d).is_empty(), "пустые теги не хранятся");
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn srv_only_for_names_without_port() {
+        assert_eq!(
+            srv_query("play.example.org").as_deref(),
+            Some("_minecraft._tcp.play.example.org.")
+        );
+        assert_eq!(
+            srv_query("play.example.org:25565"),
+            None,
+            "порт указан — SRV не нужен"
+        );
+        assert_eq!(srv_query("1.2.3.4"), None);
+        assert_eq!(srv_query("[::1]"), None);
+        assert_eq!(srv_query("localhost"), None);
+    }
+
+    /// Сеть: системный DNS отвечает на SRV-запрос (у hypixel.net записи нет — проверяем, что
+    /// резолвер работает и не падает; печатаем, что нашёл).
+    #[tokio::test]
+    #[ignore]
+    async fn srv_resolver_works_with_system_dns() {
+        for host in ["mc.hypixel.net", "play.cubecraft.net"] {
+            println!("{host}: {:?}", resolve_srv(host).await);
+        }
+        // Запись, которая точно есть (XMPP): ошибка здесь значит, что DNS-серверы из
+        // системных настроек недоступны напрямую (VPN, частный DNS).
+        let r = hickory_resolver::TokioResolver::builder_tokio()
+            .unwrap()
+            .build()
+            .unwrap();
+        println!(
+            "jabber.org: {:?}",
+            r.srv_lookup("_xmpp-server._tcp.jabber.org.")
+                .await
+                .map(|l| l.answers().len())
+        );
     }
 }
