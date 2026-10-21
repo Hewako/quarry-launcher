@@ -2,7 +2,7 @@
 // Любое изменение модов — через предпросмотр и автоматический снимок.
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, errText, mods, sizeText, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
+import { api, errText, mods, sizeText, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
@@ -76,27 +76,32 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
   const [done, setDone] = useState<string[]>([]);
   const [category, setCategory] = useState("");
   const [channel, setChannel] = useState<Channel>("auto");
+  const [source, setSource] = useState<CatalogSource>("modrinth");
+  const [cf, setCf] = useState(false);
+  useEffect(() => { api.appInfo().then((i) => setCf(i.curseforge)).catch(() => {}); }, []);
+  // CurseForge подключён только для модов.
+  const src: CatalogSource = kind === "mod" ? source : "modrinth";
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
     const t = setTimeout(() => {
       setError("");
-      mods.search(inst.id, query, kind, 0, category).then((r) => setHits(r.hits)).catch((e) => { setHits([]); setError(errText(e)); });
+      mods.search(inst.id, query, kind, 0, src === "modrinth" ? category : "", src).then((r) => setHits(r.hits)).catch((e) => { setHits([]); setError(errText(e)); });
     }, 300);
     return () => clearTimeout(t);
-  }, [inst.id, query, kind, category]);
+  }, [inst.id, query, kind, category, src]);
   const pick = async (h: SearchHit) => {
     setBusy(h.project_id);
     setError("");
     try {
-      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id, channel));
+      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id, channel, src));
       else { await api.installResource(inst.id, h.project_id, kind, world); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
     } catch (e) { setError(errText(e)); }
     finally { setBusy(null); }
   };
   return (
-    <Modal title="Каталог Modrinth" onClose={onClose} wide>
+    <Modal title={src === "curseforge" ? "Каталог CurseForge" : "Каталог Modrinth"} onClose={onClose} wide>
       <div className="row">
         <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={{ mod: "Найти мод…", shader: "Найти шейдер…", resourcepack: "Найти ресурспак…", datapack: "Найти датапак…" }[kind]} data-autofocus />
         <div className="seg">
@@ -106,10 +111,16 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
         </div>
       </div>
       <div className="row">
-        <select className="field auto" aria-label="Категория" value={category} onChange={(e) => setCategory(e.target.value)}>
+        {cf && kind === "mod" && (
+          <div className="seg" role="group" aria-label="Источник">
+            <button className={source === "modrinth" ? "on" : ""} onClick={() => setSource("modrinth")}>Modrinth</button>
+            <button className={source === "curseforge" ? "on" : ""} onClick={() => { setSource("curseforge"); setCategory(""); }}>CurseForge</button>
+          </div>
+        )}
+        {src === "modrinth" && <select className="field auto" aria-label="Категория" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Все категории</option>
           {CATS[kind].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        </select>}
         {kind === "mod" && (
           <select className="field auto" aria-label="Какие версии ставить" value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
             {CHANNELS.map(([v, l]) => <option key={v} value={v}>Версии: {l.toLowerCase()}</option>)}

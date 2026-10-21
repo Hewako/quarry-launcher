@@ -33,6 +33,8 @@ struct AppInfo {
     dev_launch: bool,
     data_dir: String,
     microsoft_configured: bool,
+    /// В сборку подставлен ключ CurseForge.
+    curseforge: bool,
     os: &'static str,
 }
 
@@ -43,6 +45,7 @@ fn app_info(state: State<AppState>) -> AppInfo {
         dev_launch: launch::DEV_LAUNCH,
         data_dir: state.data.root().display().to_string(),
         microsoft_configured: quarry_core::account::microsoft::CLIENT_ID.is_some(),
+        curseforge: quarry_core::curseforge::api_key().is_some(),
         os: std::env::consts::OS,
     }
 }
@@ -586,12 +589,14 @@ fn cancel_login(state: State<AppState>) {
 /// Открыть ссылку в системном браузере. Только адреса входа Microsoft и сайты проекта.
 #[tauri::command]
 fn open_link(app: tauri::AppHandle, url: String) -> CmdResult<()> {
-    const ALLOWED: [&str; 5] = [
+    const ALLOWED: [&str; 7] = [
         "https://www.microsoft.com/link",
         "https://microsoft.com/devicelogin",
         "https://www.microsoft.com/devicelogin",
         "https://ely.by",
         "https://github.com/Hewako/quarry-launcher",
+        "https://www.curseforge.com/",
+        "https://modrinth.com/",
     ];
     if !ALLOWED.iter().any(|a| url.starts_with(a)) {
         return Err("Эту ссылку лаунчер не открывает".into());
@@ -688,10 +693,21 @@ async fn catalog_search(
     kind: quarry_core::catalog::ProjectType,
     offset: u32,
     category: Option<String>,
+    source: Option<String>,
 ) -> CmdResult<quarry_core::catalog::SearchResult> {
     let inst = InstanceStore::new(state.data.clone())
         .get(&id)
         .map_err(err)?;
+    if source.as_deref() == Some("curseforge") {
+        let hits =
+            quarry_core::curseforge::search(&query, kind, inst.loader, &inst.game_version, offset)
+                .await
+                .map_err(err)?;
+        return Ok(quarry_core::catalog::SearchResult {
+            total_hits: hits.len() as u64,
+            hits,
+        });
+    }
     let loaders = quarry_core::catalog::loaders_for(inst.loader);
     quarry_core::catalog::search(
         &query,
@@ -711,8 +727,22 @@ async fn mods_plan_install(
     id: String,
     project: String,
     channel: Option<quarry_core::catalog::Channel>,
+    source: Option<String>,
 ) -> CmdResult<quarry_core::mods::manage::Plan> {
     let store = InstanceStore::new(state.data.clone());
+    if source.as_deref() == Some("curseforge") {
+        let mod_id: u64 = project
+            .parse()
+            .map_err(|_| "Неверный номер мода CurseForge".to_string())?;
+        return quarry_core::curseforge::plan_install(
+            &store,
+            &id,
+            mod_id,
+            channel.unwrap_or_default(),
+        )
+        .await
+        .map_err(err);
+    }
     quarry_core::mods::manage::plan_install(&store, &id, &project, channel.unwrap_or_default())
         .await
         .map_err(err)

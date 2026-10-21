@@ -36,6 +36,9 @@ pub struct Change {
     /// Версия Modrinth (план уходит в интерфейс на предпросмотр и возвращается обратно).
     #[serde(default)]
     pub version: Option<Version>,
+    /// Файл с CurseForge (вместо версии Modrinth).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cf_file: Option<crate::curseforge::CfFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,6 +202,7 @@ pub async fn plan_install(
             reason,
             size: file.size,
             version: Some(v.clone()),
+            cf_file: None,
         });
     }
     plan.changes.reverse(); // зависимости первыми
@@ -277,6 +281,7 @@ pub async fn check_updates(store: &InstanceStore, id: &str) -> Result<Plan> {
             },
             size: file.size,
             version: Some(v.clone()),
+            cf_file: None,
         });
     }
     if pinned > 0 {
@@ -486,6 +491,24 @@ pub async fn apply(
                 size: Some(f.size),
             });
         }
+        if let (Some(f), Some(name)) = (&ch.cf_file, &ch.file_name) {
+            // С CurseForge — только с его CDN и только с известным хэшем.
+            let url = f.trusted_url().ok_or_else(|| {
+                Error::invalid(format!(
+                    "Файл {} предлагается скачать не с CurseForge — отменено",
+                    f.file_name
+                ))
+            })?;
+            let sha1 = f
+                .sha1()
+                .ok_or_else(|| Error::invalid("CurseForge не прислал хэш файла"))?;
+            tasks.push(Task {
+                url: url.to_string(),
+                dest: mods_dir.join(safe_file_name(name)?),
+                expected: Expected::Sha1(sha1),
+                size: Some(f.file_length),
+            });
+        }
     }
     download::download_all(tasks, 6, Verify::Full, None, cancel).await?;
 
@@ -512,6 +535,21 @@ pub async fn apply(
                 project_id: Some(v.project_id.clone()),
                 version_id: Some(v.id.clone()),
                 version_number: Some(v.version_number.clone()),
+                title: Some(ch.title.clone()),
+                layer: Layer::User,
+                installed_at: now(),
+                pinned: false,
+            });
+        }
+        if let (Some(f), Some(name)) = (&ch.cf_file, &ch.file_name) {
+            lock.upsert(LockEntry {
+                path: format!("mods/{name}"),
+                sha1: f.sha1().unwrap_or_default(),
+                sha512: None,
+                source: Source::CurseForge,
+                project_id: Some(f.mod_id.to_string()),
+                version_id: Some(f.id.to_string()),
+                version_number: Some(f.display_name.clone()),
                 title: Some(ch.title.clone()),
                 layer: Layer::User,
                 installed_at: now(),

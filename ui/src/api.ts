@@ -88,6 +88,7 @@ export interface ResolvedLaunch {
 export interface AppInfo {
   version: string;
   dev_launch: boolean;
+  curseforge: boolean;
   data_dir: string;
   microsoft_configured: boolean;
   os: string;
@@ -247,6 +248,7 @@ export interface SnapshotInfo { id: string; reason: string; created_at: number; 
 export interface SnapshotDiff { added: string[]; removed: string[]; changed: string[]; options: [string, string, string][] }
 export interface SearchHit { project_id: string; slug: string; title: string; description: string; downloads: number; icon_url?: string; author: string; client_side: string; categories: string[] }
 export type Channel = "auto" | "release" | "beta" | "alpha";
+export type CatalogSource = "modrinth" | "curseforge";
 export type ProjectKind = "mod" | "resourcepack" | "shader" | "datapack";
 export interface ImportResult { instance: Instance; manual: { project_id: number; file_id: number; url: string }[]; notes: string[] }
 export type CrashAction = { kind: "disable_mod"; file_name: string } | { kind: "increase_memory" } | { kind: "update_drivers" } | { kind: "open_mod_doctor" } | { kind: "safe_launch" };
@@ -258,13 +260,14 @@ export const mods = {
   remove: (id: string, file: string) => invoke<SnapshotInfo>("mods_remove", { id, file }),
   pin: (id: string, file: string, pinned: boolean) => invoke<void>("mods_pin", { id, file, pinned }),
   addFiles: (id: string, paths: string[]) => invoke<{ file_name: string; title: string; known: boolean }[]>("mods_add_files", { id, paths }),
-  search: (id: string, query: string, kind: ProjectKind, offset = 0, category = "") =>
-    invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset, category: category || null }),
+  search: (id: string, query: string, kind: ProjectKind, offset = 0, category = "", source: CatalogSource = "modrinth") =>
+    invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset, category: category || null, source }),
   groups: (id: string) => invoke<{ names: string[]; groups: Record<string, string> }>("mods_groups", { id }),
   setGroup: (id: string, file: string, group: string | null) => invoke<void>("mods_set_group", { id, file, group }),
   toggleGroup: (id: string, group: string, enabled: boolean) => invoke<string[]>("mods_toggle_group", { id, group, enabled }),
   autoGroups: (id: string) => invoke<number>("mods_auto_groups", { id }),
-  planInstall: (id: string, project: string, channel: Channel = "auto") => invoke<Plan>("mods_plan_install", { id, project, channel }),
+  planInstall: (id: string, project: string, channel: Channel = "auto", source: CatalogSource = "modrinth") =>
+    invoke<Plan>("mods_plan_install", { id, project, channel, source }),
   checkUpdates: (id: string) => invoke<Plan>("mods_check_updates", { id }),
   apply: (id: string, plan: Plan, reason: string) => invoke<SnapshotInfo>("mods_apply", { id, plan, reason }),
 };
