@@ -2,6 +2,7 @@
 //! код выхода, время работы, поиск crash-report, остановка по запросу.
 
 use super::args::LaunchCommand;
+use super::log4j::Log4jAssembler;
 use crate::error::{Error, IoContext, Result};
 use crate::logmask::Masker;
 use serde::Serialize;
@@ -124,13 +125,9 @@ pub async fn spawn(
         let on_event = on_event.clone();
         readers.push(tokio::spawn(async move {
             let mut lines = BufReader::new(pipe).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let masked = masker.mask(&line);
-                {
-                    let mut w = writer.lock().await;
-                    let _ = w.write_all(masked.as_bytes()).await;
-                    let _ = w.write_all(b"\n").await;
-                }
+            let mut assembler = Log4jAssembler::default();
+            let mut emit = |raw: String| {
+                let masked = masker.mask(&raw);
                 {
                     let mut t = tail.lock().unwrap_or_else(|p| p.into_inner());
                     if t.len() == TAIL_LINES {
@@ -141,9 +138,26 @@ pub async fn spawn(
                 if let Some(cb) = &on_event {
                     cb(GameEvent::Log {
                         stream,
-                        line: masked,
+                        line: masked.clone(),
                     });
                 }
+                masked
+            };
+            while let Ok(Some(line)) = lines.next_line().await {
+                let ready: Vec<String> = assembler.push(&line).into_iter().map(&mut emit).collect();
+                if !ready.is_empty() {
+                    let mut w = writer.lock().await;
+                    for l in ready {
+                        let _ = w.write_all(l.as_bytes()).await;
+                        let _ = w.write_all(b"\n").await;
+                    }
+                }
+            }
+            let rest: Vec<String> = assembler.flush().into_iter().map(&mut emit).collect();
+            let mut w = writer.lock().await;
+            for l in rest {
+                let _ = w.write_all(l.as_bytes()).await;
+                let _ = w.write_all(b"\n").await;
             }
         }));
     }
@@ -173,7 +187,9 @@ pub async fn spawn(
             status.map_err(|e| Error::invalid(format!("Ошибка ожидания процесса игры: {e}")))?;
         let code = status.code();
         let crash_report = newest_crash_report(&game_dir, started_at);
-        let crashed = !killed && (code != Some(0) || crash_report.is_some());
+        // 130/143 — игру закрыли сигналом (Ctrl+C, завершение сеанса), это не краш.
+        let closed_by_signal = matches!(code, Some(130) | Some(143));
+        let crashed = !killed && (crash_report.is_some() || (code != Some(0) && !closed_by_signal));
         let tail = tail
             .lock()
             .unwrap_or_else(|p| p.into_inner())

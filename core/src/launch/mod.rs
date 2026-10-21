@@ -2,6 +2,7 @@
 //! процесс → итог. Один запуск на профиль одновременно (single-flight).
 
 pub mod args;
+pub mod log4j;
 pub mod process;
 
 use crate::account::{self, AccountRef, AccountStore, Provider, SecretStore};

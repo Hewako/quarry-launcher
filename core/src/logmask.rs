@@ -17,11 +17,16 @@ pub struct Masker {
     nick: Option<String>,
 }
 
+/// IPv4 как отдельное «слово»: не часть версии (`jdk-25.0.4.1+1`, `lib-1.2.3.4.jar`).
+/// В regex нет просмотра назад/вперёд, поэтому соседние символы захватываются и
+/// возвращаются при замене.
 fn ipv4() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b")
-            .expect("регулярное выражение IPv4 корректно")
+        Regex::new(
+            r"(^|[^0-9A-Za-z_.+\-])((?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d))($|[^0-9A-Za-z_.+\-]|\.$|\.[^0-9A-Za-z])",
+        )
+        .expect("регулярное выражение IPv4 корректно")
     })
 }
 
@@ -85,13 +90,14 @@ impl Masker {
         }
         out = ipv4()
             .replace_all(&out, |c: &regex::Captures| {
-                // Не трогаем локальные адреса и версии вида 1.2.3.4 в именах файлов — оставляем
-                // только loopback; всё остальное, похожее на IPv4, скрываем.
-                if c[0].starts_with("127.") || &c[0] == "0.0.0.0" {
-                    c[0].to_string()
+                // Loopback и 0.0.0.0 не персональные — оставляем.
+                let ip = &c[2];
+                let shown = if ip.starts_with("127.") || ip == "0.0.0.0" {
+                    ip
                 } else {
-                    IP.to_string()
-                }
+                    IP
+                };
+                format!("{}{shown}{}", &c[1], &c[3])
             })
             .into_owned();
         if let Some(nick) = &self.nick {
@@ -139,6 +145,21 @@ mod tests {
             format!("Connecting to {IP}, 25565")
         );
         assert_eq!(m.mask("bind 127.0.0.1:25565"), "bind 127.0.0.1:25565");
+        assert_eq!(m.mask("/93.184.216.34:25565"), format!("/{IP}:25565"));
+        assert_eq!(m.mask("server 10.0.0.5."), format!("server {IP}."));
+    }
+
+    #[test]
+    fn versions_are_not_ips() {
+        let m = Masker::new().with_home(None);
+        for s in [
+            "jdk-25.0.4.1+1/bin/java",
+            "lib-1.2.3.4.jar",
+            "Fabric 0.16.10.1-beta",
+            "v1.2.3.4",
+        ] {
+            assert_eq!(m.mask(s), s);
+        }
     }
 
     #[test]

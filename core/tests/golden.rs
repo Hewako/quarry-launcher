@@ -10,15 +10,27 @@ use quarry_core::paths::DataDir;
 use std::path::{Path, PathBuf};
 
 fn fixture(name: &str) -> VersionJson {
-    let path = format!("{}/tests/fixtures/versions/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!(
+        "{}/tests/fixtures/versions/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
     VersionJson::parse(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
 fn environments() -> Vec<(&'static str, Environment)> {
     vec![
-        ("macos-arm64", Environment::new(Os::Osx, Arch::Arm64, "15.1")),
-        ("windows-x64", Environment::new(Os::Windows, Arch::X86_64, "10.0.19045")),
-        ("linux-x64", Environment::new(Os::Linux, Arch::X86_64, "6.8.0")),
+        (
+            "macos-arm64",
+            Environment::new(Os::Osx, Arch::Arm64, "15.1"),
+        ),
+        (
+            "windows-x64",
+            Environment::new(Os::Windows, Arch::X86_64, "10.0.19045"),
+        ),
+        (
+            "linux-x64",
+            Environment::new(Os::Linux, Arch::X86_64, "6.8.0"),
+        ),
     ]
 }
 
@@ -58,7 +70,11 @@ fn installed(version: VersionJson, game_version: &str, env: &Environment) -> Ins
 }
 
 fn render(cmd: &args::LaunchCommand) -> String {
-    let mut out = format!("program: {}\ncwd: {}\n", cmd.program.display(), cmd.cwd.display());
+    let mut out = format!(
+        "program: {}\ncwd: {}\n",
+        cmd.program.display(),
+        cmd.cwd.display()
+    );
     for a in &cmd.args {
         out.push_str(a);
         out.push('\n');
@@ -66,7 +82,12 @@ fn render(cmd: &args::LaunchCommand) -> String {
     out
 }
 
-fn build(name: &str, game: &str, env: &Environment, quick: Option<QuickPlay>) -> args::LaunchCommand {
+fn build(
+    name: &str,
+    game: &str,
+    env: &Environment,
+    quick: Option<QuickPlay>,
+) -> args::LaunchCommand {
     let version = match name.strip_prefix("fabric-loader-") {
         Some(g) => fixture(name).merged_onto(fixture(g)),
         None => fixture(name),
@@ -92,7 +113,9 @@ fn build(name: &str, game: &str, env: &Environment, quick: Option<QuickPlay>) ->
 }
 
 fn check_golden(file: &str, actual: &str) {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(file);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(file);
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, actual).unwrap();
@@ -118,7 +141,11 @@ fn golden_launch_commands() {
     for (name, game) in CASES {
         for (os_name, env) in environments() {
             let cmd = build(name, game, &env, None);
-            assert!(cmd.unresolved.is_empty(), "{name}/{os_name}: {:?}", cmd.unresolved);
+            assert!(
+                cmd.unresolved.is_empty(),
+                "{name}/{os_name}: {:?}",
+                cmd.unresolved
+            );
             check_golden(&format!("{name}-{os_name}.txt"), &render(&cmd));
         }
     }
@@ -129,17 +156,36 @@ fn every_command_has_main_class_classpath_and_token_only_once() {
     for (name, game) in CASES {
         for (os_name, env) in environments() {
             let cmd = build(name, game, &env, None);
-            let main = cmd.args.iter().position(|a| a.contains("net.minecraft") || a.contains("KnotClient"));
+            let main = cmd
+                .args
+                .iter()
+                .position(|a| a.contains("net.minecraft") || a.contains("KnotClient"));
             assert!(main.is_some(), "{name}/{os_name}: нет главного класса");
             let cp = cmd.args.iter().position(|a| a == "-cp").expect("есть -cp");
             assert!(cp < main.unwrap(), "classpath до главного класса");
             let sep = if env.os == Os::Windows { ";" } else { ":" };
-            assert!(cmd.args[cp + 1].contains(sep), "{name}/{os_name}: разделитель classpath");
-            assert!(cmd.args[cp + 1].ends_with(&format!("{game}.jar")), "клиент в конце classpath");
-            let token_hits = cmd.args.iter().filter(|a| a.contains("SECRET-ACCESS-TOKEN")).count();
-            assert_eq!(token_hits, 1, "{name}/{os_name}: токен ровно в одном аргументе");
+            assert!(
+                cmd.args[cp + 1].contains(sep),
+                "{name}/{os_name}: разделитель classpath"
+            );
+            assert!(
+                cmd.args[cp + 1].ends_with(&format!("{game}.jar")),
+                "клиент в конце classpath"
+            );
+            let token_hits = cmd
+                .args
+                .iter()
+                .filter(|a| a.contains("SECRET-ACCESS-TOKEN"))
+                .count();
+            assert_eq!(
+                token_hits, 1,
+                "{name}/{os_name}: токен ровно в одном аргументе"
+            );
             let preview = cmd.preview(&auth());
-            assert!(!preview.contains("SECRET-ACCESS-TOKEN"), "в предпросмотре токена нет");
+            assert!(
+                !preview.contains("SECRET-ACCESS-TOKEN"),
+                "в предпросмотре токена нет"
+            );
             let start_first = cmd.args.iter().any(|a| a == "-XstartOnFirstThread");
             // -XstartOnFirstThread только на macOS и только если его требует сама версия (LWJGL 3).
             let lwjgl3 = !matches!(name, "1.12.2" | "1.6.4");
@@ -153,7 +199,10 @@ fn log4shell_protection_for_vulnerable_versions() {
     for (name, game) in [("1.16.5", "1.16.5"), ("1.12.2", "1.12.2")] {
         let cmd = build(name, game, &environments()[0].1, None);
         assert!(
-            cmd.args.iter().any(|a| a.starts_with("-Dlog4j.configurationFile=") && a.contains("client-1.12.xml")),
+            cmd.args
+                .iter()
+                .any(|a| a.starts_with("-Dlog4j.configurationFile=")
+                    && a.contains("client-1.12.xml")),
             "{name}: logging-конфиг из JSON версии подставлен"
         );
     }
@@ -162,12 +211,29 @@ fn log4shell_protection_for_vulnerable_versions() {
 #[test]
 fn quick_play_modern_and_legacy() {
     let env = &environments()[2].1;
-    let cmd = build("26.3", "26.3", env, Some(QuickPlay::Singleplayer("База у реки".into())));
-    let i = cmd.args.iter().position(|a| a == "--quickPlaySingleplayer").unwrap();
+    let cmd = build(
+        "26.3",
+        "26.3",
+        env,
+        Some(QuickPlay::Singleplayer("База у реки".into())),
+    );
+    let i = cmd
+        .args
+        .iter()
+        .position(|a| a == "--quickPlaySingleplayer")
+        .unwrap();
     assert_eq!(cmd.args[i + 1], "База у реки");
-    let cmd = build("1.12.2", "1.12.2", env, Some(QuickPlay::Multiplayer("play.example.net:25570".into())));
+    let cmd = build(
+        "1.12.2",
+        "1.12.2",
+        env,
+        Some(QuickPlay::Multiplayer("play.example.net:25570".into())),
+    );
     let i = cmd.args.iter().position(|a| a == "--server").unwrap();
-    assert_eq!(&cmd.args[i + 1..i + 4], ["play.example.net", "--port", "25570"]);
+    assert_eq!(
+        &cmd.args[i + 1..i + 4],
+        ["play.example.net", "--port", "25570"]
+    );
 }
 
 #[test]
@@ -175,5 +241,10 @@ fn legacy_1_6_4_uses_session_and_game_assets() {
     let cmd = build("1.6.4", "1.6.4", &environments()[2].1, None);
     let i = cmd.args.iter().position(|a| a == "--session").unwrap();
     assert!(cmd.args[i + 1].starts_with("token:SECRET"));
-    assert!(cmd.args.iter().any(|a| a.starts_with("-Djava.library.path=")), "умолчания JVM для старых версий");
+    assert!(
+        cmd.args
+            .iter()
+            .any(|a| a.starts_with("-Djava.library.path=")),
+        "умолчания JVM для старых версий"
+    );
 }

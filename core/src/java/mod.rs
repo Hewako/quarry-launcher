@@ -31,6 +31,9 @@ pub struct JavaInstall {
     /// `os.arch` самой Java: `aarch64`, `x86_64`/`amd64`, `x86`.
     pub arch: String,
     pub vendor: String,
+    /// `java.home` — по нему одинаковые установки (ссылки, заглушки /usr/bin/java) считаются одной.
+    #[serde(default)]
+    pub home: String,
     pub source: JavaSource,
 }
 
@@ -65,22 +68,39 @@ pub fn parse_major(version: &str) -> Option<u32> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaProps {
+    pub version: String,
+    pub arch: String,
+    pub vendor: String,
+    pub home: String,
+}
+
 /// Разбор вывода `java -XshowSettings:properties -version` (идёт в stderr).
-pub fn parse_properties(output: &str) -> Option<(String, String, String)> {
+pub fn parse_properties(output: &str) -> Option<JavaProps> {
     let mut version = None;
     let mut arch = None;
     let mut vendor = String::new();
+    let mut home = String::new();
     for line in output.lines() {
         let line = line.trim();
-        if let Some(v) = line.strip_prefix("java.version = ") {
-            version = Some(v.trim().to_string());
-        } else if let Some(v) = line.strip_prefix("os.arch = ") {
-            arch = Some(v.trim().to_string());
-        } else if let Some(v) = line.strip_prefix("java.vendor = ") {
-            vendor = v.trim().to_string();
+        let value = |prefix: &str| line.strip_prefix(prefix).map(|v| v.trim().to_string());
+        if let Some(v) = value("java.version = ") {
+            version = Some(v);
+        } else if let Some(v) = value("os.arch = ") {
+            arch = Some(v);
+        } else if let Some(v) = value("java.vendor = ") {
+            vendor = v;
+        } else if let Some(v) = value("java.home = ") {
+            home = v;
         }
     }
-    Some((version?, arch?, vendor))
+    Some(JavaProps {
+        version: version?,
+        arch: arch?,
+        vendor,
+        home,
+    })
 }
 
 /// Запустить Java и узнать версию, архитектуру и производителя.
@@ -94,7 +114,12 @@ pub async fn probe(path: &Path, source: JavaSource) -> Result<JavaInstall> {
         .map_err(|_| Error::Java(format!("{} не ответила за 15 секунд", path.display())))?
         .map_err(|e| Error::Java(format!("Не удалось запустить {}: {e}", path.display())))?;
     let text = String::from_utf8_lossy(&out.stderr);
-    let (version, arch, vendor) = parse_properties(&text)
+    let JavaProps {
+        version,
+        arch,
+        vendor,
+        home,
+    } = parse_properties(&text)
         .ok_or_else(|| Error::Java(format!("{} не сообщила свою версию", path.display())))?;
     let major = parse_major(&version)
         .ok_or_else(|| Error::Java(format!("Непонятная версия Java: {version}")))?;
@@ -104,6 +129,7 @@ pub async fn probe(path: &Path, source: JavaSource) -> Result<JavaInstall> {
         version,
         arch,
         vendor,
+        home,
         source,
     })
 }
@@ -230,9 +256,11 @@ fn managed_binaries(runtimes: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Найти и проверить все Java. Неработающие тихо пропускаются; одинаковые пути — один раз.
+/// Найти и проверить все Java. Неработающие тихо пропускаются; одна установка (одинаковый
+/// путь или `java.home`) — один раз.
 pub async fn discover(data: Option<&DataDir>) -> Vec<JavaInstall> {
     let mut seen = BTreeSet::new();
+    let mut homes = BTreeSet::new();
     let mut found = Vec::new();
     for (path, source) in candidate_paths(data) {
         if !path.is_file() {
@@ -243,7 +271,9 @@ pub async fn discover(data: Option<&DataDir>) -> Vec<JavaInstall> {
             continue;
         }
         if let Ok(install) = probe(&path, source).await {
-            found.push(install);
+            if install.home.is_empty() || homes.insert(install.home.clone()) {
+                found.push(install);
+            }
         }
     }
     found
@@ -494,6 +524,7 @@ mod tests {
             version: format!("{major}.0.1"),
             arch: arch.into(),
             vendor: "Eclipse Adoptium".into(),
+            home: String::new(),
             source,
         }
     }
@@ -509,14 +540,15 @@ mod tests {
 
     #[test]
     fn properties_output() {
-        let out = "Property settings:\n    java.vendor = Oracle Corporation\n    java.version = 1.8.0_503\n    os.arch = aarch64\n\njava version \"1.8.0_503\"\n";
+        let out = "Property settings:\n    java.home = /Library/Java/Home\n    java.vendor = Oracle Corporation\n    java.version = 1.8.0_503\n    os.arch = aarch64\n\njava version \"1.8.0_503\"\n";
         assert_eq!(
             parse_properties(out),
-            Some((
-                "1.8.0_503".into(),
-                "aarch64".into(),
-                "Oracle Corporation".into()
-            ))
+            Some(JavaProps {
+                version: "1.8.0_503".into(),
+                arch: "aarch64".into(),
+                vendor: "Oracle Corporation".into(),
+                home: "/Library/Java/Home".into(),
+            })
         );
         assert_eq!(parse_properties("garbage"), None);
     }
