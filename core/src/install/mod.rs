@@ -1,6 +1,8 @@
 //! Установка версии в общий кеш: клиент, библиотеки, нативы, ассеты, logging-конфиг.
 //! Ничего не пишет в папку профиля, кроме ресурсов совсем старых версий (`pre-1.6`).
 
+pub mod lwjgl;
+
 use crate::download::{self, Cancel, Expected, Progress, ProgressFn, Task, Verify};
 use crate::error::{Error, IoContext, Result};
 use crate::metadata::version::{Artifact, VersionJson};
@@ -141,6 +143,21 @@ async fn fill_maven_hashes(tasks: &mut [Task]) {
             tasks[i].expected = Expected::Sha1(hash);
         }
     }
+}
+
+/// Поправки под платформу перед установкой (сейчас — замена LWJGL на macOS).
+/// Возвращает пояснения для пользователя.
+pub async fn apply_platform_fixes(
+    data: &DataDir,
+    version: &mut VersionJson,
+    env: &Environment,
+) -> Result<Vec<String>> {
+    let mut notes = Vec::new();
+    if lwjgl::needs_replacement(version, env) {
+        let donor = metadata::vanilla_version(data, lwjgl::DONOR_VERSION).await?;
+        notes.extend(lwjgl::replace(version, &donor, env));
+    }
+    Ok(notes)
 }
 
 pub struct Installer<'a> {

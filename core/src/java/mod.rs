@@ -288,6 +288,9 @@ pub struct Requirement {
     /// Нужная архитектура Java (на Apple Silicon старые версии требуют x64 под Rosetta).
     pub arch: Arch,
     pub arch_reason: Option<String>,
+    /// Запасная архитектура: на Apple Silicon — x64 через Rosetta 2, если нативной Java
+    /// нужной версии нет (у Adoptium нет Java 8 для Apple Silicon).
+    pub fallback_arch: Option<Arch>,
 }
 
 impl Requirement {
@@ -318,6 +321,7 @@ impl Requirement {
                     "в версии нет нативных библиотек для Apple Silicon — нужна x64-Java, она работает через Rosetta 2"
                         .into(),
                 ),
+                fallback_arch: None,
             };
         }
         Self {
@@ -325,6 +329,9 @@ impl Requirement {
             reason,
             arch: host,
             arch_reason: None,
+            // Версии с нативами для Apple Silicon содержат и нативы для Intel (проверено по
+            // 1.20.1 и 26.3), поэтому x64-Java под Rosetta — рабочий запасной вариант.
+            fallback_arch: (os == Os::Osx && host == Arch::Arm64).then_some(Arch::X86_64),
         }
     }
 
@@ -333,7 +340,9 @@ impl Requirement {
     /// (модули Java 9+, удалённые API), поэтому «новее» автоматически не выбирается — нужная
     /// версия скачивается. Другую Java можно указать в настройках профиля вручную.
     pub fn accepts(&self, j: &JavaInstall) -> bool {
-        j.arch() == Some(self.arch) && j.major == self.major
+        j.major == self.major
+            && (j.arch() == Some(self.arch)
+                || (j.arch().is_some() && j.arch() == self.fallback_arch))
     }
 }
 
@@ -348,8 +357,8 @@ pub struct Choice {
 /// `None` — подходящей нет, нужно скачать.
 pub fn choose(req: &Requirement, installs: &[JavaInstall]) -> Option<Choice> {
     let mut ok: Vec<&JavaInstall> = installs.iter().filter(|j| req.accepts(j)).collect();
-    // Скачанные лаунчером — первыми: их версия и происхождение известны.
-    ok.sort_by_key(|j| j.source != JavaSource::Managed);
+    // Сначала родная архитектура, среди них — скачанные лаунчером (версия и происхождение известны).
+    ok.sort_by_key(|j| (j.arch() != Some(req.arch), j.source != JavaSource::Managed));
     let best = ok.first()?;
     let mut reason = format!(
         "нужна Java {} ({}) — найдена {}",
@@ -360,6 +369,11 @@ pub fn choose(req: &Requirement, installs: &[JavaInstall]) -> Option<Choice> {
     if let Some(a) = &req.arch_reason {
         reason.push_str("; ");
         reason.push_str(a);
+    }
+    if best.arch() != Some(req.arch) {
+        reason.push_str(
+            "; Java для Apple Silicon не найдена — используется x64-версия через Rosetta 2",
+        );
     }
     Some(Choice {
         install: (*best).clone(),
@@ -587,6 +601,23 @@ mod tests {
 
         let modern = Requirement::for_platform(25, "x".into(), true, Os::Osx, Arch::Arm64);
         assert_eq!(modern.arch, Arch::Arm64);
+    }
+
+    #[test]
+    fn apple_silicon_prefers_native_then_rosetta() {
+        let req = Requirement::for_platform(8, "x".into(), true, Os::Osx, Arch::Arm64);
+        assert_eq!(req.arch, Arch::Arm64);
+        let x64 = java(8, "x86_64", JavaSource::Managed);
+        let arm = java(8, "aarch64", JavaSource::System);
+        let c = choose(&req, &[x64.clone(), arm]).unwrap();
+        assert_eq!(
+            c.install.arch, "aarch64",
+            "родная архитектура важнее «скачана лаунчером»"
+        );
+        let c = choose(&req, &[x64]).unwrap();
+        assert!(c.reason.contains("Rosetta"));
+        let linux = Requirement::for_platform(8, "x".into(), true, Os::Linux, Arch::Arm64);
+        assert!(linux.fallback_arch.is_none());
     }
 
     #[test]

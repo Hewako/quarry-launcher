@@ -258,7 +258,17 @@ async fn choose_java(
             progress: Some(p.clone()),
         })
     });
-    let j = java::install_temurin(data, req.major, req.arch, Some(progress), cancel).await?;
+    let j = match java::install_temurin(data, req.major, req.arch, Some(progress.clone()), cancel)
+        .await
+    {
+        Ok(j) => j,
+        // Нет сборки для этой архитектуры (Java 8 для Apple Silicon) — x64 через Rosetta.
+        Err(Error::Java(_)) if req.fallback_arch.is_some() => {
+            let fallback = req.fallback_arch.unwrap_or(req.arch);
+            java::install_temurin(data, req.major, fallback, Some(progress), cancel).await?
+        }
+        Err(e) => return Err(e),
+    };
     let mut reason = format!(
         "нужна Java {} ({}) — подходящей на компьютере нет, скачана {}",
         req.major,
@@ -268,6 +278,9 @@ async fn choose_java(
     if let Some(a) = &req.arch_reason {
         reason.push_str("; ");
         reason.push_str(a);
+    }
+    if j.arch() != Some(req.arch) {
+        reason.push_str("; сборки для Apple Silicon нет — используется x64-версия через Rosetta 2");
     }
     Ok(Choice { install: j, reason })
 }
@@ -367,13 +380,18 @@ async fn run(
         _ => Err(e),
     })?;
     inst.loader_version = loader_version.clone();
-    let version = crate::loader::resolve_profile(
+    let mut version = crate::loader::resolve_profile(
         data,
         inst.loader,
         &inst.game_version,
         loader_version.as_deref(),
     )
     .await?;
+    for note in
+        crate::install::apply_platform_fixes(data, &mut version, &Environment::current()).await?
+    {
+        emit(LaunchEvent::Warning { message: note });
+    }
     cancel.check()?;
 
     let event_cb = emit.clone();
@@ -512,7 +530,7 @@ pub async fn preview(
     let store = InstanceStore::new(data.clone());
     let inst = store.get(instance_id)?;
     let global = GlobalSettings::load(data)?;
-    let version = crate::loader::resolve_profile(
+    let mut version = crate::loader::resolve_profile(
         data,
         inst.loader,
         &inst.game_version,
@@ -520,6 +538,7 @@ pub async fn preview(
     )
     .await?;
     let env = Environment::current();
+    crate::install::apply_platform_fixes(data, &mut version, &env).await?;
     let installer = Installer {
         data,
         env: env.clone(),
