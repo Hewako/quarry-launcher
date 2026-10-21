@@ -1,0 +1,2 @@
+# Эталоны тестов сравниваются побайтно: на Windows git не должен менять в них LF на CRLF.
+core/tests/** text eol=lf
