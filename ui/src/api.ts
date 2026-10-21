@@ -78,6 +78,17 @@ export const configs = {
   historyRead: (id: string, path: string, at: number) => invoke<string>("config_history_read", { id, path, at }),
 };
 
+export type OptCategory = "graphics" | "sound" | "controls";
+export interface OptionsView { entries: [string, string][]; conflicts: { key: string; actions: string[] }[]; presets: { name: string; category: OptCategory; count: number }[] }
+export const gameOptions = {
+  view: (id: string) => invoke<OptionsView>("options_view", { id }),
+  set: (id: string, changes: Record<string, string>) => invoke<void>("options_set", { id, changes }),
+  savePreset: (id: string, name: string, category: OptCategory) => invoke<{ name: string }>("options_preset_save", { id, name, category }),
+  applyPreset: (id: string, name: string) => invoke<void>("options_preset_apply", { id, name }),
+  exportLayout: (id: string, path: string) => invoke<void>("options_layout_export", { id, path }),
+  importLayout: (id: string, path: string) => invoke<number>("options_layout_import", { id, path }),
+};
+
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
   max_memory_mb: Resolved<number>;

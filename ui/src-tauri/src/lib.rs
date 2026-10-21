@@ -1215,6 +1215,110 @@ fn config_history_read(
     quarry_core::configs::history_read(&dir, &path, at).map_err(err)
 }
 
+#[derive(Serialize)]
+struct OptionsView {
+    entries: Vec<(String, String)>,
+    conflicts: Vec<quarry_core::options::KeyConflict>,
+    presets: Vec<quarry_core::options::Preset>,
+}
+
+fn presets_dir(state: &AppState) -> std::path::PathBuf {
+    state.data.root().join("option-presets")
+}
+
+#[tauri::command]
+fn options_view(state: State<AppState>, id: String) -> CmdResult<OptionsView> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    let entries = quarry_core::options::read(&game).map_err(err)?;
+    Ok(OptionsView {
+        conflicts: quarry_core::options::conflicts(&entries),
+        presets: quarry_core::options::list_presets(&presets_dir(&state)),
+        entries,
+    })
+}
+
+/// Записать настройки игры; перед этим — снимок (в него входит options.txt).
+fn options_apply(
+    state: &AppState,
+    id: &str,
+    changes: &std::collections::BTreeMap<String, String>,
+    reason: &str,
+) -> CmdResult<()> {
+    // Игра перезаписывает options.txt при выходе.
+    if state.registry.is_running(id) {
+        return Err("Сначала закройте игру: она перезапишет настройки при выходе".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    let game = store.game_dir(id).map_err(err)?;
+    quarry_core::snapshot::create(&store.dir(id).map_err(err)?, &game, reason, true)
+        .map_err(err)?;
+    quarry_core::options::set(&game, changes).map_err(err)
+}
+
+#[tauri::command]
+fn options_set(
+    state: State<AppState>,
+    id: String,
+    changes: std::collections::BTreeMap<String, String>,
+) -> CmdResult<()> {
+    options_apply(&state, &id, &changes, "Перед изменением настроек игры")
+}
+
+#[tauri::command]
+fn options_preset_save(
+    state: State<AppState>,
+    id: String,
+    name: String,
+    category: quarry_core::options::Category,
+) -> CmdResult<quarry_core::options::Preset> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    let entries = quarry_core::options::read(&game).map_err(err)?;
+    quarry_core::options::save_preset(&presets_dir(&state), &name, category, &entries).map_err(err)
+}
+
+#[tauri::command]
+fn options_preset_apply(state: State<AppState>, id: String, name: String) -> CmdResult<()> {
+    let changes = quarry_core::options::load_preset(&presets_dir(&state), &name).map_err(err)?;
+    options_apply(&state, &id, &changes, &format!("Перед пресетом «{name}»"))
+}
+
+#[tauri::command]
+fn options_layout_export(state: State<AppState>, id: String, path: String) -> CmdResult<()> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    let keys: String = quarry_core::options::read(&game)
+        .map_err(err)?
+        .into_iter()
+        .filter(|(k, _)| k.starts_with("key_"))
+        .map(|(k, v)| format!("{k}:{v}\n"))
+        .collect();
+    if keys.is_empty() {
+        return Err("Назначений клавиш пока нет — запустите игру хотя бы раз".into());
+    }
+    std::fs::write(
+        &path,
+        format!("# Раскладка управления Minecraft (Quarry)\n{keys}"),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn options_layout_import(state: State<AppState>, id: String, path: String) -> CmdResult<usize> {
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > 256 * 1024 {
+        return Err("Файл раскладки слишком большой".into());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|_| "Это не текстовый файл".to_string())?;
+    let keys = quarry_core::options::import_layout(&text).map_err(err)?;
+    options_apply(&state, &id, &keys, "Перед импортом раскладки")?;
+    Ok(keys.len())
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1382,6 +1486,12 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            options_view,
+            options_set,
+            options_preset_save,
+            options_preset_apply,
+            options_layout_export,
+            options_layout_import,
             downloads_pause,
             memory_advice,
             configs_list,

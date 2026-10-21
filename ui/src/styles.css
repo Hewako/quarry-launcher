@@ -257,3 +257,4 @@ select.field { padding: 6px 8px; }
 .cfghist { margin-top: 10px; }
 .cfghist .row { justify-content: space-between; padding: 4px 0; }
 .cfgdiff { max-height: 420px; overflow: auto; white-space: pre; font: 12px var(--mono); }
+tr.conflict td { background: color-mix(in srgb, var(--warn) 10%, transparent); }

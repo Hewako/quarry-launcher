@@ -44,6 +44,12 @@ mockIPC((cmd, args) => {
     case "config_history": return [{ at: Date.now() - 3600_000, size: 830 }];
     case "config_preview": return { diff: [{ kind: "=", text: "{" }, { kind: "-", text: "  \"fps\": 60" }, { kind: "+", text: "  \"fps\": 144" }, { kind: "=", text: "}" }] };
     case "memory_advice": return Number(a.maxMb) > 12_000 ? ["Отдано 14 из 16 ГБ памяти компьютера — системе и браузеру может не хватить, игра начнёт тормозить"] : [];
+    case "options_view": return {
+      entries: [["version", "4671"], ["renderDistance", "12"], ["simulationDistance", "8"], ["maxFps", "120"], ["fov", "0.25"], ["gamma", "0.5"], ["guiScale", "0"], ["enableVsync", "true"], ["fullscreen", "false"],
+        ["soundCategory_master", "1.0"], ["soundCategory_music", "0.3"], ["key_key.jump", "key.keyboard.space"], ["key_key.drop", "key.keyboard.q"], ["key_key.sprint", "key.keyboard.q"], ["key_key.attack", "key.mouse.left"]],
+      conflicts: [{ key: "key.keyboard.q", actions: ["key.drop", "key.sprint"] }],
+      presets: [{ name: "Слабый ноутбук", category: "graphics", count: 6 }],
+    };
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

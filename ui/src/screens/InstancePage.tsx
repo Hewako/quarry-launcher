@@ -11,10 +11,11 @@ import { ProfileTab } from "./ProfileTab";
 import { ServersTab } from "./ServersTab";
 import { ResourcesTab } from "./ResourcesTab";
 import { ConfigsTab } from "./ConfigsTab";
+import { OptionsTab } from "./OptionsTab";
 
-export type Tab = "mods" | "resources" | "configs" | "launch" | "snapshots" | "servers" | "logs" | "profile";
+export type Tab = "mods" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
 
-const TABS: [Tab, string][] = [["mods", "Моды · Mod Doctor"], ["resources", "Ресурсы"], ["configs", "Конфиги"], ["launch", "Запуск и память"], ["snapshots", "Снимки и миры"], ["servers", "Серверы"], ["logs", "Логи"], ["profile", "Профиль"]];
+const TABS: [Tab, string][] = [["mods", "Моды · Mod Doctor"], ["resources", "Ресурсы"], ["configs", "Конфиги"], ["launch", "Запуск и память"], ["options", "Настройки игры"], ["snapshots", "Снимки и миры"], ["servers", "Серверы"], ["logs", "Логи"], ["profile", "Профиль"]];
 
 function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }) {
   return (
@@ -256,6 +257,7 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
       {tab === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}
       {tab === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
       {tab === "snapshots" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
+      {tab === "options" && <OptionsTab key={inst.id} inst={inst} running={isActive(state)} />}
       {tab === "configs" && <ConfigsTab key={inst.id} inst={inst} running={isActive(state)} />}
       {tab === "resources" && <ResourcesTab key={inst.id} inst={inst} running={isActive(state)} />}
       {tab === "servers" && <ServersTab key={inst.id} inst={inst} running={isActive(state)} />}

@@ -24,6 +24,7 @@ pub mod metadata;
 pub mod mods;
 pub mod nbt;
 pub mod net;
+pub mod options;
 pub mod paths;
 pub mod resources;
 pub mod servers;
