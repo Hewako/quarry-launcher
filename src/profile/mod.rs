@@ -51,6 +51,9 @@ impl ProfileStore {
         Ok(out)
     }
     pub fn get(&self, id: &str) -> Result<Profile, BoxErr> {
+        if !is_valid_id(id) {
+            return Err("Недопустимый ID профиля".into());
+        }
         let path = self.profile_dir(id).join("profile.toml");
         if !path.exists() {
             return Err(format!("Профиль '{}' не найден", id).into());
@@ -77,6 +80,9 @@ impl ProfileStore {
         Ok(profile)
     }
     pub fn delete(&self, id: &str) -> Result<(), BoxErr> {
+        if !is_valid_id(id) {
+            return Err("Недопустимый ID профиля".into());
+        }
         let dir = self.profile_dir(id);
         if !dir.exists() {
             return Err(format!("Профиль '{}' не найден", id).into());
@@ -84,6 +90,14 @@ impl ProfileStore {
         std::fs::remove_dir_all(dir)?;
         Ok(())
     }
+}
+
+fn is_valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && !id.contains("..")
+        && !id.contains('/')
+        && !id.contains('\\')
+        && id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
 fn slugify(name: &str) -> String {
@@ -113,5 +127,15 @@ mod tests {
         assert_eq!(slugify("  Test 123  "), "test-123");
         assert_eq!(slugify("Русский мир"), "русский-мир");
         assert_eq!(slugify("!!!"), "");
+    }
+    #[test]
+    fn valid_id_rejects_traversal() {
+        assert!(!is_valid_id(""));
+        assert!(!is_valid_id(".."));
+        assert!(!is_valid_id("../etc"));
+        assert!(!is_valid_id("foo/bar"));
+        assert!(!is_valid_id("foo\\bar"));
+        assert!(is_valid_id("my-profile"));
+        assert!(is_valid_id("test_123"));
     }
 }
