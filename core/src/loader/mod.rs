@@ -1,6 +1,9 @@
 //! Загрузчики модов. Каждый — отдельный адаптер со своей схемой установки, без «универсальной
 //! магии». Fabric и Quilt описывают установку профилем JSON поверх ванили (без запуска
-//! установщика). NeoForge и Forge требуют процессоров установщика — пока не реализованы.
+//! установщика). NeoForge — профиль из установщика плюс процессоры (см. `neoforge`).
+//! Forge — отдельное решение после v1.0 (план, Приложение А).
+
+pub mod neoforge;
 
 use crate::error::{Error, Result};
 use crate::metadata::{self, VersionJson};
@@ -38,7 +41,10 @@ impl LoaderKind {
         }
     }
     pub fn is_supported(self) -> bool {
-        matches!(self, Self::Vanilla | Self::Fabric | Self::Quilt)
+        matches!(
+            self,
+            Self::Vanilla | Self::Fabric | Self::Quilt | Self::NeoForge
+        )
     }
 }
 
@@ -56,7 +62,8 @@ pub async fn versions(kind: LoaderKind, game: &str) -> Result<Vec<LoaderVersion>
         LoaderKind::Vanilla => Ok(Vec::new()),
         LoaderKind::Fabric => fabric::versions(game).await,
         LoaderKind::Quilt => quilt::versions(game).await,
-        LoaderKind::NeoForge | LoaderKind::Forge => Err(unsupported(kind)),
+        LoaderKind::NeoForge => neoforge::versions(game).await,
+        LoaderKind::Forge => Err(unsupported(kind)),
     }
 }
 
@@ -126,7 +133,14 @@ pub async fn resolve_profile(
             };
             (VersionJson::parse(&text)?, name)
         }
-        LoaderKind::NeoForge | LoaderKind::Forge => return Err(unsupported(kind)),
+        LoaderKind::NeoForge => {
+            let lv = loader_version.ok_or_else(|| Error::invalid("Не указана версия NeoForge"))?;
+            (
+                neoforge::profile(data, game, lv).await?,
+                format!("neoforge-{lv}"),
+            )
+        }
+        LoaderKind::Forge => return Err(unsupported(kind)),
     };
     if child.inherits_from.as_deref() != Some(game) {
         return Err(Error::invalid(format!(
@@ -223,7 +237,8 @@ mod tests {
         assert_eq!(LoaderKind::parse("Fabric").unwrap(), LoaderKind::Fabric);
         assert_eq!(LoaderKind::parse("vanilla").unwrap(), LoaderKind::Vanilla);
         assert!(LoaderKind::parse("rift").is_err());
-        assert!(!LoaderKind::NeoForge.is_supported());
+        assert!(LoaderKind::NeoForge.is_supported());
+        assert!(!LoaderKind::Forge.is_supported());
     }
 
     #[test]

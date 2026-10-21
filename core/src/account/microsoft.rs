@@ -388,6 +388,7 @@ async fn minecraft_chain(ms: MsToken) -> Result<Chain> {
             // XUID из ответа XSTS для rp://api.minecraftservices.com не приходит; игра принимает
             // «0» (не подтверждено первоисточником).
             xuid: Some("0".into()),
+            method: None,
         },
     })
 }

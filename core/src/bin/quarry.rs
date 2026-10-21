@@ -63,6 +63,8 @@ enum Command {
         #[arg(long)]
         verify: bool,
     },
+    /// Итоговая команда запуска профиля (без токена и без запуска)
+    Preview { id: String },
     /// Аккаунты
     Account {
         #[command(subcommand)]
@@ -93,8 +95,13 @@ enum AccountAction {
     List,
     /// Вход Microsoft (код на microsoft.com/link)
     LoginMicrosoft,
-    /// Вход Ely.by (только при Microsoft-аккаунте с купленной игрой)
-    LoginEly,
+    /// Вход Ely.by логином и паролем (только при Microsoft-аккаунте с купленной игрой).
+    /// Пароль читается из stdin, а не из аргументов — чтобы не попасть в историю оболочки.
+    LoginEly {
+        login: String,
+    },
+    /// Вход Ely.by через браузер (OAuth)
+    LoginElyBrowser,
     /// Выйти: provider = microsoft | elyby
     Logout {
         provider: String,
@@ -285,6 +292,9 @@ async fn main() -> Result<()> {
                 eprintln!("Crash report: {}", cr.display());
             }
         }
+        Command::Preview { id } => {
+            println!("{}", launch::preview(&data, &KeyringStore, &id).await?);
+        }
         Command::Account { action } => {
             let secrets = KeyringStore;
             let store = AccountStore::new(&data, &secrets);
@@ -327,7 +337,29 @@ async fn main() -> Result<()> {
                         }
                     );
                 }
-                AccountAction::LoginEly => {
+                AccountAction::LoginEly { login } => {
+                    use quarry_core::account::ely::{PasswordLogin, login_password};
+                    eprint!("Пароль Ely.by (ввод виден; передаётся только на authserver.ely.by): ");
+                    let mut password = String::new();
+                    std::io::stdin().read_line(&mut password)?;
+                    let password = password.trim_end_matches(['\r', '\n']).to_string();
+                    let acc = match login_password(&store, &login, &password, None).await? {
+                        PasswordLogin::Done(a) => a,
+                        PasswordLogin::NeedTotp => {
+                            eprint!("Код двухфакторной защиты: ");
+                            let mut code = String::new();
+                            std::io::stdin().read_line(&mut code)?;
+                            match login_password(&store, &login, &password, Some(code.trim()))
+                                .await?
+                            {
+                                PasswordLogin::Done(a) => a,
+                                PasswordLogin::NeedTotp => anyhow::bail!("Код не принят"),
+                            }
+                        }
+                    };
+                    println!("Вход Ely.by: {} (только совместимые серверы)", acc.name);
+                }
+                AccountAction::LoginElyBrowser => {
                     let acc = quarry_core::account::ely::login(
                         &store,
                         |url| {

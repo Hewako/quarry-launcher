@@ -19,6 +19,7 @@ pub enum Stage {
     Assets,
     Natives,
     Java,
+    Loader,
 }
 
 impl Stage {
@@ -29,6 +30,7 @@ impl Stage {
             Stage::Assets => "Ресурсы игры",
             Stage::Natives => "Нативные библиотеки",
             Stage::Java => "Java",
+            Stage::Loader => "Установка загрузчика",
         }
     }
 }
@@ -358,7 +360,8 @@ impl Installer<'_> {
 
     /// Папка нативов определяется составом архивов, поэтому параллельные профили одной версии
     /// не перезаписывают файлы друг друга. Распаковка — во временную папку и переименование.
-    fn extract_natives(
+    /// Папка нативов для набора архивов (без распаковки).
+    pub fn natives_dir_for(
         &self,
         version_id: &str,
         jars: &[(PathBuf, Vec<String>)],
@@ -367,11 +370,19 @@ impl Installer<'_> {
         for (jar, _) in jars {
             key = metadata::sha1_hex(format!("{key}{}", jar.display()).as_bytes());
         }
-        let dir = self.data.natives().join(format!(
+        Ok(self.data.natives().join(format!(
             "{}-{}",
             metadata::file_safe(version_id)?,
             &key[..10]
-        ));
+        )))
+    }
+
+    fn extract_natives(
+        &self,
+        version_id: &str,
+        jars: &[(PathBuf, Vec<String>)],
+    ) -> Result<PathBuf> {
+        let dir = self.natives_dir_for(version_id, jars)?;
         if dir.join(".complete").exists() {
             return Ok(dir);
         }

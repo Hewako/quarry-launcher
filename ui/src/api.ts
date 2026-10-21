@@ -106,6 +106,7 @@ export const api = {
   launch: (id: string, quickPlay?: QuickPlay, fullVerify = false) =>
     invoke<void>("launch_instance", { id, quickPlay: quickPlay ?? null, fullVerify }),
   stop: (id: string) => invoke<boolean>("stop_instance", { id }),
+  previewCommand: (id: string) => invoke<string>("preview_command", { id }),
   openFolder: (id: string, sub?: string) => invoke<void>("open_instance_folder", { id, sub: sub ?? null }),
   readLog: (id: string) => invoke<string[]>("read_log_file", { id, file: null }),
   listAccounts: () => invoke<AccountRef[]>("list_accounts"),
@@ -115,6 +116,8 @@ export const api = {
   microsoftStart: () => invoke<DeviceCode>("microsoft_start"),
   microsoftFinish: (code: DeviceCode) => invoke<AccountRef>("microsoft_finish", { code }),
   elyLogin: () => invoke<AccountRef>("ely_login"),
+  elyLoginPassword: (login: string, password: string, totp?: string) =>
+    invoke<{ account?: AccountRef; need_totp: boolean }>("ely_login_password", { login, password, totp: totp ?? null }),
   cancelLogin: () => invoke<void>("cancel_login"),
   openLink: (url: string) => invoke<void>("open_link", { url }),
 };

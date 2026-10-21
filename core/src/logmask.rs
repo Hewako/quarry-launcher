@@ -17,9 +17,9 @@ pub struct Masker {
     nick: Option<String>,
 }
 
-/// IPv4 как отдельное «слово»: не часть версии (`jdk-25.0.4.1+1`, `lib-1.2.3.4.jar`).
-/// В regex нет просмотра назад/вперёд, поэтому соседние символы захватываются и
-/// возвращаются при замене.
+/// Кандидат в IPv4 как отдельное «слово»: не часть `jdk-25.0.4.1+1` или `lib-1.2.3.4.jar`.
+/// Окончательное решение — по контексту (`looks_like_address`): строка вида `26.3.0.95`
+/// одинаково похожа и на адрес, и на номер версии.
 fn ipv4() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -88,23 +88,60 @@ impl Masker {
         if let Some(home) = &self.home {
             out = out.replace(home.as_str(), HOME);
         }
-        out = ipv4()
-            .replace_all(&out, |c: &regex::Captures| {
-                // Loopback и 0.0.0.0 не персональные — оставляем.
-                let ip = &c[2];
-                let shown = if ip.starts_with("127.") || ip == "0.0.0.0" {
-                    ip
-                } else {
-                    IP
-                };
-                format!("{}{shown}{}", &c[1], &c[3])
-            })
-            .into_owned();
+        out = mask_addresses(&out);
         if let Some(nick) = &self.nick {
             out = out.replace(nick.as_str(), NICK);
         }
         out
     }
+}
+
+/// Адрес — если рядом порт (`:25565`), это `InetAddress` (`/1.2.3.4`, но не папка `/1.2.3.4/`)
+/// или перед ним слово про сеть. Иначе это скорее номер версии, и он остаётся как есть.
+fn looks_like_address(line: &str, start: usize, end: usize) -> bool {
+    let before = &line[..start];
+    let after = &line[end..];
+    if after.starts_with(':') && after[1..].starts_with(|c: char| c.is_ascii_digit()) {
+        return true;
+    }
+    if before.ends_with('/') && !after.starts_with('/') {
+        return true;
+    }
+    let window: String = before
+        .chars()
+        .rev()
+        .take(24)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    let window = window.to_lowercase();
+    [
+        "connect", "server", "address", "addr", "host", "ip", "peer", "remote", "client", "lan",
+    ]
+    .iter()
+    .any(|k| window.contains(k))
+}
+
+fn mask_addresses(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut last = 0;
+    for c in ipv4().captures_iter(line) {
+        let m = c.get(2).expect("группа 2 есть всегда");
+        let ip = m.as_str();
+        // Loopback и 0.0.0.0 не персональные.
+        if ip.starts_with("127.")
+            || ip == "0.0.0.0"
+            || !looks_like_address(line, m.start(), m.end())
+        {
+            continue;
+        }
+        out.push_str(&line[last..m.start()]);
+        out.push_str(IP);
+        last = m.end();
+    }
+    out.push_str(&line[last..]);
+    out
 }
 
 #[cfg(test)]
@@ -153,6 +190,8 @@ mod tests {
     fn versions_are_not_ips() {
         let m = Masker::new().with_home(None);
         for s in [
+            "NeoForge 26.3.0.95 (neoforge)",
+            "~libraries/net/neoforged/neoforge/26.3.0.95/neoforge.jar",
             "jdk-25.0.4.1+1/bin/java",
             "lib-1.2.3.4.jar",
             "Fabric 0.16.10.1-beta",

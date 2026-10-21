@@ -397,7 +397,7 @@ mod tests {
         let (list, broken) = s.list().unwrap();
         assert_eq!(list.len(), 2);
         assert!(broken.is_empty());
-        assert!(s.create("x", "26.3", LoaderKind::NeoForge, None).is_err());
+        assert!(s.create("x", "26.3", LoaderKind::Forge, None).is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

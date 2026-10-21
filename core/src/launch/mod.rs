@@ -429,6 +429,23 @@ async fn run(
     });
     cancel.check()?;
 
+    // NeoForge: процессоры установщика нужны Java игры и скачанный ванильный клиент.
+    if inst.loader == crate::loader::LoaderKind::NeoForge {
+        let lv = loader_version
+            .as_deref()
+            .ok_or_else(|| Error::invalid("Не указана версия NeoForge"))?;
+        stage(Stage::Loader);
+        crate::loader::neoforge::run_processors(
+            data,
+            &inst.game_version,
+            lv,
+            &java.install.path,
+            &installed.client_jar,
+            cancel,
+        )
+        .await?;
+    }
+
     let authlib = if inst.auth_mode == AuthMode::ElyBy {
         let jar = account::ely::ensure_authlib_injector(data, cancel).await?;
         Some((jar, account::ely::AUTHLIB_API.to_string()))
@@ -483,6 +500,104 @@ async fn run(
     let info = proc.wait().await?;
     emit(LaunchEvent::Exited { info: info.clone() });
     Ok(info)
+}
+
+/// Итоговая команда запуска без запуска и без скачивания (кроме метаданных): для вкладки
+/// «Запуск и память». Токен не показывается; если подходящей Java нет, это сказано в команде.
+pub async fn preview(
+    data: &DataDir,
+    secrets: &dyn SecretStore,
+    instance_id: &str,
+) -> Result<String> {
+    let store = InstanceStore::new(data.clone());
+    let inst = store.get(instance_id)?;
+    let global = GlobalSettings::load(data)?;
+    let version = crate::loader::resolve_profile(
+        data,
+        inst.loader,
+        &inst.game_version,
+        inst.loader_version.as_deref(),
+    )
+    .await?;
+    let env = Environment::current();
+    let installer = Installer {
+        data,
+        env: env.clone(),
+        verify: Verify::Quick,
+        cancel: Cancel::new(),
+        on_event: None,
+    };
+    let plan = installer.plan(&version, &inst.game_version)?;
+    let natives_dir = installer.natives_dir_for(&version.id, &plan.native_jars)?;
+    let (major, reason) = version.required_java();
+    let req = Requirement::for_version(major, reason, version.has_macos_arm64_natives());
+    let resolved = settings::resolve(&inst.settings, &inst.pack_settings, &global.launch);
+    let java_path = match resolved.java_path.value.clone() {
+        Some(p) => p,
+        None => match java::choose(&req, &java::discover(Some(data)).await) {
+            Some(c) => c.install.path,
+            None => PathBuf::from(format!("‹будет скачана Java {}›", req.major)),
+        },
+    };
+    let accounts = AccountStore::new(data, secrets).list().unwrap_or_default();
+    let name = accounts
+        .iter()
+        .find(|a| match inst.auth_mode {
+            AuthMode::Microsoft => a.provider == Provider::Microsoft,
+            AuthMode::ElyBy => a.provider == Provider::ElyBy,
+        })
+        .map(|a| a.name.clone())
+        .unwrap_or_else(|| "‹ник›".into());
+    let auth = GameAuth {
+        name,
+        uuid: "‹uuid›".into(),
+        access_token: "‹token›".into(),
+        user_type: "msa".into(),
+        xuid: "0".into(),
+        client_id: account::microsoft::CLIENT_ID
+            .unwrap_or_default()
+            .to_string(),
+    };
+    let installed = crate::install::Installed {
+        assets_index_name: plan.index_ref.id.clone(),
+        version,
+        client_jar: plan.client_jar,
+        libraries: plan.libraries,
+        natives_dir,
+        assets_root: data.assets(),
+        game_assets: data.assets(),
+        logging_argument: plan.logging_argument,
+        unverified: Vec::new(),
+    };
+    let game_dir = store.game_dir(&inst.id)?;
+    let authlib = (inst.auth_mode == AuthMode::ElyBy).then(|| {
+        (
+            data.libraries()
+                .join("moe/yushi/authlibinjector")
+                .join(account::ely::AUTHLIB_VERSION)
+                .join(format!(
+                    "authlib-injector-{}.jar",
+                    account::ely::AUTHLIB_VERSION
+                )),
+            account::ely::AUTHLIB_API.to_string(),
+        )
+    });
+    let cmd = args::build(&LaunchSpec {
+        installed: &installed,
+        java: &java_path,
+        game_dir: &game_dir,
+        auth: &auth,
+        env,
+        min_memory_mb: resolved.min_memory_mb.value,
+        max_memory_mb: resolved.max_memory_mb.value,
+        extra_jvm_args: resolved.jvm_args.value,
+        resolution: resolved.resolution.value,
+        quick_play: None,
+        authlib_injector: authlib,
+        launcher_name: LAUNCHER_NAME,
+        launcher_version: LAUNCHER_VERSION,
+    });
+    Ok(Masker::new().mask(&cmd.preview(&auth)))
 }
 
 /// Хранить не больше `keep` последних логов игры профиля.

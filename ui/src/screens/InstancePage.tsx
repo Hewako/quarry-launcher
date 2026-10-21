@@ -22,6 +22,7 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   const [draft, setDraft] = useState<LaunchOverrides>(inst.settings);
   const [args, setArgs] = useState((inst.settings.jvm_args ?? []).join(" "));
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState("");
 
   const load = useCallback(() => {
     api.launchSettings(inst.id).then((d) => { setData(d); setDraft(d.profile); setArgs((d.profile.jvm_args ?? []).join(" ")); }).catch(() => setData(null));
@@ -111,8 +112,15 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
       </div>
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn pri" onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</button>
+        <button className="btn" onClick={() => { setPreview("…"); api.previewCommand(inst.id).then(setPreview).catch((e) => setPreview(errText(e))); }}>Показать итоговую команду</button>
         <span className="muted small">Прирост FPS от флагов не обещаем: он зависит от модов, Java и железа.</span>
       </div>
+      {preview && (
+        <div style={{ marginTop: 12 }}>
+          <span className="muted small">Команда по сохранённым настройкам. Токен и UUID скрыты.</span>
+          <div className="cmd" style={{ marginTop: 6 }}>{preview}</div>
+        </div>
+      )}
     </>
   );
 }

@@ -79,6 +79,10 @@ pub struct Tokens {
     /// XUID (Microsoft) для `--xuid`.
     #[serde(default)]
     pub xuid: Option<String>,
+    /// Ely.by: как получен токен — `oauth` или `yggdrasil` (логин и пароль).
+    /// Для `yggdrasil` в `refresh_token` лежит clientToken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
 }
 
 impl std::fmt::Debug for Tokens {
@@ -325,6 +329,7 @@ mod tests {
             expires_at: 100,
             refresh_token: Some("r".into()),
             xuid: None,
+            method: None,
         }
     }
 

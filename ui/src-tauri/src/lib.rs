@@ -296,6 +296,13 @@ fn launch_instance(
 }
 
 #[tauri::command]
+async fn preview_command(state: State<'_, AppState>, id: String) -> CmdResult<String> {
+    launch::preview(&state.data, &KeyringStore, &id)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
 fn stop_instance(state: State<AppState>, id: String) -> bool {
     state.registry.stop(&id)
 }
@@ -450,6 +457,37 @@ async fn ely_login(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResu
     .map_err(err)
 }
 
+#[derive(Serialize)]
+struct PasswordLoginResult {
+    account: Option<AccountRef>,
+    need_totp: bool,
+}
+
+/// Вход Ely.by логином и паролем. Пароль не сохраняется и не логируется.
+#[tauri::command]
+async fn ely_login_password(
+    state: State<'_, AppState>,
+    login: String,
+    password: String,
+    totp: Option<String>,
+) -> CmdResult<PasswordLoginResult> {
+    let secrets = KeyringStore;
+    let store = AccountStore::new(&state.data, &secrets);
+    match quarry_core::account::ely::login_password(&store, &login, &password, totp.as_deref())
+        .await
+        .map_err(err)?
+    {
+        quarry_core::account::ely::PasswordLogin::Done(a) => Ok(PasswordLoginResult {
+            account: Some(a),
+            need_totp: false,
+        }),
+        quarry_core::account::ely::PasswordLogin::NeedTotp => Ok(PasswordLoginResult {
+            account: None,
+            need_totp: true,
+        }),
+    }
+}
+
 #[tauri::command]
 fn cancel_login(state: State<AppState>) {
     if let Some(c) = state
@@ -508,6 +546,7 @@ pub fn run() {
             loader_versions,
             launch_instance,
             stop_instance,
+            preview_command,
             open_instance_folder,
             read_log_file,
             list_accounts,
@@ -517,6 +556,7 @@ pub fn run() {
             microsoft_start,
             microsoft_finish,
             ely_login,
+            ely_login_password,
             cancel_login,
             open_link,
         ])

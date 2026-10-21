@@ -50,10 +50,51 @@ function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: 
   );
 }
 
+function ElyLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: AccountRef) => void }) {
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [totp, setTotp] = useState("");
+  const [needTotp, setNeedTotp] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await api.elyLoginPassword(login, password, needTotp ? totp : undefined);
+      if (r.need_totp) { setNeedTotp(true); return; }
+      setPassword("");
+      if (r.account) onDone(r.account);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="Вход через Ely.by" onClose={onClose}>
+      <form className="form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <label><span>Ник или e-mail</span><input className="field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" data-autofocus /></label>
+        <label><span>Пароль</span><input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
+        {needTotp && (
+          <label><span>Код двухфакторной защиты</span><input className="field" inputMode="numeric" value={totp} onChange={(e) => setTotp(e.target.value)} autoFocus /></label>
+        )}
+        <span className="muted small">Пароль отправляется только на authserver.ely.by и не сохраняется: в хранилище секретов ОС попадает только токен сессии. Ely.by-аккаунт работает лишь на совместимых серверах.</span>
+        {error && <div className="alert err"><span style={{ userSelect: "text" }}>{error}</span></div>}
+        <div className="acts">
+          <button type="button" className="btn" onClick={onClose}>Отмена</button>
+          <button className="btn pri" disabled={busy || !login || !password || (needTotp && !totp)}>{busy ? "Входим…" : "Войти"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppInfo; accounts: AccountRef[]; defaultKey?: string; onChanged: () => void }) {
   const dialog = useDialog();
   const [msLogin, setMsLogin] = useState(false);
   const [elyBusy, setElyBusy] = useState(false);
+  const [elyPassword, setElyPassword] = useState(false);
   const verified = accounts.some((a) => a.provider === "microsoft" && a.owns_java_edition);
 
   const remove = async (a: AccountRef) => {
@@ -119,7 +160,8 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
       ))}
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn pri" disabled={!info.microsoft_configured} onClick={() => setMsLogin(true)}>Войти через Microsoft</button>
-        <button className="btn" disabled={!verified || elyBusy} onClick={ely}>{elyBusy ? "Ждём браузер…" : "Войти через Ely.by"}</button>
+        <button className="btn" disabled={!verified} onClick={() => setElyPassword(true)}>Войти через Ely.by</button>
+        {verified && <button className="btn link small" disabled={elyBusy} onClick={ely}>{elyBusy ? "Ждём браузер…" : "или через браузер (OAuth)"}</button>}
       </div>
       {!info.microsoft_configured && (
         <div className="alert warn" style={{ marginTop: 14 }}>
@@ -129,6 +171,13 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
       )}
       {!verified && <p className="muted small">Ely.by станет доступен после входа в Microsoft-аккаунт с купленной игрой.</p>}
       <p className="muted small">Вход открывается в системном браузере. Пароль в лаунчер не вводится.</p>
+      {elyPassword && (
+        <ElyLogin onClose={() => setElyPassword(false)} onDone={async (a) => {
+          setElyPassword(false);
+          onChanged();
+          await dialog.alert("Ely.by подключён", `${a.name}: доступен в профилях, переключённых на Ely.by. Официальные серверы с ним недоступны.`);
+        }} />
+      )}
       {msLogin && <MicrosoftLogin onClose={() => setMsLogin(false)} onDone={() => { setMsLogin(false); onChanged(); }} />}
     </>
   );
