@@ -188,6 +188,9 @@ pub struct GlobalSettings {
     /// Бэкап последнего мира после выхода из игры.
     #[serde(default)]
     pub backup_after_exit: bool,
+    /// Бэкап по расписанию: раз в N дней перед запуском, если в мир играли. 0 — выключено.
+    #[serde(default)]
+    pub backup_every_days: u32,
     /// Проверять, вышла ли новая версия Quarry (страница релизов GitHub).
     #[serde(default = "yes")]
     pub check_launcher_updates: bool,
@@ -219,6 +222,7 @@ impl Default for GlobalSettings {
             first_run_done: false,
             backup_before_risky_launch: true,
             backup_after_exit: false,
+            backup_every_days: 0,
             check_launcher_updates: true,
         }
     }

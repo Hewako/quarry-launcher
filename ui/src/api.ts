@@ -41,6 +41,7 @@ export interface Instance {
   settings: LaunchOverrides;
   pack_settings: LaunchOverrides;
   last_launch?: LastLaunch;
+  external_game_dir?: string;
 }
 
 export interface ProfileMeta { group?: string; description?: string; color?: string; favorite: boolean; archived: boolean }
@@ -53,7 +54,11 @@ export const SHARABLE: [string, string][] = [
   ["resourcepacks", "Ресурспаки"],
   ["shaderpacks", "Шейдеры"],
   ["config", "Настройки модов"],
+  ["saves", "Миры (копией, свои миры не заменяются)"],
 ];
+
+export interface Server { name: string; ip: string; icon?: string; accept_textures?: boolean }
+export interface ServerStatus { version: string; protocol: number; online: number; max: number; motd: string; latency_ms: number; favicon?: string }
 
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
@@ -78,7 +83,7 @@ export interface AccountRef { provider: Provider; uuid: string; name: string; ow
 export interface GlobalSettings {
   launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string;
   language: string; accent?: string; ui_scale: number; first_run_done: boolean;
-  backup_before_risky_launch: boolean; backup_after_exit: boolean; check_launcher_updates: boolean;
+  backup_before_risky_launch: boolean; backup_after_exit: boolean; backup_every_days: number; check_launcher_updates: boolean;
 }
 export interface WorldBackup { world: string; file: string; size: number; created_at: number }
 export interface WorldInfo {
@@ -124,6 +129,10 @@ export const api = {
   cloneInstance: (id: string, name: string, parts: CloneParts) => invoke<Instance>("clone_instance", { id, name, parts }),
   diskUsage: (id: string) => invoke<{ parts: { label: string; size: number }[]; total: number }>("disk_usage", { id }),
   copyBetween: (from: string, to: string, items: string[]) => invoke<void>("copy_between", { from, to, items }),
+  moveGameDir: (id: string, target: string | null) => invoke<string>("move_game_dir", { id, target }),
+  servers: (id: string) => invoke<Server[]>("servers_list", { id }),
+  saveServers: (id: string, servers: Server[]) => invoke<void>("servers_save", { id, servers }),
+  pingServer: (address: string) => invoke<ServerStatus>("server_ping", { address }),
   launchSettings: (id: string) =>
     invoke<{ resolved: ResolvedLaunch; profile: LaunchOverrides; global: LaunchOverrides; total_memory_mb?: number }>("launch_settings", { id }),
   globalSettings: () => invoke<GlobalSettings>("global_settings"),

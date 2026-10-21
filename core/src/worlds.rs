@@ -226,6 +226,20 @@ pub fn newer_than(worlds: &[WorldInfo], game_world_version: i64) -> Vec<&WorldIn
         .collect()
 }
 
+/// Пора ли делать бэкап по расписанию: раз в `every_days` дней, если в мир играли после
+/// последнего бэкапа. `every_days == 0` — расписание выключено.
+pub fn backup_due(w: &WorldInfo, every_days: u32, now: u64) -> bool {
+    if every_days == 0 {
+        return false;
+    }
+    match w.backups.iter().map(|b| b.created_at).max() {
+        None => w.last_played > 0,
+        Some(last) => {
+            now.saturating_sub(last) >= u64::from(every_days) * 86_400 && w.last_played > last
+        }
+    }
+}
+
 /// Бэкап последнего мира, в который играли (если есть). Для автобэкапов.
 pub fn backup_latest(game_dir: &Path, backups_dir: &Path) -> Option<WorldBackup> {
     let worlds = list(game_dir, backups_dir);
@@ -315,5 +329,43 @@ mod tests {
             assert!(i.world_version.is_some());
         }
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn world(last_played: u64, backups: &[u64]) -> WorldInfo {
+        WorldInfo {
+            folder: "W".into(),
+            name: "W".into(),
+            version_name: None,
+            data_version: None,
+            game_mode: String::new(),
+            hardcore: false,
+            last_played,
+            size: 0,
+            backups: backups
+                .iter()
+                .map(|&t| WorldBackup {
+                    world: "W".into(),
+                    file: PathBuf::new(),
+                    size: 0,
+                    created_at: t,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn scheduled_backup_is_due_only_for_played_worlds() {
+        let day = 86_400;
+        let now = 100 * day;
+        // Расписание выключено.
+        assert!(!backup_due(&world(now, &[]), 0, now));
+        // Бэкапов нет, в мир играли — пора.
+        assert!(backup_due(&world(now - 10, &[]), 3, now));
+        // Последний бэкап свежий.
+        assert!(!backup_due(&world(now - 10, &[now - day]), 3, now));
+        // Бэкап старый, и после него в мир играли.
+        assert!(backup_due(&world(now - 10, &[now - 4 * day]), 3, now));
+        // Бэкап старый, но в мир с тех пор не заходили — копировать нечего.
+        assert!(!backup_due(&world(now - 5 * day, &[now - 4 * day]), 3, now));
     }
 }

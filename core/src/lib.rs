@@ -23,6 +23,7 @@ pub mod mods;
 pub mod nbt;
 pub mod net;
 pub mod paths;
+pub mod servers;
 pub mod settings;
 pub mod skin;
 pub mod snapshot;

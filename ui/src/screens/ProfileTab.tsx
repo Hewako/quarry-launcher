@@ -1,4 +1,5 @@
 // Вкладка «Профиль»: оформление, место на диске, копия профиля и перенос настроек из другого.
+import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, errText, metaOf, sizeText, SHARABLE, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
@@ -86,6 +87,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
   const [name, setName] = useState(inst.name);
   const [usage, setUsage] = useState<{ parts: { label: string; size: number }[]; total: number } | null>(null);
   const [modal, setModal] = useState<"" | "clone" | "copy">("");
+  const [moving, setMoving] = useState(false);
   const groups = [...new Set(instances.map((i) => i.group).filter(Boolean))] as string[];
 
   useEffect(() => { api.diskUsage(inst.id).then(setUsage).catch(() => setUsage(null)); }, [inst.id]);
@@ -96,6 +98,29 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
       onChanged(await api.updateInstance(inst.id, { name: newName, meta: next }));
       setMeta(next);
     } catch (e) { await dialog.alert("Не сохранено", errText(e)); }
+  };
+
+  const move = async (toQuarry: boolean) => {
+    let target: string | null = null;
+    if (!toQuarry) {
+      const picked = await open({ directory: true, title: "Куда перенести папку игры" }).catch(() => null);
+      if (typeof picked !== "string") return;
+      target = picked;
+    }
+    const ok = await dialog.confirm({
+      title: toQuarry ? "Вернуть папку игры в Quarry?" : "Перенести папку игры?",
+      body: toQuarry
+        ? "Миры, моды и настройки переедут обратно в папку данных Quarry."
+        : <>Миры, моды и настройки переедут в <span className="mono">{target}</span>. На другой диск это займёт время; исходная папка удалится только после полной проверки копии.</>,
+      confirm: "Перенести",
+    });
+    if (!ok) return;
+    setMoving(true);
+    try {
+      const path = await api.moveGameDir(inst.id, target);
+      onChanged({ ...inst, external_game_dir: toQuarry ? undefined : path });
+      await dialog.alert("Перенесено", <>Папка игры теперь здесь: <span className="mono">{path}</span></>);
+    } catch (e) { await dialog.alert("Не перенесено", errText(e)); } finally { setMoving(false); }
   };
 
   return (
@@ -154,6 +179,17 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
             ))}
           </div>
         )}
+      </div>
+
+      <h4 style={{ margin: "22px 0 10px" }}>Где лежит папка игры</h4>
+      <div className="card">
+        <p className="small" style={{ marginTop: 0 }}>
+          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{inst.external_game_dir}</span> : "В папке данных Quarry."}
+        </p>
+        <div className="row">
+          <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? "Переносим…" : "Перенести в другую папку или на другой диск…"}</button>
+          {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>Вернуть в Quarry</button>}
+        </div>
       </div>
 
       <div className="row" style={{ marginTop: 14 }}>

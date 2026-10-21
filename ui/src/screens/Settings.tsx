@@ -72,6 +72,16 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
           <span />
         </div>
         <div className="setting">
+          <div className="lbl">Бэкап миров по расписанию<span className="hint">перед запуском, если в мир играли после прошлого бэкапа</span></div>
+          <select className="field" value={s.backup_every_days} onChange={(e) => setS({ ...s, backup_every_days: Number(e.target.value) })}>
+            <option value={0}>Выключен</option>
+            <option value={1}>Каждый день</option>
+            <option value={3}>Раз в 3 дня</option>
+            <option value={7}>Раз в неделю</option>
+          </select>
+          <span />
+        </div>
+        <div className="setting">
           <div className="lbl">Папка данных</div>
           <span className="mono" style={{ userSelect: "text" }}>{info.data_dir}</span>
           <span />

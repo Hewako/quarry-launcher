@@ -229,3 +229,11 @@ select.field { padding: 6px 8px; }
 .urow .bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
 .urow .bar i { display: block; height: 100%; background: var(--accent); }
 .urow > :last-child { text-align: right; }
+
+/* Вкладка «Серверы» */
+.servers td { padding: 10px 14px; vertical-align: middle; }
+.sicon { width: 40px; height: 40px; border-radius: 6px; background: var(--panel2); image-rendering: pixelated; display: block; }
+.motd { white-space: pre-line; max-width: 420px; }
+.ok-text { color: var(--accent); }
+.servers td:first-child { vertical-align: top; }
+.sacts { gap: 14px; margin-top: 4px; }

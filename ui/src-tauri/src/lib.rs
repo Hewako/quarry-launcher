@@ -856,6 +856,63 @@ fn world_restore(state: State<AppState>, id: String, file: String) -> CmdResult<
     .map_err(err)
 }
 
+#[tauri::command]
+async fn move_game_dir(
+    state: State<'_, AppState>,
+    id: String,
+    target: Option<String>,
+) -> CmdResult<String> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    let store = InstanceStore::new(state.data.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        quarry_core::instance::ops::move_game_dir(
+            &store,
+            &id,
+            target.as_deref().map(std::path::Path::new),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|p| p.display().to_string())
+    .map_err(err)
+}
+
+#[tauri::command]
+fn servers_list(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::servers::Server>> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    quarry_core::servers::read(&game).map_err(err)
+}
+
+#[tauri::command]
+fn servers_save(
+    state: State<AppState>,
+    id: String,
+    servers: Vec<quarry_core::servers::Server>,
+) -> CmdResult<()> {
+    // Игра перезаписывает servers.dat при выходе — правки во время игры потерялись бы.
+    if state.registry.is_running(&id) {
+        return Err(
+            "Сначала закройте игру в этом профиле: она перезапишет список при выходе".into(),
+        );
+    }
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    quarry_core::servers::write(&game, &servers).map_err(err)
+}
+
+#[tauri::command]
+async fn server_ping(address: String) -> CmdResult<quarry_core::servers::Status> {
+    quarry_core::servers::ping(&address).await.map_err(err)
+}
+
 #[derive(Serialize)]
 struct ImportSources {
     prism: Vec<(String, String)>,
@@ -985,6 +1042,10 @@ pub fn run() {
             clone_instance,
             disk_usage,
             copy_between,
+            servers_list,
+            move_game_dir,
+            servers_save,
+            server_ping,
             import_sources,
             import_path,
             link_minecraft,

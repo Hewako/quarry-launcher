@@ -136,12 +136,13 @@ pub fn disk_usage(store: &InstanceStore, id: &str) -> Result<DiskUsage> {
 }
 
 /// Что можно перенести из одного профиля в другой.
-pub const SHARABLE: [(&str, &str); 5] = [
+pub const SHARABLE: [(&str, &str); 6] = [
     ("options.txt", "Настройки игры (управление, графика, звук)"),
     ("servers.dat", "Список серверов"),
     ("resourcepacks", "Ресурспаки"),
     ("shaderpacks", "Шейдеры"),
     ("config", "Настройки модов"),
+    ("saves", "Миры (копией, свои миры не заменяются)"),
 ];
 
 /// Перенести файлы из профиля `from` в `to`. Перед этим у `to` создаётся снимок,
@@ -165,9 +166,103 @@ pub fn copy_between(store: &InstanceStore, from: &str, to: &str, items: &[String
         true,
     )?;
     for item in items {
-        copy_item(&src.join(item), &dst.join(item))?;
+        if item == "saves" {
+            copy_worlds(&src.join("saves"), &dst.join("saves"), &name)?;
+        } else {
+            copy_item(&src.join(item), &dst.join(item))?;
+        }
     }
     Ok(())
+}
+
+/// Скопировать миры: мир с уже занятым именем получает приписку «(из <профиль>)».
+fn copy_worlds(from: &Path, to: &Path, source_name: &str) -> Result<()> {
+    let Ok(rd) = std::fs::read_dir(from) else {
+        return Ok(());
+    };
+    for e in rd.flatten() {
+        if !e.path().join("level.dat").is_file() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        let mut target = to.join(&name);
+        let mut n = 2;
+        while target.exists() {
+            let suffix = if n == 2 {
+                String::new()
+            } else {
+                format!(" {n}")
+            };
+            target = to.join(format!("{name} (из {source_name}){suffix}"));
+            n += 1;
+        }
+        copy_dir(&e.path(), &target)?;
+    }
+    Ok(())
+}
+
+/// Перенести папку игры профиля в `target_parent/<id>` (например, на другой диск) или,
+/// при `None`, обратно в папку данных Quarry. Профиль запоминает новое место.
+pub fn move_game_dir(
+    store: &InstanceStore,
+    id: &str,
+    target_parent: Option<&Path>,
+) -> Result<std::path::PathBuf> {
+    let mut inst = store.get(id)?;
+    let from = store.game_dir(id)?;
+    // Подключённую папку официального лаунчера не трогаем: её перенос сломал бы его.
+    if inst.external_game_dir.is_some()
+        && from
+            .file_name()
+            .is_some_and(|n| n == ".minecraft" || n == "minecraft")
+    {
+        return Err(Error::invalid(
+            "Это папка официального лаунчера — переносить её нельзя",
+        ));
+    }
+    let internal = store.dir(id)?.join("game");
+    let to = match target_parent {
+        Some(p) => {
+            // Сравниваем настоящие пути (символические ссылки раскрыты).
+            let real = std::fs::canonicalize(p).at(p)?;
+            if real.starts_with(std::fs::canonicalize(&from).at(&from)?) {
+                return Err(Error::invalid("Нельзя перенести папку внутрь неё самой"));
+            }
+            p.join(&inst.id)
+        }
+        None => internal.clone(),
+    };
+    if to == from {
+        return Ok(to);
+    }
+    if to.exists() {
+        return Err(Error::invalid(format!(
+            "Папка {} уже существует — выберите другое место",
+            to.display()
+        )));
+    }
+    if let Some(p) = to.parent() {
+        std::fs::create_dir_all(p).at(p)?;
+    }
+    // На том же диске — мгновенное переименование, на другом — копия и удаление исходной.
+    if std::fs::rename(&from, &to).is_err() {
+        copy_then_remove(&from, &to)?;
+    }
+    inst.external_game_dir = (to != internal).then(|| to.clone());
+    store.save(&inst)?;
+    Ok(to)
+}
+
+/// Скопировать папку и удалить исходную — только если копия совпала по размеру.
+fn copy_then_remove(from: &Path, to: &Path) -> Result<()> {
+    copy_dir(from, to)?;
+    if dir_size(from) != dir_size(to) {
+        let _ = std::fs::remove_dir_all(to);
+        return Err(Error::invalid(
+            "Копия получилась неполной — перенос отменён, исходная папка не тронута",
+        ));
+    }
+    std::fs::remove_dir_all(from).at(from)
 }
 
 #[cfg(test)]
@@ -221,7 +316,81 @@ mod tests {
 
         copy_between(&store, &a.id, &b.id, &["options.txt".into()]).unwrap();
         assert!(gb.join("options.txt").is_file());
-        assert!(copy_between(&store, &a.id, &b.id, &["saves".into()]).is_err());
+        assert!(copy_between(&store, &a.id, &b.id, &["mods".into()]).is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn move_game_folder_out_and_back() {
+        let root = std::env::temp_dir().join(format!("quarry-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = InstanceStore::new(DataDir::open(root.join("data")).unwrap());
+        let a = store
+            .create("Большой", "26.3", LoaderKind::Vanilla, None)
+            .unwrap();
+        let g = store.game_dir(&a.id).unwrap();
+        std::fs::create_dir_all(g.join("saves/W")).unwrap();
+        std::fs::write(g.join("saves/W/level.dat"), b"x").unwrap();
+
+        let disk = root.join("other-disk");
+        std::fs::create_dir_all(&disk).unwrap();
+        let moved = move_game_dir(&store, &a.id, Some(&disk)).unwrap();
+        assert_eq!(moved, disk.join(&a.id));
+        assert!(moved.join("saves/W/level.dat").is_file());
+        assert!(!g.exists());
+        assert_eq!(store.game_dir(&a.id).unwrap(), moved);
+
+        // Обратно в папку данных Quarry.
+        let back = move_game_dir(&store, &a.id, None).unwrap();
+        assert_eq!(back, g);
+        assert!(g.join("saves/W/level.dat").is_file());
+        assert!(store.get(&a.id).unwrap().external_game_dir.is_none());
+
+        // Внутрь самой папки игры переносить нельзя.
+        assert!(move_game_dir(&store, &a.id, Some(&g.join("saves"))).is_err());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn copy_fallback_moves_everything() {
+        let root = std::env::temp_dir().join(format!("quarry-movecopy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("a/sub")).unwrap();
+        std::fs::write(root.join("a/sub/f"), b"1234").unwrap();
+        copy_then_remove(&root.join("a"), &root.join("b")).unwrap();
+        assert!(!root.join("a").exists());
+        assert_eq!(std::fs::read(root.join("b/sub/f")).unwrap(), b"1234");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn copying_worlds_never_overwrites_existing() {
+        let root = std::env::temp_dir().join(format!("quarry-saves-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = InstanceStore::new(DataDir::open(&root).unwrap());
+        let a = store
+            .create("Откуда", "26.3", LoaderKind::Vanilla, None)
+            .unwrap();
+        let b = store
+            .create("Куда", "26.3", LoaderKind::Vanilla, None)
+            .unwrap();
+        let (ga, gb) = (
+            store.game_dir(&a.id).unwrap(),
+            store.game_dir(&b.id).unwrap(),
+        );
+        for (g, body) in [(&ga, "new"), (&gb, "old")] {
+            std::fs::create_dir_all(g.join("saves/World")).unwrap();
+            std::fs::write(g.join("saves/World/level.dat"), body).unwrap();
+        }
+        copy_between(&store, &a.id, &b.id, &["saves".into()]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(gb.join("saves/World/level.dat")).unwrap(),
+            "old"
+        );
+        assert_eq!(
+            std::fs::read_to_string(gb.join("saves/World (из Откуда)/level.dat")).unwrap(),
+            "new"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

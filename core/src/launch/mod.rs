@@ -606,6 +606,50 @@ async fn run(
         .last_launch
         .as_ref()
         .is_none_or(|l| journal.iter().any(|j| j.at >= l.at));
+    // Бэкап по расписанию — для каждого мира, в который играли после прошлого бэкапа.
+    let now = crate::instance::now();
+    for w in crate::worlds::list(&game_dir, &backups_dir) {
+        if crate::worlds::backup_due(&w, global.backup_every_days, now)
+            && crate::snapshot::backup_world(&game_dir, &backups_dir, &w.folder).is_ok()
+        {
+            emit(LaunchEvent::Warning {
+                message: format!("Бэкап по расписанию: мир «{}»", w.name),
+            });
+        }
+    }
+    // Новые моды, меняющие генерацию: игра не проверяет совместимость старых чанков.
+    if let Some(l) = &inst.last_launch {
+        let added: Vec<&str> = journal
+            .iter()
+            .filter(|j| j.at >= l.at && matches!(j.action.as_str(), "Добавлено" | "Установлено"))
+            .map(|j| j.what.as_str())
+            .collect();
+        let worldgen: Vec<String> = crate::mods::inventory(&game_dir, &store.dir(&inst.id)?)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| {
+                // В журнале — «Название версия»: сравниваем с названием из мода и из каталога.
+                let names = [
+                    f.primary().map(|m| m.name.clone()),
+                    f.source.as_ref().and_then(|s| s.title.clone()),
+                ];
+                f.enabled
+                    && f.world_content
+                    && added
+                        .iter()
+                        .any(|a| names.iter().flatten().any(|n| a.starts_with(n.as_str())))
+            })
+            .map(|f| f.display_name())
+            .collect();
+        if !worldgen.is_empty() {
+            emit(LaunchEvent::Warning {
+                message: format!(
+                    "Добавлены моды, которые меняют мир ({}). Совместимость с уже созданными мирами не проверена: старые чанки могут выглядеть иначе",
+                    worldgen.join(", ")
+                ),
+            });
+        }
+    }
     if global.backup_before_risky_launch
         && mods_changed
         && inst.loader != crate::loader::LoaderKind::Vanilla
