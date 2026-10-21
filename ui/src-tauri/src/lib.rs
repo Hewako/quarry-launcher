@@ -1499,20 +1499,66 @@ fn import_sources() -> ImportSources {
 async fn import_path(
     state: State<'_, AppState>,
     path: String,
+    skip_optional: Option<Vec<String>>,
 ) -> CmdResult<quarry_core::import::ImportResult> {
     let store = InstanceStore::new(state.data.clone());
     let p = std::path::PathBuf::from(&path);
     if p.is_dir() {
         quarry_core::import::import_mmc(&store, &p).map_err(err)
     } else if p.extension().is_some_and(|e| e == "mrpack") {
-        quarry_core::import::import_mrpack(&store, &p, &Cancel::new())
-            .await
-            .map_err(err)
+        quarry_core::import::import_mrpack(
+            &store,
+            &p,
+            &skip_optional.unwrap_or_default(),
+            &Cancel::new(),
+        )
+        .await
+        .map_err(err)
     } else if p.extension().is_some_and(|e| e == "zip") {
         quarry_core::import::import_curseforge(&store, &p).map_err(err)
     } else {
         Err("Поддерживаются папка инстанса Prism/MultiMC, .mrpack и .zip CurseForge".into())
     }
+}
+
+#[tauri::command]
+fn mrpack_preview(path: String) -> CmdResult<quarry_core::import::MrpackPreview> {
+    quarry_core::import::preview_mrpack(std::path::Path::new(&path)).map_err(err)
+}
+
+#[tauri::command]
+fn pack_update_plan(
+    state: State<AppState>,
+    id: String,
+    path: String,
+) -> CmdResult<quarry_core::import::PackUpdatePlan> {
+    quarry_core::import::plan_pack_update(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        std::path::Path::new(&path),
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+async fn pack_update_apply(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    skip_optional: Vec<String>,
+) -> CmdResult<quarry_core::snapshot::SnapshotInfo> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    quarry_core::import::apply_pack_update(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        std::path::Path::new(&path),
+        &skip_optional,
+        &Cancel::new(),
+    )
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -1608,6 +1654,9 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            mrpack_preview,
+            pack_update_plan,
+            pack_update_apply,
             first_run_info,
             first_run_done,
             crash_reports,

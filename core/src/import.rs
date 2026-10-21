@@ -288,7 +288,8 @@ fn loader_from_deps(
 }
 
 /// Распаковать из архива папку `prefix/` в `dest` (безопасно).
-fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path) -> Result<u64> {
+/// Распаковать `prefix/…` в `dest`; пути из `skip` (относительно `dest`) не перезаписываются.
+fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path, skip: &[String]) -> Result<u64> {
     let file = std::fs::File::open(zip_path).at(zip_path)?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| Error::parse("архив сборки", e))?;
     let mut n = 0;
@@ -300,7 +301,7 @@ fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path) -> Result<u64> {
         let Some(rel) = name.strip_prefix(prefix) else {
             continue;
         };
-        if e.is_dir() || rel.is_empty() || e.is_symlink() {
+        if e.is_dir() || rel.is_empty() || e.is_symlink() || skip.iter().any(|s| s == rel) {
             continue;
         }
         let target = safe_join(dest, rel)
@@ -328,11 +329,7 @@ fn read_zip_entry(zip_path: &Path, name: &str) -> Result<String> {
     Ok(s)
 }
 
-pub async fn import_mrpack(
-    store: &InstanceStore,
-    path: &Path,
-    cancel: &Cancel,
-) -> Result<ImportResult> {
+fn read_index(path: &Path) -> Result<MrIndex> {
     let index: MrIndex = serde_json::from_str(&read_zip_entry(path, "modrinth.index.json")?)
         .map_err(|e| Error::parse("modrinth.index.json", e))?;
     if index.format_version != 1 || (index.game != "minecraft" && !index.game.is_empty()) {
@@ -341,6 +338,117 @@ pub async fn import_mrpack(
             index.format_version
         )));
     }
+    Ok(index)
+}
+
+fn client_env(f: &MrFile) -> Option<&str> {
+    f.env
+        .as_ref()
+        .and_then(|e| e.get("client"))
+        .map(String::as_str)
+}
+
+/// Файлы сборки для клиента: без серверных и без снятых опциональных.
+fn client_files<'a>(index: &'a MrIndex, skip_optional: &[String]) -> Vec<&'a MrFile> {
+    index
+        .files
+        .iter()
+        .filter(|f| match client_env(f) {
+            Some("unsupported") => false,
+            Some("optional") => !skip_optional.contains(&f.path),
+            _ => true,
+        })
+        .collect()
+}
+
+/// Задача загрузки и запись pack.lock для файла сборки (с проверкой пути, сайта и хэша).
+fn file_entry(f: &MrFile, game_dir: &Path) -> Result<(Task, LockEntry)> {
+    let dest = safe_join(game_dir, &f.path)
+        .ok_or_else(|| Error::invalid(format!("Сборка содержит недопустимый путь: {}", f.path)))?;
+    let url = f
+        .downloads
+        .iter()
+        .find(|u| allowed_download(u))
+        .ok_or_else(|| {
+            Error::invalid(format!(
+                "Файл {} предлагается скачать с неразрешённого сайта",
+                f.path
+            ))
+        })?;
+    let sha1 = f
+        .hashes
+        .get("sha1")
+        .ok_or_else(|| Error::invalid(format!("У файла {} нет SHA-1", f.path)))?;
+    // project_id и version_id видны в адресе cdn.modrinth.com/data/<проект>/versions/<версия>/.
+    let parts: Vec<&str> = url.split('/').collect();
+    let (project_id, version_id) = match parts.iter().position(|p| *p == "data") {
+        Some(i) if parts.get(i + 2) == Some(&"versions") => (
+            parts.get(i + 1).map(|s| s.to_string()),
+            parts.get(i + 3).map(|s| s.to_string()),
+        ),
+        _ => (None, None),
+    };
+    Ok((
+        Task {
+            url: url.clone(),
+            dest,
+            expected: Expected::Sha1(sha1.to_ascii_lowercase()),
+            size: Some(f.file_size).filter(|s| *s > 0),
+        },
+        LockEntry {
+            path: f.path.replace('\\', "/"),
+            sha1: sha1.clone(),
+            sha512: f.hashes.get("sha512").cloned(),
+            source: Source::Modrinth,
+            project_id,
+            version_id,
+            version_number: None,
+            title: None,
+            layer: Layer::Base,
+            installed_at: now(),
+            pinned: false,
+        },
+    ))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MrpackPreview {
+    pub name: String,
+    pub version: String,
+    pub game: String,
+    pub loader: String,
+    /// Опциональные компоненты (пути) — игрок выбирает, ставить ли их.
+    pub optional: Vec<String>,
+}
+
+pub fn preview_mrpack(path: &Path) -> Result<MrpackPreview> {
+    let index = read_index(path)?;
+    let (game, loader, loader_version) = loader_from_deps(&index.dependencies)?;
+    Ok(MrpackPreview {
+        name: index.name.clone(),
+        version: index.version_id.clone(),
+        game,
+        loader: format!(
+            "{} {}",
+            loader.display(),
+            loader_version.unwrap_or_default()
+        ),
+        optional: index
+            .files
+            .iter()
+            .filter(|f| client_env(f) == Some("optional"))
+            .map(|f| f.path.clone())
+            .collect(),
+    })
+}
+
+pub async fn import_mrpack(
+    store: &InstanceStore,
+    path: &Path,
+    skip_optional: &[String],
+    cancel: &Cancel,
+) -> Result<ImportResult> {
+    let index = read_index(path)?;
     let (game, loader, loader_version) = loader_from_deps(&index.dependencies)?;
     if !loader.is_supported() {
         return Err(Error::invalid(format!(
@@ -353,78 +461,36 @@ pub async fn import_mrpack(
     } else {
         format!("{} {}", index.name, index.version_id)
     };
-    let inst = store.create(&name, &game, loader, loader_version)?;
+    let mut inst = store.create(&name, &game, loader, loader_version)?;
+    inst.pack = Some(crate::instance::PackRef {
+        name: index.name.clone(),
+        version: index.version_id.clone(),
+    });
+    store.save(&inst)?;
     let id = inst.id.clone();
     let r = async {
         let game_dir = store.game_dir(&id)?;
         let mut tasks = Vec::new();
         let mut lock = PackLock::default();
-        let mut skipped = 0;
-        for f in &index.files {
-            if f.env
-                .as_ref()
-                .and_then(|e| e.get("client"))
-                .is_some_and(|c| c == "unsupported")
-            {
-                skipped += 1;
-                continue;
-            }
-            let dest = safe_join(&game_dir, &f.path).ok_or_else(|| {
-                Error::invalid(format!("Сборка содержит недопустимый путь: {}", f.path))
-            })?;
-            let url = f
-                .downloads
-                .iter()
-                .find(|u| allowed_download(u))
-                .ok_or_else(|| {
-                    Error::invalid(format!(
-                        "Файл {} предлагается скачать с неразрешённого сайта",
-                        f.path
-                    ))
-                })?;
-            let sha1 = f
-                .hashes
-                .get("sha1")
-                .ok_or_else(|| Error::invalid(format!("У файла {} нет SHA-1", f.path)))?;
-            tasks.push(Task {
-                url: url.clone(),
-                dest,
-                expected: Expected::Sha1(sha1.to_ascii_lowercase()),
-                size: Some(f.file_size).filter(|s| *s > 0),
-            });
-            // project_id и version_id видны в адресе cdn.modrinth.com/data/<проект>/versions/<версия>/.
-            let parts: Vec<&str> = url.split('/').collect();
-            let (project_id, version_id) = match parts.iter().position(|p| *p == "data") {
-                Some(i) if parts.get(i + 2) == Some(&"versions") => (
-                    parts.get(i + 1).map(|s| s.to_string()),
-                    parts.get(i + 3).map(|s| s.to_string()),
-                ),
-                _ => (None, None),
-            };
-            lock.upsert(LockEntry {
-                path: f.path.replace('\\', "/"),
-                sha1: sha1.clone(),
-                sha512: f.hashes.get("sha512").cloned(),
-                source: Source::Modrinth,
-                project_id,
-                version_id,
-                version_number: None,
-                title: None,
-                layer: Layer::Base,
-                installed_at: now(),
-                pinned: false,
-            });
+        let files = client_files(&index, skip_optional);
+        let skipped = index.files.len() - files.len();
+        for f in files {
+            let (task, entry) = file_entry(f, &game_dir)?;
+            tasks.push(task);
+            lock.upsert(entry);
         }
         download::download_all(tasks, 6, Verify::Full, None, cancel).await?;
-        let mut overrides = extract_prefix(path, "overrides/", &game_dir)?;
-        overrides += extract_prefix(path, "client-overrides/", &game_dir)?;
+        let mut overrides = extract_prefix(path, "overrides/", &game_dir, &[])?;
+        overrides += extract_prefix(path, "client-overrides/", &game_dir, &[])?;
         lock.save(&store.dir(&id)?)?;
         let mut notes = vec![format!(
             "Файлов сборки: {}, из архива: {overrides}",
             index.files.len() - skipped
         )];
         if skipped > 0 {
-            notes.push(format!("Пропущено файлов только для сервера: {skipped}"));
+            notes.push(format!(
+                "Пропущено файлов (только для сервера или не выбраны): {skipped}"
+            ));
         }
         Ok(ImportResult {
             instance: inst.clone(),
@@ -434,6 +500,207 @@ pub async fn import_mrpack(
     }
     .await;
     cleanup_on_error(store, &id, r)
+}
+
+// ---------- Обновление сборки по слоям ----------
+
+/// Что изменится при обновлении сборки. Слой «мои моды» и конфиги, которые правил игрок,
+/// не трогаются.
+#[derive(Debug, Clone, Serialize)]
+pub struct PackUpdatePlan {
+    pub from: String,
+    pub to: String,
+    pub add: Vec<String>,
+    pub update: Vec<String>,
+    pub remove: Vec<String>,
+    pub kept_mods: Vec<String>,
+    pub kept_configs: Vec<String>,
+    pub optional: Vec<String>,
+    /// Новая версия игры или загрузчика, если сборка их сменила.
+    pub game_change: Option<String>,
+}
+
+fn zip_names(path: &Path) -> Result<Vec<String>> {
+    let file = std::fs::File::open(path).at(path)?;
+    let zip = zip::ZipArchive::new(file).map_err(|e| Error::parse("архив сборки", e))?;
+    Ok(zip.file_names().flatten().map(|n| n.to_string()).collect())
+}
+
+fn plan_with(
+    store: &InstanceStore,
+    id: &str,
+    path: &Path,
+    skip_optional: &[String],
+) -> Result<(PackUpdatePlan, MrIndex)> {
+    let inst = store.get(id)?;
+    let index = read_index(path)?;
+    let (game, loader, loader_version) = loader_from_deps(&index.dependencies)?;
+    if loader != inst.loader {
+        return Err(Error::invalid(format!(
+            "Новая версия сборки на {}, а профиль на {} — создайте для неё новый профиль",
+            loader.display(),
+            inst.loader.display()
+        )));
+    }
+    let dir = store.dir(id)?;
+    let lock = PackLock::load(&dir)?;
+    let base: BTreeMap<&str, &str> = lock
+        .files
+        .iter()
+        .filter(|f| f.layer == Layer::Base)
+        .map(|f| (f.path.as_str(), f.sha1.as_str()))
+        .collect();
+    let new = client_files(&index, skip_optional);
+    let mut plan = PackUpdatePlan {
+        from: inst
+            .pack
+            .as_ref()
+            .map(|p| p.version.clone())
+            .unwrap_or_default(),
+        to: index.version_id.clone(),
+        add: Vec::new(),
+        update: Vec::new(),
+        remove: Vec::new(),
+        kept_mods: lock
+            .files
+            .iter()
+            .filter(|f| f.layer == Layer::User)
+            .map(|f| f.path.clone())
+            .collect(),
+        kept_configs: Vec::new(),
+        optional: index
+            .files
+            .iter()
+            .filter(|f| client_env(f) == Some("optional"))
+            .map(|f| f.path.clone())
+            .collect(),
+        game_change: (game != inst.game_version || loader_version != inst.loader_version).then(
+            || {
+                format!(
+                    "Minecraft {game}, {} {}",
+                    loader.display(),
+                    loader_version.clone().unwrap_or_default()
+                )
+            },
+        ),
+    };
+    for f in &new {
+        match base.get(f.path.as_str()) {
+            None => plan.add.push(f.path.clone()),
+            Some(sha)
+                if !sha.eq_ignore_ascii_case(
+                    f.hashes.get("sha1").map(String::as_str).unwrap_or(""),
+                ) =>
+            {
+                plan.update.push(f.path.clone())
+            }
+            _ => {}
+        }
+    }
+    plan.remove = base
+        .keys()
+        .filter(|p| !new.iter().any(|f| f.path == **p))
+        .map(|p| p.to_string())
+        .collect();
+    for name in zip_names(path)? {
+        if let Some(rel) = name
+            .strip_prefix("overrides/")
+            .or_else(|| name.strip_prefix("client-overrides/"))
+            && crate::configs::is_user_edited(&dir, rel)
+            && !plan.kept_configs.iter().any(|k| k == rel)
+        {
+            plan.kept_configs.push(rel.to_string());
+        }
+    }
+    for v in [
+        &mut plan.add,
+        &mut plan.update,
+        &mut plan.remove,
+        &mut plan.kept_mods,
+        &mut plan.kept_configs,
+    ] {
+        v.sort();
+    }
+    Ok((plan, index))
+}
+
+pub fn plan_pack_update(store: &InstanceStore, id: &str, path: &Path) -> Result<PackUpdatePlan> {
+    Ok(plan_with(store, id, path, &[])?.0)
+}
+
+/// Обновить сборку: снимок, удаление ушедших файлов сборки, загрузка новых и изменённых,
+/// распаковка overrides без перезаписи конфигов игрока.
+pub async fn apply_pack_update(
+    store: &InstanceStore,
+    id: &str,
+    path: &Path,
+    skip_optional: &[String],
+    cancel: &Cancel,
+) -> Result<crate::snapshot::SnapshotInfo> {
+    let (plan, index) = plan_with(store, id, path, skip_optional)?;
+    let dir = store.dir(id)?;
+    let game_dir = store.game_dir(id)?;
+    let snap = crate::snapshot::create(
+        &dir,
+        &game_dir,
+        &format!("Перед обновлением сборки до {}", plan.to),
+        true,
+    )?;
+    let mut lock = PackLock::load(&dir)?;
+    let mut tasks = Vec::new();
+    let mut entries = Vec::new();
+    for f in client_files(&index, skip_optional) {
+        if plan.add.contains(&f.path) || plan.update.contains(&f.path) {
+            let (task, entry) = file_entry(f, &game_dir)?;
+            tasks.push(task);
+            entries.push(entry);
+        }
+    }
+    download::download_all(tasks, 6, Verify::Full, None, cancel).await?;
+    for rel in &plan.remove {
+        if let Some(p) = safe_join(&game_dir, rel) {
+            for candidate in [
+                p.clone(),
+                PathBuf::from(format!("{}.disabled", p.display())),
+            ] {
+                if candidate.is_file() {
+                    std::fs::remove_file(&candidate).at(&candidate)?;
+                }
+            }
+        }
+        lock.remove(rel);
+    }
+    for e in entries {
+        lock.upsert(e);
+    }
+    extract_prefix(path, "overrides/", &game_dir, &plan.kept_configs)?;
+    extract_prefix(path, "client-overrides/", &game_dir, &plan.kept_configs)?;
+    lock.save(&dir)?;
+    let mut inst = store.get(id)?;
+    let (game, _, loader_version) = loader_from_deps(&index.dependencies)?;
+    inst.game_version = game;
+    inst.loader_version = loader_version;
+    inst.pack = Some(crate::instance::PackRef {
+        name: index.name.clone(),
+        version: plan.to.clone(),
+    });
+    store.save(&inst)?;
+    crate::mods::manage::journal_append(
+        &dir,
+        &crate::mods::manage::JournalEntry {
+            at: now(),
+            action: "Обновлено".into(),
+            what: format!("сборка {} {} → {}", index.name, plan.from, plan.to),
+            reason: format!(
+                "добавлено {}, обновлено {}, убрано {}; свои моды и конфиги сохранены",
+                plan.add.len(),
+                plan.update.len(),
+                plan.remove.len()
+            ),
+            snapshot: Some(snap.id.clone()),
+        },
+    )?;
+    Ok(snap)
 }
 
 // ---------- CurseForge ----------
@@ -536,7 +803,7 @@ pub fn import_curseforge(store: &InstanceStore, path: &Path) -> Result<ImportRes
     let r = (|| -> Result<ImportResult> {
         let game_dir = store.game_dir(&id)?;
         let prefix = format!("{}/", m.overrides.trim_end_matches('/'));
-        let n = extract_prefix(path, &prefix, &game_dir)?;
+        let n = extract_prefix(path, &prefix, &game_dir, &[])?;
         mark_imported(&store.dir(&id)?, &game_dir)?;
         let manual: Vec<ManualFile> = m
             .files
@@ -774,6 +1041,163 @@ mod tests {
         // Корзина убирает только профиль, а не чужую папку.
         s.trash(&r.instance.id).unwrap();
         assert!(mc.join("saves/W").is_dir());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn mrpack(path: &Path, index: &str, overrides: &[(&str, &str)]) {
+        let mut w = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        w.start_file("modrinth.index.json", o).unwrap();
+        w.write_all(index.as_bytes()).unwrap();
+        for (n, body) in overrides {
+            w.start_file(format!("overrides/{n}"), o).unwrap();
+            w.write_all(body.as_bytes()).unwrap();
+        }
+        w.finish().unwrap();
+    }
+    fn mr_file(path: &str, sha1: &str, env: &str) -> String {
+        format!(
+            r#"{{"path":"{path}","hashes":{{"sha1":"{sha1}","sha512":"x"}},"env":{{"client":"{env}","server":"required"}},"downloads":["https://cdn.modrinth.com/data/P/versions/V/{path}"],"fileSize":1}}"#
+        )
+    }
+    fn index(version: &str, files: &[String]) -> String {
+        format!(
+            r#"{{"formatVersion":1,"game":"minecraft","name":"Пак","versionId":"{version}","files":[{}],"dependencies":{{"minecraft":"26.3","fabric-loader":"0.19.5"}}}}"#,
+            files.join(",")
+        )
+    }
+
+    #[test]
+    fn preview_lists_optional_components() {
+        let (_s, root) = store("mrprev");
+        std::fs::create_dir_all(&root).unwrap();
+        let p = root.join("p.mrpack");
+        mrpack(
+            &p,
+            &index(
+                "1.0",
+                &[
+                    mr_file("mods/a.jar", "a1", "required"),
+                    mr_file("mods/extra.jar", "e1", "optional"),
+                ],
+            ),
+            &[],
+        );
+        let pv = preview_mrpack(&p).unwrap();
+        assert_eq!(
+            (pv.name.as_str(), pv.version.as_str(), pv.game.as_str()),
+            ("Пак", "1.0", "26.3")
+        );
+        assert_eq!(pv.optional, ["mods/extra.jar"]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Профиль «как после импорта версии 1.0»: моды сборки a, b; свой мод mine; свой конфиг x.
+    fn installed_pack(name: &str) -> (InstanceStore, String, PathBuf) {
+        let (store, root) = store(name);
+        let mut inst = store
+            .create("Пак 1.0", "26.3", LoaderKind::Fabric, Some("0.19.5".into()))
+            .unwrap();
+        inst.pack = Some(crate::instance::PackRef {
+            name: "Пак".into(),
+            version: "1.0".into(),
+        });
+        store.save(&inst).unwrap();
+        let game = store.game_dir(&inst.id).unwrap();
+        std::fs::create_dir_all(game.join("mods")).unwrap();
+        std::fs::create_dir_all(game.join("config")).unwrap();
+        for f in ["a.jar", "b.jar", "mine.jar"] {
+            std::fs::write(game.join("mods").join(f), b"jar").unwrap();
+        }
+        std::fs::write(game.join("config/x.toml"), "мой = 1").unwrap();
+        let dir = store.dir(&inst.id).unwrap();
+        let mut lock = PackLock::default();
+        for (path, sha, layer) in [
+            ("mods/a.jar", "a1", Layer::Base),
+            ("mods/b.jar", "b1", Layer::Base),
+            ("mods/mine.jar", "m1", Layer::User),
+        ] {
+            lock.upsert(LockEntry {
+                path: path.into(),
+                sha1: sha.into(),
+                sha512: None,
+                source: Source::Modrinth,
+                project_id: None,
+                version_id: None,
+                version_number: None,
+                title: None,
+                layer,
+                installed_at: 0,
+                pinned: false,
+            });
+        }
+        lock.save(&dir).unwrap();
+        std::fs::write(
+            dir.join("user-configs.toml"),
+            "files = [\"config/x.toml\"]\n",
+        )
+        .unwrap();
+        (store, inst.id, root)
+    }
+
+    #[test]
+    fn pack_update_plan_keeps_user_layer() {
+        let (store, id, root) = installed_pack("mrplan");
+        let p = root.join("p2.mrpack");
+        mrpack(
+            &p,
+            &index(
+                "2.0",
+                &[
+                    mr_file("mods/a.jar", "a2", "required"),
+                    mr_file("mods/c.jar", "c1", "required"),
+                ],
+            ),
+            &[("config/x.toml", "сборка = 2"), ("config/y.toml", "y")],
+        );
+        let plan = plan_pack_update(&store, &id, &p).unwrap();
+        assert_eq!((plan.from.as_str(), plan.to.as_str()), ("1.0", "2.0"));
+        assert_eq!(plan.add, ["mods/c.jar"]);
+        assert_eq!(plan.update, ["mods/a.jar"]);
+        assert_eq!(plan.remove, ["mods/b.jar"]);
+        assert_eq!(plan.kept_mods, ["mods/mine.jar"]);
+        assert_eq!(plan.kept_configs, ["config/x.toml"]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pack_update_apply_without_downloads() {
+        let (store, id, root) = installed_pack("mrapply");
+        let p = root.join("p2.mrpack");
+        // Те же хэши у a — скачивать нечего; b убран; новые конфиги.
+        mrpack(
+            &p,
+            &index("2.0", &[mr_file("mods/a.jar", "a1", "required")]),
+            &[("config/x.toml", "сборка = 2"), ("config/y.toml", "y")],
+        );
+        apply_pack_update(&store, &id, &p, &[], &Cancel::new())
+            .await
+            .unwrap();
+        let game = store.game_dir(&id).unwrap();
+        assert!(!game.join("mods/b.jar").exists() && game.join("mods/a.jar").exists());
+        assert!(game.join("mods/mine.jar").exists(), "свой мод остался");
+        assert_eq!(
+            std::fs::read_to_string(game.join("config/x.toml")).unwrap(),
+            "мой = 1",
+            "свой конфиг не перезаписан"
+        );
+        assert_eq!(
+            std::fs::read_to_string(game.join("config/y.toml")).unwrap(),
+            "y"
+        );
+        assert_eq!(store.get(&id).unwrap().pack.unwrap().version, "2.0");
+        assert!(
+            crate::snapshot::list(&store.dir(&id).unwrap())
+                .unwrap()
+                .len()
+                >= 1,
+            "перед обновлением снимок"
+        );
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

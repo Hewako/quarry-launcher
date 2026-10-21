@@ -12,6 +12,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
   const [error, setError] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [link, setLink] = useState<{ path: string; name: string; version: string; loader: LoaderKind } | null>(null);
+  const [optional, setOptional] = useState<{ path: string; files: string[]; off: string[] } | null>(null);
 
   useEffect(() => { importer.sources().then(setSources).catch(() => setSources({ prism: [] })); }, []);
 
@@ -22,12 +23,35 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
   };
   const pickFile = async () => {
     const path = await open({ multiple: false, directory: false, filters: [{ name: t("Сборка"), extensions: ["mrpack", "zip"] }] });
-    if (typeof path === "string") await run("file", () => importer.path(path));
+    if (typeof path !== "string") return;
+    // Опциональные компоненты сборки — выбор игрока перед импортом.
+    const files = path.endsWith(".mrpack") ? await importer.preview(path).then((p) => p.optional).catch(() => []) : [];
+    if (files.length) setOptional({ path, files, off: [] });
+    else await run("file", () => importer.path(path));
   };
   const pickFolder = async () => {
     const path = await open({ multiple: false, directory: true });
     if (typeof path === "string") await run("folder", () => importer.path(path));
   };
+
+  if (optional) {
+    const o = optional;
+    return (
+      <Modal title={t("Дополнительные компоненты сборки")} onClose={() => setOptional(null)}>
+        <p className="small muted" style={{ marginTop: 0 }}>{t("Автор сборки сделал эти файлы необязательными. Снимите галочки с тех, что не нужны.")}</p>
+        {o.files.map((f) => (
+          <label key={f} className="row small">
+            <input type="checkbox" checked={!o.off.includes(f)} onChange={(e) => setOptional({ ...o, off: e.target.checked ? o.off.filter((x) => x !== f) : [...o.off, f] })} />
+            <span className="mono">{f.split("/").pop()}</span>
+          </label>
+        ))}
+        <div className="acts">
+          <button className="btn" onClick={() => setOptional(null)}>{t("Отмена")}</button>
+          <button className="btn pri" disabled={busy !== ""} onClick={async () => { setOptional(null); await run("file", () => importer.path(o.path, o.off)); }}>{t("Импортировать")}</button>
+        </div>
+      </Modal>
+    );
+  }
 
   if (result) {
     return (

@@ -96,6 +96,8 @@ pub struct Instance {
     /// Папка игры вне Quarry (подключённая `.minecraft` без копирования). Корзина её не трогает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_game_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<PackRef>,
 }
 
 fn format_version() -> u32 {
@@ -113,6 +115,13 @@ struct LegacyProfile {
     mc_version: String,
     #[serde(default)]
     loader: Option<String>,
+}
+
+/// Сборка, из которой сделан профиль: по ней предлагается обновление.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackRef {
+    pub name: String,
+    pub version: String,
 }
 
 /// Профиль, который не удалось прочитать — показывается в списке с причиной.
@@ -252,6 +261,7 @@ impl InstanceStore {
             pack_settings: LaunchOverrides::default(),
             last_launch: None,
             external_game_dir: None,
+            pack: None,
         };
         self.save(&inst)?;
         Ok(inst)
@@ -319,6 +329,7 @@ impl InstanceStore {
             pack_settings: LaunchOverrides::default(),
             last_launch: None,
             external_game_dir: None,
+            pack: None,
         };
         self.save(&inst)?;
         Ok(inst)

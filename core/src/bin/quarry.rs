@@ -337,7 +337,7 @@ async fn main() -> Result<()> {
             let r = if path.is_dir() {
                 quarry_core::import::import_mmc(&store, &path)?
             } else if path.extension().is_some_and(|e| e == "mrpack") {
-                quarry_core::import::import_mrpack(&store, &path, &Cancel::new()).await?
+                quarry_core::import::import_mrpack(&store, &path, &[], &Cancel::new()).await?
             } else {
                 quarry_core::import::import_curseforge(&store, &path)?
             };

@@ -47,6 +47,7 @@ export interface Instance {
   pack_settings: LaunchOverrides;
   last_launch?: LastLaunch;
   external_game_dir?: string;
+  pack?: { name: string; version: string };
 }
 
 export interface ProfileMeta { group?: string; description?: string; color?: string; favorite: boolean; archived: boolean }
@@ -100,6 +101,8 @@ export const diagnostics = {
   storage: () => invoke<{ label: string; size: number; cleanable: boolean }[]>("storage_overview"),
   cleanCache: () => invoke<number>("cache_clean"),
 };
+
+export interface PackUpdatePlan { from: string; to: string; add: string[]; update: string[]; remove: string[]; kept_mods: string[]; kept_configs: string[]; optional: string[]; game_change?: string }
 
 export interface Resolved<T> { value: T; source: Source }
 export interface ResolvedLaunch {
@@ -314,7 +317,10 @@ export const snapshots = {
 
 export const importer = {
   sources: () => invoke<{ prism: [string, string][]; official?: string }>("import_sources"),
-  path: (path: string) => invoke<ImportResult>("import_path", { path }),
+  path: (path: string, skipOptional: string[] = []) => invoke<ImportResult>("import_path", { path, skipOptional }),
+  preview: (path: string) => invoke<{ name: string; version: string; game: string; loader: string; optional: string[] }>("mrpack_preview", { path }),
+  updatePlan: (id: string, path: string) => invoke<PackUpdatePlan>("pack_update_plan", { id, path }),
+  updateApply: (id: string, path: string, skipOptional: string[]) => invoke<SnapshotInfo>("pack_update_apply", { id, path, skipOptional }),
   link: (path: string, name: string, gameVersion: string, loader: LoaderKind) => invoke<ImportResult>("link_minecraft", { path, name, gameVersion, loader }),
 };
 

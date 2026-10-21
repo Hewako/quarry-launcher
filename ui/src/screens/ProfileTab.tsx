@@ -1,7 +1,7 @@
 // Вкладка «Профиль»: оформление, место на диске, копия профиля и перенос настроек из другого.
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { api, errText, metaOf, sizeText, SHARABLE, type CloneParts, type Instance, type ProfileMeta } from "../api";
+import { api, errText, importer, metaOf, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { path, useStreamer } from "../streamer";
 import { t } from "../i18n";
@@ -90,6 +90,23 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
   const [usage, setUsage] = useState<{ parts: { label: string; size: number }[]; total: number } | null>(null);
   const [modal, setModal] = useState<"" | "clone" | "copy">("");
   const [moving, setMoving] = useState(false);
+  const [update, setUpdate] = useState<{ path: string; plan: PackUpdatePlan; off: string[] } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const pickUpdate = async () => {
+    const path = await open({ title: t("Новая версия сборки"), filters: [{ name: ".mrpack", extensions: ["mrpack"] }] }).catch(() => null);
+    if (typeof path !== "string") return;
+    try { setUpdate({ path, plan: await importer.updatePlan(inst.id, path), off: [] }); } catch (e) { await dialog.alert(t("Сборку не обновить"), errText(e)); }
+  };
+  const applyUpdate = async () => {
+    if (!update) return;
+    setUpdating(true);
+    try {
+      await importer.updateApply(inst.id, update.path, update.off);
+      setUpdate(null);
+      onChanged({ ...inst, pack: inst.pack && { ...inst.pack, version: update.plan.to } });
+      await dialog.alert(t("Сборка обновлена"), t("Перед обновлением сохранён снимок — вернуть как было можно на вкладке «Снимки и миры»."));
+    } catch (e) { await dialog.alert(t("Сборку не обновить"), errText(e)); } finally { setUpdating(false); }
+  };
   const streamer = useStreamer();
   const groups = [...new Set(instances.map((i) => i.group).filter(Boolean))] as string[];
 
@@ -184,6 +201,16 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
         )}
       </div>
 
+      {inst.pack && (
+        <>
+          <h4 style={{ margin: "22px 0 10px" }}>{t("Сборка")}</h4>
+          <div className="card row">
+            <span><b>{inst.pack.name}</b> {inst.pack.version}</span>
+            <span style={{ flex: 1 }} />
+            <button className="btn" disabled={running} onClick={pickUpdate}>{t("Обновить из файла .mrpack…")}</button>
+          </div>
+        </>
+      )}
       <h4 style={{ margin: "22px 0 10px" }}>{t("Где лежит папка игры")}</h4>
       <div className="card">
         <p className="small" style={{ marginTop: 0 }}>
@@ -199,6 +226,29 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
         <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
         <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
       </div>
+      {update && (
+        <Modal title={t("Обновить сборку {0} → {1}?", update.plan.from || "?", update.plan.to)} onClose={() => setUpdate(null)} wide>
+          {update.plan.game_change && <div className="alert warn"><span>{t("Сборка меняет версию:")} {update.plan.game_change}</span></div>}
+          <div className="diff cfgdiff">
+            {update.plan.add.map((f) => <span key={f} className="add">+ {f}</span>)}
+            {update.plan.update.map((f) => <span key={f} className="chg">~ {f}</span>)}
+            {update.plan.remove.map((f) => <span key={f} className="del">− {f}</span>)}
+            {update.plan.add.length + update.plan.update.length + update.plan.remove.length === 0 && <span className="muted">{t("Файлы модов не меняются.")}</span>}
+          </div>
+          {update.plan.kept_mods.length > 0 && <p className="small">{t("Ваши моды останутся:")} {update.plan.kept_mods.map((m) => m.split("/").pop()).join(", ")}</p>}
+          {update.plan.kept_configs.length > 0 && <p className="small">{t("Ваши конфиги не заменятся:")} {update.plan.kept_configs.join(", ")}</p>}
+          {update.plan.optional.map((f) => (
+            <label key={f} className="row small">
+              <input type="checkbox" checked={!update.off.includes(f)} onChange={(e) => setUpdate({ ...update, off: e.target.checked ? update.off.filter((x) => x !== f) : [...update.off, f] })} />
+              {t("необязательно:")} <span className="mono">{f.split("/").pop()}</span>
+            </label>
+          ))}
+          <div className="acts">
+            <button className="btn" onClick={() => setUpdate(null)}>{t("Отмена")}</button>
+            <button className="btn pri" disabled={updating} onClick={applyUpdate}>{updating ? t("Обновляем…") : t("Обновить")}</button>
+          </div>
+        </Modal>
+      )}
       {modal === "clone" && <CloneDialog inst={inst} onClose={() => setModal("")} onDone={(i) => { setModal(""); onCloned(i); }} />}
       {modal === "copy" && <CopyFromDialog inst={inst} instances={instances} onClose={() => setModal("")} />}
     </>
