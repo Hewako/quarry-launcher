@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Notify;
 
@@ -44,6 +44,12 @@ pub struct ExitInfo {
     /// Разбор причины краша (заполняет сценарий запуска).
     #[serde(default)]
     pub analysis: Option<crate::mods::crash::Analysis>,
+    /// Пик памяти процесса игры, МБ (замер раз в 5 секунд; на Windows пока нет).
+    #[serde(default)]
+    pub peak_ram_mb: Option<u64>,
+    /// Сколько секунд заняла подготовка до старта игры (заполняет сценарий запуска).
+    #[serde(default)]
+    pub prepare_secs: Option<u64>,
 }
 
 /// Запущенная игра: ожидание завершения и остановка.
@@ -65,6 +71,19 @@ impl GameProcess {
 }
 
 const TAIL_LINES: usize = 400;
+
+/// Память процесса (RSS), МБ. Только macOS и Linux: через `ps`.
+pub fn rss_mb(pid: u32) -> Option<u64> {
+    if cfg!(windows) {
+        return None;
+    }
+    let out = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    let kb: u64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+    Some(kb / 1024)
+}
 
 pub async fn spawn(
     cmd: &LaunchCommand,
@@ -166,6 +185,24 @@ pub async fn spawn(
         }));
     }
 
+    // Пик памяти: замер раз в 5 секунд, пока игра работает.
+    let peak = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let sampler = pid.map(|pid| {
+        let peak = peak.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Some(mb) = tokio::task::spawn_blocking(move || rss_mb(pid))
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    peak.fetch_max(mb, std::sync::atomic::Ordering::Relaxed);
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        })
+    });
+
     let stop = Arc::new(Notify::new());
     let stop_c = stop.clone();
     let log_path = log_file.to_path_buf();
@@ -180,6 +217,9 @@ pub async fn spawn(
                 child.wait().await
             }
         };
+        if let Some(s) = sampler {
+            s.abort();
+        }
         for r in readers {
             let _ = r.await;
         }
@@ -209,6 +249,8 @@ pub async fn spawn(
             log_file: log_path,
             tail,
             analysis: None,
+            peak_ram_mb: Some(peak.load(std::sync::atomic::Ordering::Relaxed)).filter(|m| *m > 0),
+            prepare_secs: None,
         })
     });
 
@@ -311,5 +353,13 @@ mod tests {
         assert!(!info.crashed, "остановка пользователем — не краш");
         assert!(info.duration_secs < 10);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rss_of_own_process() {
+        let mb = rss_mb(std::process::id()).expect("ps доступен");
+        assert!(mb > 0 && mb < 100_000, "{mb}");
+        assert!(rss_mb(u32::MAX - 7).is_none(), "нет такого процесса");
     }
 }

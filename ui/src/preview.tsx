@@ -50,6 +50,10 @@ mockIPC((cmd, args) => {
       conflicts: [{ key: "key.keyboard.q", actions: ["key.drop", "key.sprint"] }],
       presets: [{ name: "Слабый ноутбук", category: "graphics", count: 6 }],
     };
+    case "storage_overview": return [{ label: "Профили (миры, моды, настройки)", size: 6_200_000_000, cleanable: false }, { label: "Библиотеки и ресурсы игры (общие для профилей)", size: 1_900_000_000, cleanable: false }, { label: "Временные файлы и кеш", size: 240_000_000, cleanable: true }];
+    case "cache_clean": return 240_000_000;
+    case "crash_reports": return [{ file: "crash-2026-10-21_09.30.00-client.txt", when: "2026-10-21 09:30:00", size: 18_000, description: "Rendering overlay" }];
+    case "support_report_preview": return [{ name: "summary.txt", content: "Отчёт поддержки Quarry\n\nQuarry: 0.1.0\nВерсия игры: 26.3" }, { name: "mods.txt", content: "[вкл] Sodium 0.8.14 (sodium.jar)" }];
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

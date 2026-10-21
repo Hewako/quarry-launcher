@@ -18,6 +18,8 @@ export interface LaunchOverrides {
 }
 
 export interface LastLaunch {
+  prepare_secs?: number;
+  peak_ram_mb?: number;
   at: number;
   outcome: Outcome;
   exit_code?: number;
@@ -87,6 +89,15 @@ export const gameOptions = {
   applyPreset: (id: string, name: string) => invoke<void>("options_preset_apply", { id, name }),
   exportLayout: (id: string, path: string) => invoke<void>("options_layout_export", { id, path }),
   importLayout: (id: string, path: string) => invoke<number>("options_layout_import", { id, path }),
+};
+
+export const diagnostics = {
+  crashReports: (id: string) => invoke<{ file: string; when: string; size: number; description: string }[]>("crash_reports", { id }),
+  readCrash: (id: string, file: string) => invoke<string>("crash_report_read", { id, file }),
+  reportPreview: (id: string) => invoke<{ name: string; content: string }[]>("support_report_preview", { id }),
+  reportSave: (id: string, path: string) => invoke<void>("support_report_save", { id, path }),
+  storage: () => invoke<{ label: string; size: number; cleanable: boolean }[]>("storage_overview"),
+  cleanCache: () => invoke<number>("cache_clean"),
 };
 
 export interface Resolved<T> { value: T; source: Source }

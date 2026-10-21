@@ -1320,6 +1320,86 @@ fn options_layout_import(state: State<AppState>, id: String, path: String) -> Cm
 }
 
 #[tauri::command]
+fn crash_reports(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::diagnostics::CrashReportInfo>> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    Ok(quarry_core::diagnostics::crash_reports(&game))
+}
+
+#[tauri::command]
+fn crash_report_read(state: State<AppState>, id: String, file: String) -> CmdResult<String> {
+    let game = InstanceStore::new(state.data.clone())
+        .game_dir(&id)
+        .map_err(err)?;
+    quarry_core::diagnostics::read_crash_report(&game, &file).map_err(err)
+}
+
+/// Отчёт поддержки. В режиме стримера скрывается и ник аккаунта профиля.
+fn build_report(
+    state: &AppState,
+    id: &str,
+) -> CmdResult<Vec<quarry_core::diagnostics::ReportFile>> {
+    let store = InstanceStore::new(state.data.clone());
+    let global = GlobalSettings::load(&state.data).unwrap_or_default();
+    let nick = if global.streamer_mode {
+        let inst = store.get(id).map_err(err)?;
+        let wanted = inst.account.or(global.default_account);
+        let accounts = AccountStore::new(&state.data, &KeyringStore)
+            .list()
+            .unwrap_or_default();
+        accounts
+            .iter()
+            .find(|a| wanted.as_deref() == Some(a.key().as_str()))
+            .or(accounts.first())
+            .map(|a| a.name.clone())
+    } else {
+        None
+    };
+    quarry_core::diagnostics::support_report(&store, id, nick.as_deref()).map_err(err)
+}
+
+#[tauri::command]
+fn support_report_preview(
+    state: State<AppState>,
+    id: String,
+) -> CmdResult<Vec<quarry_core::diagnostics::ReportFile>> {
+    build_report(&state, &id)
+}
+
+#[tauri::command]
+fn support_report_save(state: State<AppState>, id: String, path: String) -> CmdResult<()> {
+    let files = build_report(&state, &id)?;
+    quarry_core::diagnostics::write_zip(&files, std::path::Path::new(&path)).map_err(err)
+}
+
+#[tauri::command]
+async fn storage_overview(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<quarry_core::diagnostics::StoragePart>> {
+    let data = state.data.clone();
+    tauri::async_runtime::spawn_blocking(move || quarry_core::diagnostics::storage(&data))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn cache_clean(state: State<'_, AppState>) -> CmdResult<u64> {
+    // Распакованные natives нужны запущенной игре.
+    if !state.registry.running_ids().is_empty() {
+        return Err("Сначала закройте все запущенные игры".into());
+    }
+    let data = state.data.clone();
+    tauri::async_runtime::spawn_blocking(move || quarry_core::diagnostics::clean_cache(&data))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err)
+}
+
+#[tauri::command]
 fn servers_list(
     state: State<AppState>,
     id: String,
@@ -1486,6 +1566,12 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            crash_reports,
+            crash_report_read,
+            support_report_preview,
+            support_report_save,
+            storage_overview,
+            cache_clean,
             options_view,
             options_set,
             options_preset_save,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, errText, type AppInfo, type GlobalSettings } from "../api";
+import { api, diagnostics, errText, sizeText, type AppInfo, type GlobalSettings } from "../api";
 import { useDialog } from "../ui/Dialog";
 
 export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: string; onTheme: (t: string) => void }) {
@@ -7,6 +7,8 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
   const [s, setS] = useState<GlobalSettings | null>(null);
   const [args, setArgs] = useState("");
   const [saved, setSaved] = useState(false);
+  const [storage, setStorage] = useState<{ label: string; size: number; cleanable: boolean }[] | null>(null);
+  const loadStorage = () => { diagnostics.storage().then(setStorage).catch(() => setStorage([])); };
 
   useEffect(() => {
     api.globalSettings().then((g) => { setS(g); setArgs((g.launch.jvm_args ?? []).join(" ")); }).catch(() => {});
@@ -98,6 +100,31 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
           <span className="mono" style={{ userSelect: "text" }}>{info.data_dir}</span>
           <span />
         </div>
+      </div>
+      <h4 style={{ margin: "22px 0 10px" }}>Место на диске</h4>
+      <div className="card">
+        {storage === null ? (
+          <button className="btn" onClick={loadStorage}>Посчитать, сколько занимают данные Quarry</button>
+        ) : (
+          <>
+            <div className="usage">
+              {storage.map((p) => (
+                <div key={p.label} className="urow">
+                  <span>{p.label}</span>
+                  <div className="bar"><i style={{ width: `${Math.max(1, (p.size / Math.max(1, storage[0]?.size ?? 1)) * 100)}%` }} /></div>
+                  <span className="muted small">{sizeText(p.size)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="row" style={{ marginTop: 12 }}>
+              <button className="btn" disabled={!storage.some((p) => p.cleanable && p.size > 0)} onClick={async () => {
+                try { const freed = await diagnostics.cleanCache(); loadStorage(); await dialog.alert("Готово", `Освобождено ${sizeText(freed)}. Миры, моды, настройки и корзина не тронуты.`); }
+                catch (e) { await dialog.alert("Не очищено", errText(e)); }
+              }}>Очистить временные файлы и кеш</button>
+              <span className="muted small">Удаляется только то, что лаунчер скачает или соберёт заново.</span>
+            </div>
+          </>
+        )}
       </div>
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn pri" onClick={save}>{saved ? "Сохранено" : "Сохранить"}</button>

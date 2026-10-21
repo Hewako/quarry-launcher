@@ -35,6 +35,12 @@ pub struct LastLaunch {
     pub message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_file: Option<PathBuf>,
+    /// Подготовка до старта игры, секунды.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepare_secs: Option<u64>,
+    /// Пик памяти игры, МБ.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_ram_mb: Option<u64>,
 }
 
 /// Как профиль входит в игру.

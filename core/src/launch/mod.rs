@@ -59,7 +59,7 @@ pub enum LaunchEvent {
         line: String,
     },
     Exited {
-        info: ExitInfo,
+        info: Box<ExitInfo>,
     },
 }
 
@@ -362,6 +362,8 @@ pub async fn launch(
                 (None, None) => "игра завершилась аварийно".into(),
             }),
             log_file: Some(info.log_file.clone()),
+            prepare_secs: info.prepare_secs,
+            peak_ram_mb: info.peak_ram_mb,
         },
         Err(Error::Cancelled) => return result,
         Err(e) => LastLaunch {
@@ -371,6 +373,8 @@ pub async fn launch(
             duration_secs: 0,
             message: Some(e.to_string()),
             log_file: None,
+            prepare_secs: None,
+            peak_ram_mb: None,
         },
     };
     if let Ok(mut fresh) = store.get(instance_id) {
@@ -394,6 +398,7 @@ async fn run(
     cancel: &Cancel,
     emit: &LaunchEventFn,
 ) -> Result<ExitInfo> {
+    let prepare_started = std::time::Instant::now();
     let global = GlobalSettings::load(data)?;
     let stage = |s: Stage| {
         emit(LaunchEvent::Stage {
@@ -686,7 +691,9 @@ async fn run(
         command: preview,
     });
     let _ = account; // аккаунт уже показан событием Account
+    let prepare_secs = prepare_started.elapsed().as_secs();
     let mut info = proc.wait().await?;
+    info.prepare_secs = Some(prepare_secs);
     drop(safe_guard);
     if global.backup_after_exit
         && !info.killed
@@ -705,7 +712,9 @@ async fn run(
         let packages = crate::mods::crash::package_index(&game_dir, &files).unwrap_or_default();
         info.analysis = Some(crate::mods::crash::analyze(&lines, &files, &packages));
     }
-    emit(LaunchEvent::Exited { info: info.clone() });
+    emit(LaunchEvent::Exited {
+        info: Box::new(info.clone()),
+    });
     Ok(info)
 }
 
