@@ -55,12 +55,13 @@ export const SHARABLE: [string, string][] = [
   ["shaderpacks", "Шейдеры"],
   ["config", "Настройки модов"],
   ["saves", "Миры (копией, свои миры не заменяются)"],
+  ["screenshots", "Скриншоты"],
 ];
 
 export interface Server { name: string; ip: string; icon?: string; accept_textures?: boolean }
 export interface ServerStatus { version: string; protocol: number; online: number; max: number; motd: string; latency_ms: number; favicon?: string }
 
-export interface PackInfo { file_name: string; description: string; size: number; is_dir: boolean; enabled: boolean; formats?: [number, number]; compatible?: boolean }
+export interface PackInfo { file_name: string; description: string; size: number; is_dir: boolean; enabled: boolean; formats?: [number, number]; compatible?: boolean; icon?: string }
 export type ResKind = "resourcepack" | "shader" | "datapack";
 
 export interface Resolved<T> { value: T; source: Source }
@@ -233,6 +234,7 @@ export interface Plan { changes: Change[]; notes: string[] }
 export interface SnapshotInfo { id: string; reason: string; created_at: number; pinned: boolean; auto: boolean; mods: number; configs: number }
 export interface SnapshotDiff { added: string[]; removed: string[]; changed: string[]; options: [string, string, string][] }
 export interface SearchHit { project_id: string; slug: string; title: string; description: string; downloads: number; icon_url?: string; author: string; client_side: string; categories: string[] }
+export type Channel = "auto" | "release" | "beta" | "alpha";
 export type ProjectKind = "mod" | "resourcepack" | "shader" | "datapack";
 export interface ImportResult { instance: Instance; manual: { project_id: number; file_id: number; url: string }[]; notes: string[] }
 export type CrashAction = { kind: "disable_mod"; file_name: string } | { kind: "increase_memory" } | { kind: "update_drivers" } | { kind: "open_mod_doctor" } | { kind: "safe_launch" };
@@ -244,8 +246,9 @@ export const mods = {
   remove: (id: string, file: string) => invoke<SnapshotInfo>("mods_remove", { id, file }),
   pin: (id: string, file: string, pinned: boolean) => invoke<void>("mods_pin", { id, file, pinned }),
   addFiles: (id: string, paths: string[]) => invoke<{ file_name: string; title: string; known: boolean }[]>("mods_add_files", { id, paths }),
-  search: (id: string, query: string, kind: ProjectKind, offset = 0) => invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset }),
-  planInstall: (id: string, project: string) => invoke<Plan>("mods_plan_install", { id, project }),
+  search: (id: string, query: string, kind: ProjectKind, offset = 0, category = "") =>
+    invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset, category: category || null }),
+  planInstall: (id: string, project: string, channel: Channel = "auto") => invoke<Plan>("mods_plan_install", { id, project, channel }),
   checkUpdates: (id: string) => invoke<Plan>("mods_check_updates", { id }),
   apply: (id: string, plan: Plan, reason: string) => invoke<SnapshotInfo>("mods_apply", { id, plan, reason }),
 };

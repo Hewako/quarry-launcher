@@ -2,7 +2,7 @@
 // Любое изменение модов — через предпросмотр и автоматический снимок.
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, errText, mods, sizeText, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
+import { api, errText, mods, sizeText, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
@@ -50,6 +50,16 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
   );
 }
 
+/** Категории Modrinth для фильтра каталога (подписи — для игрока). */
+const MOD_CATS: [string, string][] = [["optimization", "Оптимизация"], ["utility", "Удобство"], ["decoration", "Декор"], ["worldgen", "Генерация мира"], ["technology", "Техника"], ["magic", "Магия"], ["adventure", "Приключения"], ["storage", "Хранение"], ["mobs", "Мобы"], ["equipment", "Снаряжение"], ["food", "Еда"], ["transportation", "Транспорт"], ["game-mechanics", "Механики"], ["management", "Управление"], ["library", "Библиотеки"]];
+const CATS: Record<ProjectKind, [string, string][]> = {
+  mod: MOD_CATS,
+  datapack: MOD_CATS,
+  resourcepack: [["vanilla-like", "Как ванилла"], ["realistic", "Реалистичные"], ["simplistic", "Простые"], ["themed", "Тематические"], ["tweaks", "Мелкие правки"], ["16x", "16x"], ["32x", "32x"], ["64x", "64x"]],
+  shader: [["vanilla-like", "Как ванилла"], ["semi-realistic", "Полуреалистичные"], ["realistic", "Реалистичные"], ["fantasy", "Сказочные"], ["potato", "Для слабых ПК"], ["low", "Лёгкие"], ["high", "Тяжёлые"]],
+};
+const CHANNELS: [Channel, string][] = [["auto", "Стабильная, если есть"], ["release", "Только стабильные"], ["beta", "Бета и стабильные"], ["alpha", "Любые, включая альфа"]];
+
 const KINDS: [ProjectKind, string][] = [["mod", "Моды"], ["resourcepack", "Ресурспаки"], ["shader", "Шейдеры"], ["datapack", "Датапаки"]];
 
 export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", "resourcepack", "shader"], onInstalled, world }: {
@@ -64,21 +74,23 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
   const [query, setQuery] = useState(initial);
   const [kind, setKind] = useState<ProjectKind>(kinds[0]);
   const [done, setDone] = useState<string[]>([]);
+  const [category, setCategory] = useState("");
+  const [channel, setChannel] = useState<Channel>("auto");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
     const t = setTimeout(() => {
       setError("");
-      mods.search(inst.id, query, kind).then((r) => setHits(r.hits)).catch((e) => { setHits([]); setError(errText(e)); });
+      mods.search(inst.id, query, kind, 0, category).then((r) => setHits(r.hits)).catch((e) => { setHits([]); setError(errText(e)); });
     }, 300);
     return () => clearTimeout(t);
-  }, [inst.id, query, kind]);
+  }, [inst.id, query, kind, category]);
   const pick = async (h: SearchHit) => {
     setBusy(h.project_id);
     setError("");
     try {
-      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id));
+      if (kind === "mod") onPlan?.(`Установить ${h.title}`, await mods.planInstall(inst.id, h.project_id, channel));
       else { await api.installResource(inst.id, h.project_id, kind, world); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
     } catch (e) { setError(errText(e)); }
     finally { setBusy(null); }
@@ -89,9 +101,20 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
         <input className="field" style={{ flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={{ mod: "Найти мод…", shader: "Найти шейдер…", resourcepack: "Найти ресурспак…", datapack: "Найти датапак…" }[kind]} data-autofocus />
         <div className="seg">
           {KINDS.filter(([k]) => kinds.includes(k)).map(([k, l]) => (
-            <button key={k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>
+            <button key={k} className={kind === k ? "on" : ""} onClick={() => { setKind(k); setCategory(""); }}>{l}</button>
           ))}
         </div>
+      </div>
+      <div className="row">
+        <select className="field auto" aria-label="Категория" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Все категории</option>
+          {CATS[kind].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        {kind === "mod" && (
+          <select className="field auto" aria-label="Какие версии ставить" value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
+            {CHANNELS.map(([v, l]) => <option key={v} value={v}>Версии: {l.toLowerCase()}</option>)}
+          </select>
+        )}
       </div>
       <span className="muted small">Показано то, что подходит к Minecraft {inst.game_version}{kind === "mod" ? ` и ${inst.loader}` : ""}. Ставится только по вашему нажатию.</span>
       {kind === "shader" && <span className="muted small">Шейдеры работают с модом Iris (Fabric/Quilt) или Oculus (NeoForge). После установки шейдер можно выбрать на вкладке «Ресурсы».</span>}

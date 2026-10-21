@@ -121,7 +121,12 @@ async fn present_projects(files: &[ModFile]) -> BTreeMap<String, String> {
 }
 
 /// План установки проекта Modrinth вместе с обязательными зависимостями.
-pub async fn plan_install(store: &InstanceStore, id: &str, project: &str) -> Result<Plan> {
+pub async fn plan_install(
+    store: &InstanceStore,
+    id: &str,
+    project: &str,
+    channel: catalog::Channel,
+) -> Result<Plan> {
     let c = ctx(store, id)?;
     let files = inventory(&c.game_dir, &c.instance_dir)?;
     let present = present_projects(&files).await;
@@ -130,6 +135,7 @@ pub async fn plan_install(store: &InstanceStore, id: &str, project: &str) -> Res
         notes: Vec::new(),
     };
     let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut optional: Vec<(String, String)> = Vec::new();
     let mut queue: Vec<(String, String)> = vec![(project.to_string(), "выбран вами".into())];
     while let Some((proj, reason)) = queue.pop() {
         if !seen.insert(proj.clone()) || seen.len() > 40 {
@@ -146,10 +152,15 @@ pub async fn plan_install(store: &InstanceStore, id: &str, project: &str) -> Res
             continue;
         }
         let list = catalog::versions(&info.id, &c.loaders, &c.instance.game_version).await?;
-        let Some(v) = catalog::pick_best(&list).cloned() else {
+        let Some(v) = catalog::pick(&list, channel).cloned() else {
             if proj == project {
+                let hint = if list.is_empty() {
+                    ""
+                } else {
+                    " (есть только бета или альфа — выберите другой канал)"
+                };
                 return Err(Error::invalid(format!(
-                    "У {} нет версии для Minecraft {} и {}",
+                    "У {} нет подходящей версии для Minecraft {} и {}{hint}",
                     info.title,
                     c.instance.game_version,
                     c.instance.loader.display()
@@ -164,7 +175,9 @@ pub async fn plan_install(store: &InstanceStore, id: &str, project: &str) -> Res
         for d in &v.dependencies {
             match (d.dependency_type.as_str(), &d.project_id) {
                 ("required", Some(p)) => queue.push((p.clone(), format!("нужен для {}", info.title))),
-                ("optional", Some(_)) => {}
+                ("optional", Some(p)) if !present.contains_key(p) && optional.len() < 5 => {
+                    optional.push((p.clone(), info.title.clone()))
+                }
                 ("incompatible", Some(p)) if present.contains_key(p) => plan.notes.push(format!(
                     "{} несовместим с уже установленным модом ({}) — Mod Doctor покажет подробности",
                     info.title,
@@ -189,6 +202,17 @@ pub async fn plan_install(store: &InstanceStore, id: &str, project: &str) -> Res
         });
     }
     plan.changes.reverse(); // зависимости первыми
+    for (p, for_title) in optional {
+        if seen.contains(&p) {
+            continue;
+        }
+        if let Ok(o) = catalog::project(&p).await {
+            plan.notes.push(format!(
+                "Необязательно для {for_title}: «{}» — можно поставить отдельно из каталога",
+                o.title
+            ));
+        }
+    }
     Ok(plan)
 }
 
@@ -715,7 +739,7 @@ mod tests {
         let inst = store
             .create("Iris", "1.21.11", LoaderKind::Fabric, Some("0.17".into()))
             .unwrap();
-        let plan = plan_install(&store, &inst.id, "iris")
+        let plan = plan_install(&store, &inst.id, "iris", catalog::Channel::Auto)
             .await
             .map_err(|e| e.to_string())
             .unwrap();

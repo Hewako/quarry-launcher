@@ -403,8 +403,13 @@ async fn main() -> Result<()> {
                     }
                 }
                 Some(ModsAction::Install { project }) => {
-                    let plan =
-                        quarry_core::mods::manage::plan_install(&store, &id, &project).await?;
+                    let plan = quarry_core::mods::manage::plan_install(
+                        &store,
+                        &id,
+                        &project,
+                        quarry_core::catalog::Channel::Auto,
+                    )
+                    .await?;
                     for c in &plan.changes {
                         println!(
                             "+ {} {} ({})",

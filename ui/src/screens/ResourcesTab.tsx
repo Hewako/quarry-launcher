@@ -9,6 +9,7 @@ type View = { packs: PackInfo[]; game_format?: number; shader_loader: boolean };
 function PackRow({ p, children }: { p: PackInfo; children: React.ReactNode }) {
   return (
     <tr>
+      <td style={{ width: 48 }}>{p.icon ? <img className="sicon" src={p.icon} alt="" /> : <div className="sicon" aria-hidden />}</td>
       <td>
         <b>{p.file_name.replace(/\.zip$/i, "")}</b>
         {p.compatible === false && <span className="badge warn" style={{ marginLeft: 6 }} title={`Сделан для формата ${p.formats?.[0]}–${p.formats?.[1]}`}>для другой версии игры</span>}
@@ -125,7 +126,7 @@ export function ResourcesTab({ inst, running }: { inst: Instance; running: boole
           <table className="servers">
             <tbody>
               <tr>
-                <td><label className="row"><input type="radio" name="shader" checked={shaderOn === null} disabled={running} onChange={() => act(() => api.setShader(inst.id, null))} /> Без шейдеров</label></td>
+                <td /><td><label className="row"><input type="radio" name="shader" checked={shaderOn === null} disabled={running} onChange={() => act(() => api.setShader(inst.id, null))} /> Без шейдеров</label></td>
                 <td />
               </tr>
               {shaders.packs.map((p) => (

@@ -136,13 +136,14 @@ pub fn disk_usage(store: &InstanceStore, id: &str) -> Result<DiskUsage> {
 }
 
 /// Что можно перенести из одного профиля в другой.
-pub const SHARABLE: [(&str, &str); 6] = [
+pub const SHARABLE: [(&str, &str); 7] = [
     ("options.txt", "Настройки игры (управление, графика, звук)"),
     ("servers.dat", "Список серверов"),
     ("resourcepacks", "Ресурспаки"),
     ("shaderpacks", "Шейдеры"),
     ("config", "Настройки модов"),
     ("saves", "Миры (копией, свои миры не заменяются)"),
+    ("screenshots", "Скриншоты"),
 ];
 
 /// Перенести файлы из профиля `from` в `to`. Перед этим у `to` создаётся снимок,

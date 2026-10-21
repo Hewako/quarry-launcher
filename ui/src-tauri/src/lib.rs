@@ -687,14 +687,22 @@ async fn catalog_search(
     query: String,
     kind: quarry_core::catalog::ProjectType,
     offset: u32,
+    category: Option<String>,
 ) -> CmdResult<quarry_core::catalog::SearchResult> {
     let inst = InstanceStore::new(state.data.clone())
         .get(&id)
         .map_err(err)?;
     let loaders = quarry_core::catalog::loaders_for(inst.loader);
-    quarry_core::catalog::search(&query, kind, &loaders, &inst.game_version, offset)
-        .await
-        .map_err(err)
+    quarry_core::catalog::search(
+        &query,
+        kind,
+        &loaders,
+        &inst.game_version,
+        offset,
+        category.as_deref(),
+    )
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -702,9 +710,10 @@ async fn mods_plan_install(
     state: State<'_, AppState>,
     id: String,
     project: String,
+    channel: Option<quarry_core::catalog::Channel>,
 ) -> CmdResult<quarry_core::mods::manage::Plan> {
     let store = InstanceStore::new(state.data.clone());
-    quarry_core::mods::manage::plan_install(&store, &id, &project)
+    quarry_core::mods::manage::plan_install(&store, &id, &project, channel.unwrap_or_default())
         .await
         .map_err(err)
 }

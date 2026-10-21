@@ -178,13 +178,15 @@ impl ProjectType {
     }
 }
 
-pub async fn search(
+/// Адрес поиска Modrinth с фильтрами: тип, версия игры, загрузчик (для модов), категория.
+pub fn search_url(
     query: &str,
     kind: ProjectType,
     loaders: &[&str],
     game_version: &str,
     offset: u32,
-) -> Result<SearchResult> {
+    category: Option<&str>,
+) -> String {
     let mut facets: Vec<Vec<String>> = vec![
         vec![format!("project_type:{}", kind.as_str())],
         vec![format!("versions:{game_version}")],
@@ -192,12 +194,33 @@ pub async fn search(
     if kind == ProjectType::Mod && !loaders.is_empty() {
         facets.push(loaders.iter().map(|l| format!("categories:{l}")).collect());
     }
-    let url = format!(
+    if let Some(c) = category.filter(|c| !c.is_empty()) {
+        facets.push(vec![format!("categories:{c}")]);
+    }
+    format!(
         "{API}/search?query={}&limit=20&offset={offset}&index=relevance&facets={}",
         urlencoding::encode(query),
         urlencoding::encode(&serde_json::to_string(&facets).unwrap_or_default())
-    );
-    get(&url).await
+    )
+}
+
+pub async fn search(
+    query: &str,
+    kind: ProjectType,
+    loaders: &[&str],
+    game_version: &str,
+    offset: u32,
+    category: Option<&str>,
+) -> Result<SearchResult> {
+    get(&search_url(
+        query,
+        kind,
+        loaders,
+        game_version,
+        offset,
+        category,
+    ))
+    .await
 }
 
 pub async fn project(id: &str) -> Result<Project> {
@@ -250,6 +273,33 @@ pub async fn updates_by_hash(
         &serde_json::json!({ "hashes": sha1s, "algorithm": "sha1", "loaders": loaders, "game_versions": [game_version] }),
     )
     .await
+}
+
+/// Канал обновлений: насколько нестабильные версии допускаются.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    /// Стабильная, если есть; иначе бета, иначе альфа.
+    #[default]
+    Auto,
+    /// Только стабильные.
+    Release,
+    /// Новейшая из стабильных и бета.
+    Beta,
+    /// Новейшая любая, включая альфа.
+    Alpha,
+}
+
+/// Версия по каналу; список — в порядке API (новые первыми).
+pub fn pick(list: &[Version], channel: Channel) -> Option<&Version> {
+    let allowed: &[&str] = match channel {
+        Channel::Auto => return pick_best(list),
+        Channel::Release => &["release"],
+        Channel::Beta => &["release", "beta"],
+        Channel::Alpha => &["release", "beta", "alpha"],
+    };
+    list.iter()
+        .find(|v| allowed.contains(&v.version_type.as_str()))
 }
 
 /// Лучшая версия: сначала release, потом beta, потом alpha; внутри — порядок API (новые первыми).
@@ -314,11 +364,43 @@ mod tests {
     #[tokio::test]
     #[ignore = "сеть: api.modrinth.com"]
     async fn live_search_and_versions() {
-        let r = search("sodium", ProjectType::Mod, &["fabric"], "1.21.11", 0)
+        let r = search("sodium", ProjectType::Mod, &["fabric"], "1.21.11", 0, None)
             .await
             .unwrap();
         assert!(r.hits.iter().any(|h| h.slug == "sodium"));
         let vs = versions("sodium", &["fabric"], "1.21.11").await.unwrap();
         assert!(pick_best(&vs).is_some());
+    }
+
+    #[test]
+    fn channel_limits_instability() {
+        // Новые первыми, как отдаёт API.
+        let list = vec![v("a3", "alpha"), v("b2", "beta"), v("r1", "release")];
+        assert_eq!(pick(&list, Channel::Auto).unwrap().id, "r1");
+        assert_eq!(pick(&list, Channel::Release).unwrap().id, "r1");
+        assert_eq!(pick(&list, Channel::Beta).unwrap().id, "b2");
+        assert_eq!(pick(&list, Channel::Alpha).unwrap().id, "a3");
+        let betas = vec![v("b2", "beta")];
+        assert!(pick(&betas, Channel::Release).is_none());
+        assert_eq!(pick(&betas, Channel::Auto).unwrap().id, "b2");
+    }
+
+    #[test]
+    fn search_url_has_category_facet() {
+        let url = search_url(
+            "sodium",
+            ProjectType::Mod,
+            &["fabric"],
+            "26.3",
+            20,
+            Some("optimization"),
+        );
+        let facets = urlencoding::decode(url.split("facets=").nth(1).unwrap())
+            .unwrap()
+            .into_owned();
+        assert!(facets.contains("\"categories:optimization\""), "{facets}");
+        assert!(facets.contains("\"categories:fabric\""));
+        assert!(url.contains("offset=20"));
+        assert!(!search_url("", ProjectType::Shader, &[], "26.3", 0, None).contains("categories"));
     }
 }

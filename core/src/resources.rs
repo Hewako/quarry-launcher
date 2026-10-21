@@ -31,6 +31,8 @@ pub struct PackInfo {
     pub formats: Option<(i64, i64)>,
     /// Подходит ли к версии игры; `None` — неизвестно (игра ещё не скачана).
     pub compatible: Option<bool>,
+    /// Картинка пака (pack.png) как `data:`-адрес.
+    pub icon: Option<String>,
 }
 
 impl Kind {
@@ -85,6 +87,31 @@ pub fn pack_formats(mcmeta: &serde_json::Value) -> Option<(i64, i64)> {
     }
     let n = p.get("pack_format")?.as_i64()?;
     Some((n, n))
+}
+
+/// pack.png из ресурспака или датапака (не больше 256 КБ).
+fn read_icon(path: &Path) -> Option<String> {
+    use base64::Engine as _;
+    const MAX: u64 = 256 * 1024;
+    let mut buf = Vec::new();
+    if path.is_dir() {
+        let p = path.join("pack.png");
+        if std::fs::metadata(&p).ok()?.len() > MAX {
+            return None;
+        }
+        buf = std::fs::read(p).ok()?;
+    } else {
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
+        let e = zip.by_name("pack.png").ok()?;
+        if e.size() > MAX {
+            return None;
+        }
+        e.take(MAX).read_to_end(&mut buf).ok()?;
+    }
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(buf)
+    ))
 }
 
 fn read_mcmeta(path: &Path) -> Option<serde_json::Value> {
@@ -189,6 +216,7 @@ pub fn list(game_dir: &Path, kind: Kind, game_format: Option<i64>) -> Vec<PackIn
             }
             let formats = meta.as_ref().and_then(pack_formats);
             Some(PackInfo {
+                icon: has_meta.then(|| read_icon(&path)).flatten(),
                 description: meta
                     .as_ref()
                     .map(|m| crate::servers::plain_text(&m["pack"]["description"]))
@@ -348,7 +376,7 @@ pub async fn install(
         Kind::Datapack => &["datapack"],
     };
     let list = crate::catalog::versions(&info.id, loaders, &inst.game_version).await?;
-    let v = crate::catalog::pick_best(&list).ok_or_else(|| {
+    let v = crate::catalog::pick(&list, crate::catalog::Channel::Auto).ok_or_else(|| {
         Error::invalid(format!(
             "У «{}» нет версии для Minecraft {}",
             info.title, inst.game_version
@@ -568,6 +596,22 @@ mod tests {
             target_dir(&g, Kind::Shader, None).unwrap(),
             g.join("shaderpacks")
         );
+        std::fs::remove_dir_all(&g).unwrap();
+    }
+
+    #[test]
+    fn pack_icon_becomes_data_url() {
+        let g = game_dir("icon");
+        let mut w =
+            zip::ZipWriter::new(std::fs::File::create(g.join("resourcepacks/I.zip")).unwrap());
+        let o = zip::write::SimpleFileOptions::default();
+        w.start_file("pack.mcmeta", o).unwrap();
+        w.write_all(br#"{"pack":{"pack_format":75}}"#).unwrap();
+        w.start_file("pack.png", o).unwrap();
+        w.write_all(b"\x89PNG").unwrap();
+        w.finish().unwrap();
+        let l = list(&g, Kind::Resourcepack, None);
+        assert_eq!(l[0].icon.as_deref(), Some("data:image/png;base64,iVBORw=="));
         std::fs::remove_dir_all(&g).unwrap();
     }
 }
