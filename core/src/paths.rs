@@ -291,7 +291,9 @@ mod tests {
         let a = unique_sibling(p, "part");
         let b = unique_sibling(p, "part");
         assert_ne!(a, b);
-        assert!(a.to_string_lossy().starts_with("/x/file.jar.part-"));
+        assert_eq!(a.parent(), p.parent());
+        let name = a.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("file.jar.part-"), "{name}");
     }
 
     #[test]

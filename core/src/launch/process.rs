@@ -141,6 +141,9 @@ pub async fn spawn(
         .kill_on_drop(false);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    // Своя группа процессов: «Остановить» гасит и игру под обёрткой (Linux), а не только обёртку.
+    #[cfg(unix)]
+    command.process_group(0);
     let started_at = SystemTime::now();
     let started = Instant::now();
     let mut child = command.spawn().map_err(|e| {
@@ -251,6 +254,13 @@ pub async fn spawn(
             s = child.wait() => s,
             _ = stop_c.notified() => {
                 killed = true;
+                #[cfg(unix)]
+                if let Some(pid) = child.id() {
+                    let _ = tokio::process::Command::new("kill")
+                        .args(["-KILL", "--", &format!("-{pid}")])
+                        .status()
+                        .await;
+                }
                 let _ = child.kill().await;
                 child.wait().await
             }
@@ -380,7 +390,8 @@ mod tests {
         let d = tmpdir("kill");
         let cmd = LaunchCommand {
             program: "/bin/sh".into(),
-            args: vec!["-c".into(), "sleep 30".into()],
+            // `; true` не даёт оболочке заменить себя на sleep: как обёртка, у которой игра — дочерний процесс.
+            args: vec!["-c".into(), "sleep 30; true".into()],
             cwd: d.clone(),
             env: vec![],
             unresolved: vec![],
