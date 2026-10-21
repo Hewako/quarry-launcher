@@ -1,190 +1,172 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
+import { api, mb, type AccountRef, type AppInfo, type Instance } from "./api";
+import { isActive, launches, useLaunches } from "./launches";
+import { Accounts } from "./screens/Accounts";
+import { CreateInstance } from "./screens/CreateInstance";
+import { Home } from "./screens/Home";
+import { InstancePage } from "./screens/InstancePage";
+import { Logs } from "./screens/Logs";
+import { Settings } from "./screens/Settings";
+import { DialogProvider } from "./ui/Dialog";
 
-interface Profile {
-  id: string;
-  name: string;
-  mc_version: string;
-  loader: string | null;
+type Screen = "home" | "profile" | "logs" | "accounts" | "settings";
+
+const NAV: { id: Screen; label: string; ico: string }[] = [
+  { id: "home", label: "Главная", ico: "⌂" },
+  { id: "profile", label: "Профили", ico: "▦" },
+  { id: "logs", label: "Логи и краши", ico: "≡" },
+  { id: "accounts", label: "Аккаунты", ico: "☺" },
+  { id: "settings", label: "Настройки", ico: "✎" },
+];
+
+function applyTheme(theme: string) {
+  const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme !== "light";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
 }
 
-const NAV = ["Главная", "Профили", "Mod Doctor", "Снимки и откат", "Логи и краши", "Аккаунты и скины", "Настройки"];
-const VERSIONS = ["26.3", "1.21.11", "1.20.1", "1.16.5"];
+function Shell() {
+  const states = useLaunches();
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [broken, setBroken] = useState<{ dir: string; reason: string }[]>([]);
+  const [accounts, setAccounts] = useState<AccountRef[]>([]);
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [screen, setScreen] = useState<Screen>("home");
+  const [profileTab, setProfileTab] = useState<"launch" | "logs" | undefined>();
+  const [creating, setCreating] = useState(false);
+  const [theme, setTheme] = useState("dark");
+  const [loadError, setLoadError] = useState("");
 
-function App() {
-  const [active, setActive] = useState("Главная");
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [launchingId, setLaunchingId] = useState<string | null>(null);
-  
-  // Состояние для модального окна
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newVersion, setNewVersion] = useState(VERSIONS[0]);
-  const [newLoader, setNewLoader] = useState("vanilla");
-
-  const refresh = () => {
-    invoke<Profile[]>("get_profiles").then(setProfiles).catch(console.error);
-  };
-
-  useEffect(() => { refresh(); }, []);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm(`Удалить профиль «${id}»? Это действие необратимо.`)) return;
+  const refresh = useCallback(async () => {
     try {
-      await invoke("delete_profile", { id });
-      refresh();
+      const r = await api.listInstances();
+      setInstances(r.instances);
+      setBroken(r.broken);
+      setSelectedId((cur) => (cur && r.instances.some((i) => i.id === cur) ? cur : r.instances[0]?.id));
+      setLoadError("");
     } catch (e) {
-      alert(`Ошибка: ${e}`);
+      setLoadError(String(e));
     }
+  }, []);
+  const refreshAccounts = useCallback(() => { api.listAccounts().then(setAccounts).catch(() => setAccounts([])); }, []);
+
+  useEffect(() => {
+    launches.start();
+    api.appInfo().then(setInfo);
+    api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); }).catch(() => applyTheme("dark"));
+    refresh();
+    refreshAccounts();
+    const off = listen("launch-finished", () => refresh());
+    return () => { off.then((f) => f()); };
+  }, [refresh, refreshAccounts]);
+
+  const changeTheme = (t: string) => {
+    setTheme(t);
+    applyTheme(t);
+    api.globalSettings().then((g) => api.saveGlobalSettings({ ...g, theme: t })).catch(() => {});
   };
 
-  const handleLaunch = async (id: string) => {
-    try {
-      setLaunchingId(id);
-      // Запускаем и не ждем окончания загрузки (для UX лучше вынести в события, но пока так)
-      invoke("launch_profile", { id }).catch(e => alert(`Ошибка фонового запуска: ${e}`));
-      
-      // Возвращаем кнопку в исходное состояние через 3 секунды, 
-      // чтобы не висела вечно (так как мы не ждем полной загрузки)
-      setTimeout(() => setLaunchingId(null), 3000);
-    } catch (e) {
-      alert(`Ошибка: ${e}`);
-      setLaunchingId(null);
+  const selected = instances.find((i) => i.id === selectedId);
+  // states — одна и та же Map, которая меняется на месте: считаем на каждой отрисовке, без useMemo.
+  let downloading: { name: string; s: NonNullable<ReturnType<typeof states.get>> } | null = null;
+  for (const [id, s] of states) {
+    if (s.phase === "preparing" && s.progress && s.progress.files_total > 0) {
+      downloading = { name: instances.find((i) => i.id === id)?.name ?? id, s };
+      break;
     }
-  };
+  }
+  const runningCount = [...states.values()].filter(isActive).length;
+  const ms = accounts.find((a) => a.provider === "microsoft");
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    try {
-      await invoke("create_profile", { 
-        name: newName.trim(), 
-        version: newVersion, 
-        loader: newLoader === "vanilla" ? null : newLoader 
-      });
-      setIsModalOpen(false);
-      setNewName("");
-      refresh();
-    } catch (err) {
-      alert(`Ошибка создания: ${err}`);
-    }
-  };
+  if (!info) return <div className="content muted">Загрузка…</div>;
+  const open = (id: string, tab?: "launch" | "logs") => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="logo">
-          <div className="logo-icon" />
-          <div className="logo-text">
-            Quarry
-            <small>рабочее название · v0.3</small>
-          </div>
-        </div>
-        <nav className="nav">
-          {NAV.map((item) => (
-            <button
-              key={item}
-              className={`nav-item ${active === item ? "active" : ""}`}
-              onClick={() => setActive(item)}
-            >
-              {item}
+      <aside className="side">
+        <div className="logo"><i /><div>Quarry<small>рабочее название · v{info.version}</small></div></div>
+        <nav className="nav" aria-label="Разделы">
+          {NAV.map((n) => (
+            <button key={n.id} className={screen === n.id ? "on" : ""} aria-current={screen === n.id ? "page" : undefined} onClick={() => { setProfileTab(undefined); setScreen(n.id); }}>
+              <span className="ico" aria-hidden>{n.ico}</span>{n.label}
+              {n.id === "profile" && instances.length > 0 && <span className="count">{instances.length}</span>}
             </button>
           ))}
         </nav>
+        <div className="grow" />
+        <button className="acct" onClick={() => setScreen("accounts")}>
+          <div className="head" aria-hidden />
+          <div style={{ minWidth: 0 }}>
+            <b>{ms?.name ?? "Нет аккаунта"}</b>
+            {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? "владение ✓" : "игра не куплена"}</span> : <span className="badge">войти</span>}
+          </div>
+        </button>
       </aside>
 
-      <main className="main">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <h1 style={{ margin: 0 }}>{active}</h1>
-          {active === "Главная" && (
-            <button className="btn-primary" style={{ padding: "8px 16px", flex: "none" }} onClick={() => setIsModalOpen(true)}>
-              + Новый профиль
-            </button>
+      <div className="main">
+        {info.dev_launch && (
+          <div className="devbar" role="status">Сборка разработчика (dev-launch): разрешён запуск без входа для отладки на собственной копии игры. В релизе этого режима нет.</div>
+        )}
+        <header className="top">
+          {downloading ? (
+            <div className="dl" aria-live="polite">
+              ↓ {downloading.name}: {downloading.s.stageLabel} · {downloading.s.progress!.files_done} из {downloading.s.progress!.files_total} файлов · {mb(downloading.s.progress!.bytes_done)} МБ
+              <div className="bar"><i style={{ width: `${downloading.s.progress!.bytes_total ? (downloading.s.progress!.bytes_done / downloading.s.progress!.bytes_total) * 100 : 0}%` }} /></div>
+            </div>
+          ) : runningCount > 0 ? (
+            <span className="dl">Запущено профилей: {runningCount}</span>
+          ) : <span className="dl" />}
+          <div className="sp" />
+          <button className="iconbtn" aria-label="Переключить тему" title="Тема" onClick={() => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>◐</button>
+        </header>
+
+        <main className="content">
+          {loadError && <div className="alert err"><div className="h">Не удалось прочитать профили</div><span>{loadError}</span></div>}
+          {screen === "home" && (
+            <Home info={info} instances={instances} broken={broken} accounts={accounts} states={states} selected={selected}
+              onSelect={setSelectedId} onOpen={(id) => open(id)} onCreate={() => setCreating(true)}
+              onAccounts={() => setScreen("accounts")} onLogs={(id) => { setSelectedId(id); setScreen("logs"); }} />
           )}
-        </div>
+          {screen === "profile" && (selected ? (
+            <>
+              {instances.length > 1 && (
+                <div className="row" style={{ marginBottom: 12 }}>
+                  <select className="field" style={{ maxWidth: 280 }} value={selected.id} onChange={(e) => setSelectedId(e.target.value)} aria-label="Профиль">
+                    {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </select>
+                  <button className="btn" onClick={() => setCreating(true)}>+ Новый профиль</button>
+                </div>
+              )}
+              <InstancePage key={selected.id} inst={selected} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
+                onChanged={(i) => setInstances((list) => list.map((x) => (x.id === i.id ? i : x)))}
+                onTrashed={() => { refresh(); setScreen("home"); }} />
+            </>
+          ) : (
+            <div className="card empty"><p>Профилей нет.</p><button className="btn pri" onClick={() => setCreating(true)}>+ Новый профиль</button></div>
+          ))}
+          {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
+          {screen === "accounts" && <Accounts info={info} accounts={accounts} onChanged={refreshAccounts} />}
+          {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} />}
+        </main>
 
-        {active === "Главная" && (
-          <>
-            {profiles.length === 0 ? (
-              <div className="card"><p>Нет профилей. Создайте первый!</p></div>
-            ) : (
-              <div className="profile-grid">
-                {profiles.map(p => (
-                  <div key={p.id} className="profile-card">
-                    <div className="profile-head">
-                      <div className="profile-icon" />
-                      <div>
-                        <strong>{p.name}</strong>
-                        <div className="profile-meta">
-                          {p.mc_version} {p.loader ? `· ${p.loader}` : "· Vanilla"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="profile-actions">
-                      <button
-                        className="btn-primary"
-                        onClick={() => handleLaunch(p.id)}
-                        disabled={launchingId === p.id}
-                      >
-                        {launchingId === p.id ? "Подготовка..." : "▶ Играть"}
-                      </button>
-                      <button className="btn-ghost" onClick={() => handleDelete(p.id)} title="Удалить">🗑</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        <footer className="foot">
+          <span>Данные: {info.data_dir}</span>
+          <span>Quarry {info.version}{info.dev_launch ? " · dev-launch" : ""}</span>
+        </footer>
+      </div>
 
-        {active !== "Главная" && (
-          <div className="card">
-            <p>Экран «{active}» появится в следующей итерации.</p>
-          </div>
-        )}
-      </main>
-
-      {/* Модальное окно создания профиля */}
-      {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <h2>Новый профиль</h2>
-            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", color: "var(--muted)" }}>Название</label>
-                <input 
-                  className="input" 
-                  type="text" 
-                  value={newName} 
-                  onChange={e => setNewName(e.target.value)} 
-                  placeholder="Например: Технология+" 
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", color: "var(--muted)" }}>Версия Minecraft</label>
-                <select className="input" value={newVersion} onChange={e => setNewVersion(e.target.value)}>
-                  {VERSIONS.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontSize: "13px", color: "var(--muted)" }}>Загрузчик</label>
-                <select className="input" value={newLoader} onChange={e => setNewLoader(e.target.value)}>
-                  <option value="vanilla">Vanilla</option>
-                  <option value="fabric">Fabric</option>
-                </select>
-              </div>
-              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                <button type="submit" className="btn-primary" style={{ padding: "10px" }}>Создать</button>
-                <button type="button" className="btn-ghost" style={{ padding: "10px" }} onClick={() => setIsModalOpen(false)}>Отмена</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {creating && (
+        <CreateInstance onClose={() => setCreating(false)} onCreated={(i) => { setCreating(false); refresh().then(() => { setSelectedId(i.id); setScreen("home"); }); }} />
       )}
     </div>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <DialogProvider>
+      <Shell />
+    </DialogProvider>
+  );
+}

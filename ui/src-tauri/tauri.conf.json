@@ -12,14 +12,14 @@
     "windows": [
       {
         "title": "Quarry",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
@@ -31,6 +31,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Game",
+    "shortDescription": "Открытый лаунчер Minecraft Java Edition",
+    "license": "GPL-3.0-or-later"
   }
 }
