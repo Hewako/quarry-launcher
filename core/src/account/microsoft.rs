@@ -102,6 +102,31 @@ struct EntitlementItem {
 struct McProfile {
     id: String,
     name: String,
+    #[serde(default)]
+    skins: Vec<McSkin>,
+}
+
+#[derive(Deserialize)]
+struct McSkin {
+    #[serde(default)]
+    state: String,
+    url: String,
+    #[serde(default)]
+    variant: Option<String>,
+}
+
+impl McProfile {
+    /// Активный скин. Адреса textures.minecraft.net приходят по http — переводим на https
+    /// (сервер отдаёт текстуры и по https; не подтверждено первоисточником).
+    fn active_skin(&self) -> Option<(String, Option<String>)> {
+        let s = self
+            .skins
+            .iter()
+            .find(|s| s.state == "ACTIVE")
+            .or(self.skins.first())?;
+        let url = s.url.replacen("http://", "https://", 1);
+        Some((url, s.variant.as_ref().map(|v| v.to_ascii_lowercase())))
+    }
 }
 
 /// Объяснение кода XSTS для пользователя (план, 5.8; коды — неофициальные).
@@ -178,10 +203,25 @@ pub async fn start_device_code() -> Result<DeviceCode> {
         .send()
         .await
         .map_err(|e| crate::net::network_error(DEVICE_CODE_URL, e))?;
-    let resp = crate::net::check_status(DEVICE_CODE_URL, resp).await?;
-    resp.json()
-        .await
-        .map_err(|e| Error::parse("ответ Microsoft (device code)", e))
+    let ok = resp.status().is_success();
+    let text = resp.text().await.unwrap_or_default();
+    if !ok {
+        return Err(device_code_error(&text));
+    }
+    serde_json::from_str(&text).map_err(|e| Error::parse("ответ Microsoft (device code)", e))
+}
+
+fn device_code_error(body: &str) -> Error {
+    let err: Option<MsError> = serde_json::from_str(body).ok();
+    match err {
+        // Проверено 21.10.2026: на неизвестный ID приходит unauthorized_client (AADSTS700038/700016).
+        Some(e) if e.error == "unauthorized_client" || e.error == "invalid_client" => Error::Auth(
+            "Microsoft не принял client ID этой сборки: приложение не найдено или для него не разрешены public client flows. См. docs/MICROSOFT_SETUP.md, шаги 1.5–1.6."
+                .into(),
+        ),
+        Some(e) => Error::Auth(format!("Microsoft: {}", e.error_description.unwrap_or(e.error))),
+        None => Error::Auth("Microsoft вернул непонятный ответ на запрос кода входа".into()),
+    }
 }
 
 /// Шаг 2: ждать, пока пользователь подтвердит вход в браузере.
@@ -330,6 +370,7 @@ async fn minecraft_chain(ms: MsToken) -> Result<Chain> {
         }
     };
 
+    let skin = profile.active_skin();
     Ok(Chain {
         account: AccountRef {
             provider: Provider::Microsoft,
@@ -337,6 +378,8 @@ async fn minecraft_chain(ms: MsToken) -> Result<Chain> {
             name: profile.name,
             owns_java_edition: owns,
             checked_at: now(),
+            skin_url: skin.as_ref().map(|s| s.0.clone()),
+            skin_variant: skin.and_then(|s| s.1),
         },
         tokens: Tokens {
             access_token: login.access_token,
@@ -425,6 +468,14 @@ mod tests {
     }
 
     #[test]
+    fn unknown_client_id_is_explained() {
+        let e = device_code_error(
+            r#"{"error":"unauthorized_client","error_description":"AADSTS700038: 0 is not a valid application identifier."}"#,
+        );
+        assert!(e.to_string().contains("MICROSOFT_SETUP"));
+    }
+
+    #[test]
     fn ownership_from_entitlements() {
         assert!(owns_java(&[
             "product_minecraft".into(),
@@ -445,6 +496,23 @@ mod tests {
         )
         .unwrap();
         assert_eq!(e.xerr, 2148916238);
+    }
+
+    #[test]
+    fn profile_skin_is_read() {
+        let p: McProfile = serde_json::from_str(
+            r#"{"id":"abc","name":"Steve","skins":[{"id":"1","state":"ACTIVE","url":"http://textures.minecraft.net/texture/x","variant":"SLIM","alias":"ALEX"}],"capes":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            p.active_skin(),
+            Some((
+                "https://textures.minecraft.net/texture/x".into(),
+                Some("slim".into())
+            ))
+        );
+        let none: McProfile = serde_json::from_str(r#"{"id":"a","name":"b"}"#).unwrap();
+        assert!(none.active_skin().is_none());
     }
 
     #[test]

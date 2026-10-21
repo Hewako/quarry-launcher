@@ -165,7 +165,7 @@ async fn resolve_auth(
 
     match (provider, account) {
         (Provider::Microsoft, Some(acc)) => {
-            let (acc, tokens) = account::microsoft::refresh_if_needed(&store, &acc).await?;
+            let (acc, tokens) = account::session(&store, &acc).await?;
             if !acc.owns_java_edition {
                 return Err(Error::Auth(format!(
                     "На аккаунте {} не куплена Minecraft: Java Edition — запуск невозможен.",
@@ -186,8 +186,7 @@ async fn resolve_auth(
             ))
         }
         (Provider::ElyBy, Some(acc)) => {
-            store.ensure_ely_allowed()?;
-            let tokens = account::ely::refresh_if_needed(&store, &acc).await?;
+            let (acc, tokens) = account::session(&store, &acc).await?;
             emit(LaunchEvent::Account { provider: "Ely.by".into(), name: acc.name.clone() });
             Ok((
                 GameAuth {

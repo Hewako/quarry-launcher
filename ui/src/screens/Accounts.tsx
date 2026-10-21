@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { accountKey, api, errText, type AccountRef, type AppInfo, type DeviceCode } from "../api";
+import { Avatar } from "../ui/Avatar";
 import { Modal, useDialog } from "../ui/Dialog";
 
 function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: AccountRef) => void }) {
@@ -49,7 +50,7 @@ function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: 
   );
 }
 
-export function Accounts({ info, accounts, onChanged }: { info: AppInfo; accounts: AccountRef[]; onChanged: () => void }) {
+export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppInfo; accounts: AccountRef[]; defaultKey?: string; onChanged: () => void }) {
   const dialog = useDialog();
   const [msLogin, setMsLogin] = useState(false);
   const [elyBusy, setElyBusy] = useState(false);
@@ -91,7 +92,7 @@ export function Accounts({ info, accounts, onChanged }: { info: AppInfo; account
       )}
       {accounts.map((a) => (
         <div className="acc" key={accountKey(a)}>
-          <div className="head" aria-hidden />
+          <Avatar account={a} size={40} />
           <div className="grow">
             <b>{a.name}</b>
             <div className="row" style={{ gap: 6, marginTop: 4 }}>
@@ -99,6 +100,7 @@ export function Accounts({ info, accounts, onChanged }: { info: AppInfo; account
                 <>
                   <span className="badge ms">Microsoft</span>
                   {a.owns_java_edition ? <span className="badge ok">Java Edition куплена</span> : <span className="badge err">Java Edition не куплена</span>}
+                  {(defaultKey === accountKey(a) || (!defaultKey && a === accounts.find((x) => x.provider === "microsoft"))) && <span className="badge">по умолчанию</span>}
                 </>
               ) : (
                 <>
@@ -109,6 +111,9 @@ export function Accounts({ info, accounts, onChanged }: { info: AppInfo; account
             </div>
             {a.provider === "elyby" && <p className="muted small" style={{ margin: "6px 0 0" }}>Не подтверждает покупку игры и не открывает официальные серверы. Используется в профилях с входом Ely.by через authlib-injector.</p>}
           </div>
+          {a.provider === "microsoft" && defaultKey !== accountKey(a) && accounts.filter((x) => x.provider === "microsoft").length > 1 && (
+            <button className="btn" onClick={() => api.setDefaultAccount(accountKey(a)).then(onChanged)}>Сделать основным</button>
+          )}
           <button className="btn" onClick={() => remove(a)}>Выйти</button>
         </div>
       ))}

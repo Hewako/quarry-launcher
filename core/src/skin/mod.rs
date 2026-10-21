@@ -63,6 +63,32 @@ pub async fn cache_skin(
     Ok((skin_path, avatar_path))
 }
 
+/// Аватар аккаунта как data-URL для интерфейса: из кеша, иначе скачать текущий скин.
+/// `None` — скина нет (стандартный Steve/Alex) или он недоступен без сети.
+pub async fn avatar_data_url(
+    data: &DataDir,
+    account: &crate::account::AccountRef,
+) -> Option<String> {
+    use base64::Engine as _;
+    let provider = account.provider.key();
+    let path = data
+        .skins()
+        .join(safe_name(provider))
+        .join(format!("{}_avatar.png", safe_name(&account.name)));
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => {
+            let url = account.skin_url.as_deref()?;
+            let (_, avatar) = cache_skin(data, provider, &account.name, url).await.ok()?;
+            std::fs::read(avatar).ok()?
+        }
+    };
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 /// Скин Ely.by по нику. В документации адрес указан как http://skinsystem.ely.by; лаунчер
 /// ходит только по HTTPS — работает ли HTTPS, не подтверждено первоисточником.
 pub fn ely_skin_url(nick: &str) -> String {

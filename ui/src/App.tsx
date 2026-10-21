@@ -8,6 +8,7 @@ import { Home } from "./screens/Home";
 import { InstancePage } from "./screens/InstancePage";
 import { Logs } from "./screens/Logs";
 import { Settings } from "./screens/Settings";
+import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
 
 type Screen = "home" | "profile" | "logs" | "accounts" | "settings";
@@ -49,7 +50,11 @@ function Shell() {
       setLoadError(String(e));
     }
   }, []);
-  const refreshAccounts = useCallback(() => { api.listAccounts().then(setAccounts).catch(() => setAccounts([])); }, []);
+  const [defaultKey, setDefaultKey] = useState<string | undefined>();
+  const refreshAccounts = useCallback(() => {
+    api.listAccounts().then(setAccounts).catch(() => setAccounts([]));
+    api.globalSettings().then((g) => setDefaultKey(g.default_account)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     launches.start();
@@ -77,7 +82,8 @@ function Shell() {
     }
   }
   const runningCount = [...states.values()].filter(isActive).length;
-  const ms = accounts.find((a) => a.provider === "microsoft");
+  const msAll = accounts.filter((a) => a.provider === "microsoft");
+  const ms = msAll.find((a) => `${a.provider}:${a.uuid}` === defaultKey) ?? msAll[0];
 
   if (!info) return <div className="content muted">Загрузка…</div>;
   const open = (id: string, tab?: "launch" | "logs") => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
@@ -96,7 +102,7 @@ function Shell() {
         </nav>
         <div className="grow" />
         <button className="acct" onClick={() => setScreen("accounts")}>
-          <div className="head" aria-hidden />
+          <Avatar account={ms} />
           <div style={{ minWidth: 0 }}>
             <b>{ms?.name ?? "Нет аккаунта"}</b>
             {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? "владение ✓" : "игра не куплена"}</span> : <span className="badge">войти</span>}
@@ -146,7 +152,7 @@ function Shell() {
             <div className="card empty"><p>Профилей нет.</p><button className="btn pri" onClick={() => setCreating(true)}>+ Новый профиль</button></div>
           ))}
           {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
-          {screen === "accounts" && <Accounts info={info} accounts={accounts} onChanged={refreshAccounts} />}
+          {screen === "accounts" && <Accounts info={info} accounts={accounts} defaultKey={defaultKey} onChanged={refreshAccounts} />}
           {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} />}
         </main>
 

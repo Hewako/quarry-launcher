@@ -378,6 +378,24 @@ fn list_accounts(state: State<AppState>) -> CmdResult<Vec<AccountRef>> {
 }
 
 #[tauri::command]
+async fn account_avatar(state: State<'_, AppState>, key: String) -> CmdResult<Option<String>> {
+    let account = AccountStore::new(&state.data, &KeyringStore)
+        .get(&key)
+        .map_err(err)?;
+    Ok(match account {
+        Some(a) => quarry_core::skin::avatar_data_url(&state.data, &a).await,
+        None => None,
+    })
+}
+
+#[tauri::command]
+fn set_default_account(state: State<AppState>, key: String) -> CmdResult<()> {
+    let mut g = GlobalSettings::load(&state.data).map_err(err)?;
+    g.default_account = Some(key);
+    g.save(&state.data).map_err(err)
+}
+
+#[tauri::command]
 fn remove_account(state: State<AppState>, key: String) -> CmdResult<()> {
     AccountStore::new(&state.data, &KeyringStore)
         .remove(&key)
@@ -494,6 +512,8 @@ pub fn run() {
             read_log_file,
             list_accounts,
             remove_account,
+            account_avatar,
+            set_default_account,
             microsoft_start,
             microsoft_finish,
             ely_login,

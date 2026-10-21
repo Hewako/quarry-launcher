@@ -58,7 +58,7 @@ export interface AppInfo {
 
 export interface VersionEntry { id: string; type: string; releaseTime: string }
 export interface LoaderVersion { version: string; stable: boolean }
-export interface AccountRef { provider: Provider; uuid: string; name: string; owns_java_edition: boolean; checked_at: number }
+export interface AccountRef { provider: Provider; uuid: string; name: string; owns_java_edition: boolean; checked_at: number; skin_url?: string; skin_variant?: string }
 export interface GlobalSettings { launch: LaunchOverrides; theme: string; streamer_mode: boolean; default_account?: string }
 export interface DeviceCode { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number; message: string }
 
@@ -110,6 +110,8 @@ export const api = {
   readLog: (id: string) => invoke<string[]>("read_log_file", { id, file: null }),
   listAccounts: () => invoke<AccountRef[]>("list_accounts"),
   removeAccount: (key: string) => invoke<void>("remove_account", { key }),
+  accountAvatar: (key: string) => invoke<string | null>("account_avatar", { key }),
+  setDefaultAccount: (key: string) => invoke<void>("set_default_account", { key }),
   microsoftStart: () => invoke<DeviceCode>("microsoft_start"),
   microsoftFinish: (code: DeviceCode) => invoke<AccountRef>("microsoft_finish", { code }),
   elyLogin: () => invoke<AccountRef>("ely_login"),

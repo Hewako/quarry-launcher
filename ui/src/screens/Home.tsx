@@ -54,6 +54,7 @@ export function Home(p: Props) {
   }
 
   const ms = p.accounts.find((a) => a.provider === "microsoft" && a.owns_java_edition);
+  // Какой Microsoft-аккаунт будет использован, решает ядро (аккаунт профиля → по умолчанию → первый).
   return (
     <>
       {inst && (

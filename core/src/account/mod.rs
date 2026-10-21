@@ -48,6 +48,12 @@ pub struct AccountRef {
     /// Когда владение проверялось последний раз (Unix-время).
     #[serde(default)]
     pub checked_at: u64,
+    /// Адрес текущего скина (для показа аватара). Для Ely.by — система скинов по нику.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin_url: Option<String>,
+    /// Модель скина: `classic` или `slim`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin_variant: Option<String>,
 }
 
 impl AccountRef {
@@ -92,6 +98,61 @@ impl Tokens {
     /// Пора обновлять: до истечения меньше часа (обновляем заранее).
     pub fn needs_refresh(&self, now: u64) -> bool {
         self.expires_at <= now + 3600
+    }
+}
+
+/// Провайдер входа. Вход у каждого свой (код Microsoft, браузер Ely.by), а получение
+/// действующей сессии для игры — общий шаг запуска.
+#[allow(async_fn_in_trait)]
+pub trait AccountProvider {
+    fn provider(&self) -> Provider;
+    /// Действующие токены (обновлённые заранее, если истекают) и актуальные данные аккаунта.
+    async fn session(
+        &self,
+        store: &AccountStore<'_>,
+        account: &AccountRef,
+    ) -> Result<(AccountRef, Tokens)>;
+}
+
+pub struct MicrosoftProvider;
+pub struct ElyByProvider;
+
+impl AccountProvider for MicrosoftProvider {
+    fn provider(&self) -> Provider {
+        Provider::Microsoft
+    }
+    async fn session(
+        &self,
+        store: &AccountStore<'_>,
+        account: &AccountRef,
+    ) -> Result<(AccountRef, Tokens)> {
+        microsoft::refresh_if_needed(store, account).await
+    }
+}
+
+impl AccountProvider for ElyByProvider {
+    fn provider(&self) -> Provider {
+        Provider::ElyBy
+    }
+    async fn session(
+        &self,
+        store: &AccountStore<'_>,
+        account: &AccountRef,
+    ) -> Result<(AccountRef, Tokens)> {
+        store.ensure_ely_allowed()?;
+        let tokens = ely::refresh_if_needed(store, account).await?;
+        Ok((account.clone(), tokens))
+    }
+}
+
+/// Сессия для аккаунта любого провайдера.
+pub async fn session(
+    store: &AccountStore<'_>,
+    account: &AccountRef,
+) -> Result<(AccountRef, Tokens)> {
+    match account.provider {
+        Provider::Microsoft => MicrosoftProvider.session(store, account).await,
+        Provider::ElyBy => ElyByProvider.session(store, account).await,
     }
 }
 
@@ -278,6 +339,8 @@ mod tests {
             name: "Steve".into(),
             owns_java_edition: true,
             checked_at: 1,
+            skin_url: None,
+            skin_variant: None,
         };
         let ely = AccountRef {
             provider: Provider::ElyBy,
@@ -322,6 +385,8 @@ mod tests {
             name: "N".into(),
             owns_java_edition: false,
             checked_at: 0,
+            skin_url: None,
+            skin_variant: None,
         };
         store.upsert(unverified.clone(), &tokens("t")).unwrap();
         assert!(

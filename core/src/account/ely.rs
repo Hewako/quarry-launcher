@@ -165,9 +165,11 @@ pub async fn login(
     let account = AccountRef {
         provider: Provider::ElyBy,
         uuid: info.uuid.replace('-', ""),
-        name: info.username,
+        name: info.username.clone(),
         owns_java_edition: false,
         checked_at: now(),
+        skin_url: Some(crate::skin::ely_skin_url(&info.username)),
+        skin_variant: None,
     };
     let tokens = Tokens {
         access_token: token.access_token,

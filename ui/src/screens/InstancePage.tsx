@@ -95,6 +95,19 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
           </select>
           <span />
         </div>
+        {(inst.auth_mode === "microsoft" ? ms : ely).length > 1 && (
+          <div className="setting">
+            <div className="lbl">Аккаунт<span className="hint">для этого профиля</span></div>
+            <select className="field" value={inst.account ?? ""} onChange={async (e) => {
+              try { onChanged(await api.updateInstance(inst.id, { account: e.target.value || null })); }
+              catch (err) { await dialog.alert("Не удалось сменить аккаунт", errText(err)); }
+            }}>
+              <option value="">По умолчанию</option>
+              {(inst.auth_mode === "microsoft" ? ms : ely).map((a) => <option key={a.uuid} value={`${a.provider}:${a.uuid}`}>{a.name}</option>)}
+            </select>
+            <SourceTag source={inst.account ? "profile" : "global"} />
+          </div>
+        )}
       </div>
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn pri" onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</button>
