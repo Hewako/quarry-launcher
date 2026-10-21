@@ -88,6 +88,7 @@ export function FirstRun({ onDone }: { onDone: (next: "accounts" | "create" | "i
               <li>{t("Данные входа хранятся в защищённом хранилище системы, а не в файлах.")}</li>
               <li>{t("Из логов и отчётов скрываются токены, путь к домашней папке и IP-адреса.")}</li>
             </ul>
+            <button className="btn link small" onClick={() => api.openLink("https://github.com/Hewako/quarry-launcher/blob/main/docs/PRIVACY.md").catch(() => {})}>{t("Подробнее о приватности")}</button>
           </>
         )}
 

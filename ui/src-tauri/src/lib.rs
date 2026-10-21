@@ -1479,6 +1479,20 @@ fn bisect_step(
     .map_err(err)
 }
 
+/// Новая версия Quarry на GitHub (если проверка включена). Ошибки сети — не повод мешать.
+#[tauri::command]
+async fn launcher_update(
+    state: State<'_, AppState>,
+) -> CmdResult<Option<quarry_core::updates::Release>> {
+    if !GlobalSettings::load(&state.data)
+        .map(|g| g.check_launcher_updates)
+        .unwrap_or(true)
+    {
+        return Ok(None);
+    }
+    Ok(quarry_core::updates::latest().await.unwrap_or(None))
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1831,6 +1845,7 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            launcher_update,
             bisect_status,
             bisect_step,
             mrpack_preview,

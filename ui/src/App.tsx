@@ -13,7 +13,7 @@ import { FirstRun } from "./screens/FirstRun";
 import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
-import { clearNotes, markRead, useNotes } from "./notify";
+import { clearNotes, markRead, pushNote, useNotes } from "./notify";
 import { Palette, type Command } from "./ui/Palette";
 import { syncLang, t } from "./i18n";
 
@@ -92,6 +92,7 @@ function Shell() {
   const [loadError, setLoadError] = useState("");
   const [palette, setPalette] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
+  const [release, setRelease] = useState<{ version: string; url: string } | null>(null);
   const [bell, setBell] = useState(false);
   const notes = useNotes();
 
@@ -118,6 +119,11 @@ function Shell() {
     api.globalSettings().then((g) => { setTheme(g.theme); applyTheme(g.theme); applyAppearance(g); setFirstRun(!g.first_run_done); syncLang(g.language); }).catch(() => applyTheme("dark"));
     refresh();
     refreshAccounts();
+    api.launcherUpdate().then((r) => {
+      if (!r) return;
+      setRelease(r);
+      pushNote({ kind: "info", title: t("Вышла новая версия Quarry {0}", r.version) });
+    }).catch(() => {});
     const off = listen("launch-finished", () => refresh());
     // Ctrl+K / ⌘K — палитра команд.
     const onKey = (e: KeyboardEvent) => {
@@ -189,6 +195,13 @@ function Shell() {
       <div className="main">
         {info.dev_launch && (
           <div className="devbar" role="status">{t("Сборка разработчика (dev-launch): разрешён запуск без входа для отладки на собственной копии игры. В релизе этого режима нет.")}</div>
+        )}
+        {release && (
+          <div className="devbar" role="status">
+            {t("Вышла новая версия Quarry {0}.", release.version)}{" "}
+            <button className="btn link small" onClick={() => api.openLink(release.url).catch(() => {})}>{t("Открыть страницу загрузки")}</button>
+            <button className="btn link small" onClick={() => setRelease(null)}>{t("Позже")}</button>
+          </div>
         )}
         <header className="top">
           {downloading ? (

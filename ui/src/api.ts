@@ -191,6 +191,7 @@ export const api = {
   pingServer: (address: string) => invoke<ServerStatus>("server_ping", { address }),
   firstRunInfo: () => invoke<{ data_dir: string; free_bytes?: number; javas: { path: string; major: number; version: string; arch: string }[] }>("first_run_info"),
   firstRunDone: (language: string) => invoke<void>("first_run_done", { language }),
+  launcherUpdate: () => invoke<{ version: string; url: string; notes: string } | null>("launcher_update"),
   pauseDownloads: (paused: boolean) => invoke<void>("downloads_pause", { paused }),
   memoryAdvice: (maxMb: number, packMb?: number) => invoke<string[]>("memory_advice", { maxMb, packMb: packMb ?? null }),
   launchSettings: (id: string) =>

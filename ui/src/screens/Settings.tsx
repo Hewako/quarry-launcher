@@ -135,6 +135,11 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           <span />
         </div>
         <div className="setting">
+          <div className="lbl">{t("Сообщать о новой версии Quarry")}<span className="hint">{t("проверка на GitHub при запуске; скачивание — только по вашему нажатию")}</span></div>
+          <label className="row"><input type="checkbox" checked={s.check_launcher_updates} onChange={(e) => setS({ ...s, check_launcher_updates: e.target.checked })} /> {t("включено")}</label>
+          <span />
+        </div>
+        <div className="setting">
           <div className="lbl">{t("Папка данных")}</div>
           <span className="mono" style={{ userSelect: "text" }}>{path(info.data_dir, s.streamer_mode)}</span>
           <span />

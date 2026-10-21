@@ -841,4 +841,11 @@ export const EN: Record<string, string> = {
   "закрепить версию": "pin version",
   "Проверить обновление": "Check for update",
   "Что нового в версии": "What's new in this version",
+  "Вышла новая версия Quarry {0}": "Quarry {0} is out",
+  "Вышла новая версия Quarry {0}.": "Quarry {0} is out.",
+  "Открыть страницу загрузки": "Open the download page",
+  "Позже": "Later",
+  "Сообщать о новой версии Quarry": "Tell me about new Quarry versions",
+  "проверка на GitHub при запуске; скачивание — только по вашему нажатию": "checked on GitHub at startup; downloading only when you click",
+  "Подробнее о приватности": "More about privacy",
 };

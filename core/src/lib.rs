@@ -32,6 +32,7 @@ pub mod servers;
 pub mod settings;
 pub mod skin;
 pub mod snapshot;
+pub mod updates;
 pub mod worlds;
 
 pub use error::{Error, Result};
