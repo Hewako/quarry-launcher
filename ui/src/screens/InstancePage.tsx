@@ -12,6 +12,7 @@ import { ServersTab } from "./ServersTab";
 import { ResourcesTab } from "./ResourcesTab";
 import { ConfigsTab } from "./ConfigsTab";
 import { OptionsTab } from "./OptionsTab";
+import { nick, useStreamer } from "../streamer";
 
 export type Tab = "mods" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
 
@@ -28,6 +29,7 @@ function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }
 
 function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: AccountRef[]; onChanged: (i: Instance) => void }) {
   const dialog = useDialog();
+  const streamer = useStreamer();
   const [data, setData] = useState<Awaited<ReturnType<typeof api.launchSettings>> | null>(null);
   const [draft, setDraft] = useState<LaunchOverrides>(inst.settings);
   const [args, setArgs] = useState((inst.settings.jvm_args ?? []).join(" "));
@@ -158,7 +160,7 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
               catch (err) { await dialog.alert("Не удалось сменить аккаунт", errText(err)); }
             }}>
               <option value="">По умолчанию</option>
-              {(inst.auth_mode === "microsoft" ? ms : ely).map((a) => <option key={a.uuid} value={`${a.provider}:${a.uuid}`}>{a.name}</option>)}
+              {(inst.auth_mode === "microsoft" ? ms : ely).map((a) => <option key={a.uuid} value={`${a.provider}:${a.uuid}`}>{nick(a.name, streamer)}</option>)}
             </select>
             <SourceTag source={inst.account ? "profile" : "global"} />
           </div>

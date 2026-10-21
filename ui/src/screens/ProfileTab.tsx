@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, errText, metaOf, sizeText, SHARABLE, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
+import { path, useStreamer } from "../streamer";
 
 const COLORS = ["#4f8a5b", "#3b7dd8", "#8b5cf6", "#d0703a", "#c2415d", "#2a9d8f", "#a3a3a3"];
 
@@ -88,6 +89,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
   const [usage, setUsage] = useState<{ parts: { label: string; size: number }[]; total: number } | null>(null);
   const [modal, setModal] = useState<"" | "clone" | "copy">("");
   const [moving, setMoving] = useState(false);
+  const streamer = useStreamer();
   const groups = [...new Set(instances.map((i) => i.group).filter(Boolean))] as string[];
 
   useEffect(() => { api.diskUsage(inst.id).then(setUsage).catch(() => setUsage(null)); }, [inst.id]);
@@ -184,7 +186,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
       <h4 style={{ margin: "22px 0 10px" }}>Где лежит папка игры</h4>
       <div className="card">
         <p className="small" style={{ marginTop: 0 }}>
-          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{inst.external_game_dir}</span> : "В папке данных Quarry."}
+          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : "В папке данных Quarry."}
         </p>
         <div className="row">
           <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? "Переносим…" : "Перенести в другую папку или на другой диск…"}</button>

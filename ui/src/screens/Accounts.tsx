@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { accountKey, api, errText, type AccountRef, type AppInfo, type DeviceCode } from "../api";
 import { Avatar } from "../ui/Avatar";
 import { Modal, useDialog } from "../ui/Dialog";
+import { nick, useStreamer } from "../streamer";
 
 function MicrosoftLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: AccountRef) => void }) {
   const [code, setCode] = useState<DeviceCode | null>(null);
@@ -91,6 +92,7 @@ function ElyLogin({ onClose, onDone }: { onClose: () => void; onDone: (a: Accoun
 }
 
 export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppInfo; accounts: AccountRef[]; defaultKey?: string; onChanged: () => void }) {
+  const streamer = useStreamer();
   const dialog = useDialog();
   const [msLogin, setMsLogin] = useState(false);
   const [elyBusy, setElyBusy] = useState(false);
@@ -135,7 +137,7 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
         <div className="acc" key={accountKey(a)}>
           <Avatar account={a} size={40} />
           <div className="grow">
-            <b>{a.name}</b>
+            <b>{nick(a.name, streamer)}</b>
             <div className="row" style={{ gap: 6, marginTop: 4 }}>
               {a.provider === "microsoft" ? (
                 <>

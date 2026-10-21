@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, errText, type Instance, type Server, type ServerStatus } from "../api";
 import { launches } from "../launches";
 import { Modal, useDialog } from "../ui/Dialog";
+import { address, useStreamer } from "../streamer";
 
 type Ping = ServerStatus | { error: string } | "loading";
 
@@ -37,6 +38,7 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
   const [list, setList] = useState<Server[] | null>(null);
   const [pings, setPings] = useState<Record<string, Ping>>({});
   const [edit, setEdit] = useState<number | "new" | null>(null);
+  const streamer = useStreamer();
 
   const ping = useCallback((ip: string) => {
     setPings((p) => ({ ...p, [ip]: "loading" }));
@@ -89,7 +91,7 @@ export function ServersTab({ inst, running }: { inst: Instance; running: boolean
                   <tr key={`${s.ip}-${i}`}>
                     <td style={{ width: 48 }}>{icon ? <img className="sicon" src={icon} alt="" /> : <div className="sicon" aria-hidden />}</td>
                     <td>
-                      <b>{s.name}</b> <span className="muted small mono">{s.ip}</span>
+                      <b>{s.name}</b> <span className="muted small mono">{address(s.ip, streamer)}</span>
                       <div className="small">
                         {p === "loading" || !p ? <span className="muted"><span className="spinner" /> Проверяем…</span>
                           : "error" in p ? <span className="muted" title={p.error}>Не отвечает</span>

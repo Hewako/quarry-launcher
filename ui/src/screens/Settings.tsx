@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, diagnostics, errText, sizeText, type AppInfo, type GlobalSettings } from "../api";
 import { useDialog } from "../ui/Dialog";
+import { path, setStreamer } from "../streamer";
 
 export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: string; onTheme: (t: string) => void }) {
   const dialog = useDialog();
@@ -19,6 +20,7 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
     try {
       const next: GlobalSettings = { ...s, theme, launch: { ...s.launch, jvm_args: args.trim() ? args.trim().split(/\s+/) : undefined } };
       await api.saveGlobalSettings(next);
+      setStreamer(next.streamer_mode);
       setS(next);
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
@@ -59,7 +61,7 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">Режим стримера<span className="hint">скрывать ник в логах лаунчера</span></div>
+          <div className="lbl">Режим стримера<span className="hint">скрывать ник, пути и адреса серверов на экране, в логах и в отчётах</span></div>
           <label className="row"><input type="checkbox" checked={s.streamer_mode} onChange={(e) => setS({ ...s, streamer_mode: e.target.checked })} /> включён</label>
           <span />
         </div>
@@ -97,7 +99,7 @@ export function Settings({ info, theme, onTheme }: { info: AppInfo; theme: strin
         </div>
         <div className="setting">
           <div className="lbl">Папка данных</div>
-          <span className="mono" style={{ userSelect: "text" }}>{info.data_dir}</span>
+          <span className="mono" style={{ userSelect: "text" }}>{path(info.data_dir, s.streamer_mode)}</span>
           <span />
         </div>
       </div>

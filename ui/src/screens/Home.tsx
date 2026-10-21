@@ -4,6 +4,7 @@ import { isActive, type LaunchState } from "../launches";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
 import { CrashCard } from "../ui/CrashCard";
 import type { Tab } from "./InstancePage";
+import { nick, useStreamer } from "../streamer";
 
 type Sort = "recent" | "name" | "version" | "created";
 
@@ -43,6 +44,7 @@ function remarks(inst: Instance, accounts: AccountRef[], info: AppInfo) {
 export function Home(p: Props) {
   const [view, setView] = useState<"cards" | "list">(() => (localStorage.getItem("profilesView") as "cards" | "list") ?? "cards");
   const setViewSaved = (v: "cards" | "list") => { setView(v); try { localStorage.setItem("profilesView", v); } catch { /* недоступно — не страшно */ } };
+  const streamer = useStreamer();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>(() => (localStorage.getItem("profilesSort") as Sort) ?? "recent");
   const [filter, setFilter] = useState("all");
@@ -107,7 +109,7 @@ export function Home(p: Props) {
                 <PlayButton inst={inst} state={state} />
                 <StatusBadge inst={inst} state={state} />
                 <span className="muted small">
-                  {inst.auth_mode === "ely_by" ? "Вход: Ely.by (совместимые серверы)" : ms ? `Аккаунт: ${ms.name} (Microsoft)` : p.info.dev_launch ? "Без входа (dev-launch)" : "Нет аккаунта"}
+                  {inst.auth_mode === "ely_by" ? "Вход: Ely.by (совместимые серверы)" : ms ? `Аккаунт: ${nick(ms.name, streamer)} (Microsoft)` : p.info.dev_launch ? "Без входа (dev-launch)" : "Нет аккаунта"}
                 </span>
               </div>
               {state && isActive(state) && <LaunchProgress state={state} />}

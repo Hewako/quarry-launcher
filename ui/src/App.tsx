@@ -11,6 +11,7 @@ import { Logs } from "./screens/Logs";
 import { Settings } from "./screens/Settings";
 import { Avatar } from "./ui/Avatar";
 import { DialogProvider } from "./ui/Dialog";
+import { nick, path, setStreamer, useStreamer } from "./streamer";
 
 type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
 
@@ -30,6 +31,7 @@ function applyTheme(theme: string) {
 }
 
 function Shell() {
+  const streamer = useStreamer();
   const states = useLaunches();
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -57,7 +59,7 @@ function Shell() {
   const [defaultKey, setDefaultKey] = useState<string | undefined>();
   const refreshAccounts = useCallback(() => {
     api.listAccounts().then(setAccounts).catch(() => setAccounts([]));
-    api.globalSettings().then((g) => setDefaultKey(g.default_account)).catch(() => {});
+    api.globalSettings().then((g) => { setDefaultKey(g.default_account); setStreamer(g.streamer_mode); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -111,7 +113,7 @@ function Shell() {
         <button className="acct" onClick={() => setScreen("accounts")}>
           <Avatar account={ms} />
           <div style={{ minWidth: 0 }}>
-            <b>{ms?.name ?? "Нет аккаунта"}</b>
+            <b>{ms ? nick(ms.name, streamer) : "Нет аккаунта"}</b>
             {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? "владение ✓" : "игра не куплена"}</span> : <span className="badge">войти</span>}
           </div>
         </button>
@@ -165,7 +167,7 @@ function Shell() {
         </main>
 
         <footer className="foot">
-          <span>Данные: {info.data_dir}</span>
+          <span>Данные: {path(info.data_dir, streamer)}</span>
           <span>Quarry {info.version}{info.dev_launch ? " · dev-launch" : ""}</span>
         </footer>
       </div>
