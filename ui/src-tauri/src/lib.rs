@@ -97,6 +97,7 @@ fn trash_instance(state: State<AppState>, id: String) -> CmdResult<String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn update_instance(
     state: State<AppState>,
     id: String,
@@ -106,6 +107,8 @@ fn update_instance(
     // `None` — не менять, пустая строка — аккаунт по умолчанию.
     account: Option<String>,
     meta: Option<ProfileMeta>,
+    // Команды запуска: окно присылает их после того, как игрок подтвердил точные строки.
+    hooks: Option<quarry_core::launch::hooks::Hooks>,
 ) -> CmdResult<Instance> {
     let store = InstanceStore::new(state.data.clone());
     let mut inst = store.get(&id).map_err(err)?;
@@ -129,6 +132,18 @@ fn update_instance(
     }
     if let Some(a) = account {
         inst.account = (!a.is_empty()).then_some(a);
+    }
+    if let Some(mut h) = hooks {
+        for c in [&h.pre, &h.post_exit, &h.post_crash, &h.wrapper]
+            .into_iter()
+            .flatten()
+        {
+            if c.chars().count() > 1000 || c.contains(['\n', '\r']) {
+                return Err("Команда — одна строка до 1000 символов".into());
+            }
+        }
+        h.approved = (!h.is_empty()).then(|| h.fingerprint());
+        inst.hooks = h;
     }
     if let Some(m) = meta {
         let text = |v: Option<String>, max: usize| -> CmdResult<Option<String>> {

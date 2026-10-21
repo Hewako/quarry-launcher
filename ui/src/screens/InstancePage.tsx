@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errText, loaderName, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
+import { api, errText, loaderName, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { useDialog } from "../ui/Dialog";
 import { LaunchProgress, PlayButton, StatusBadge } from "../ui/common";
@@ -37,6 +37,18 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   const [gameArgs, setGameArgs] = useState((inst.settings.game_args ?? []).join(" "));
   const [envText, setEnvText] = useState(Object.entries(inst.settings.env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n"));
   const [advice, setAdvice] = useState<string[]>([]);
+  const [hooks, setHooks] = useState<Hooks>(inst.hooks ?? {});
+  const saveHooks = async () => {
+    const clean: Hooks = Object.fromEntries(Object.entries(hooks).filter(([k, v]) => k !== "approved" && typeof v === "string" && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
+    const lines = Object.entries(clean).map(([k, v]) => `${{ pre: t("до запуска"), post_exit: t("после выхода"), post_crash: t("после краша"), wrapper: t("обёртка") }[k]}: ${v}`);
+    if (lines.length && !(await dialog.confirm({
+      title: t("Разрешить эти команды?"),
+      body: <><p style={{ marginTop: 0 }}>{t("Они будут выполняться на этом компьютере от вашего имени при каждом запуске профиля. Добавляйте только то, что понимаете.")}</p><pre className="cfgdiff" style={{ userSelect: "text" }}>{lines.join("\n")}</pre></>,
+      confirm: t("Разрешить"),
+      danger: true,
+    }))) return;
+    try { onChanged(await api.updateInstance(inst.id, { hooks: clean })); } catch (e) { await dialog.alert(t("Не сохранено"), errText(e)); }
+  };
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState("");
 
@@ -178,6 +190,21 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
           <div className="cmd" style={{ marginTop: 6 }}>{preview}</div>
         </div>
       )}
+      <details className="card" style={{ marginTop: 16 }} open={!!inst.hooks && !inst.hooks.approved}>
+        <summary>{t("Команды до и после запуска (для опытных)")}</summary>
+        {inst.hooks && Object.keys(inst.hooks).some((k) => k !== "approved") && !inst.hooks.approved && (
+          <div className="alert warn"><span>{t("Команды изменены вне лаунчера и не выполняются, пока вы их не подтвердите.")}</span></div>
+        )}
+        {([["pre", t("Перед запуском"), "./backup.sh"], ["post_exit", t("После выхода"), ""], ["post_crash", t("После краша"), ""], ["wrapper", t("Обёртка (только Linux)"), "gamemoderun"]] as const).map(([k, label, ph]) => (
+          <div className="setting" key={k}>
+            <div className="lbl">{label}</div>
+            <input className="field mono" placeholder={ph} value={hooks[k] ?? ""} onChange={(e) => setHooks({ ...hooks, [k]: e.target.value })} />
+            <span />
+          </div>
+        ))}
+        <p className="muted small">{t("Команда выполняется в папке игры; доступны переменные QUARRY_PROFILE и QUARRY_GAME_DIR. Если команда перед запуском завершится с ошибкой, игра не запустится.")}</p>
+        <button className="btn" onClick={saveHooks}>{t("Сохранить команды…")}</button>
+      </details>
     </>
   );
 }

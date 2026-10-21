@@ -98,6 +98,9 @@ pub struct Instance {
     pub external_game_dir: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<PackRef>,
+    /// Свои команды до/после запуска; выполняются только с подтверждением игрока.
+    #[serde(default, skip_serializing_if = "crate::launch::hooks::Hooks::is_empty")]
+    pub hooks: crate::launch::hooks::Hooks,
 }
 
 fn format_version() -> u32 {
@@ -262,6 +265,7 @@ impl InstanceStore {
             last_launch: None,
             external_game_dir: None,
             pack: None,
+            hooks: Default::default(),
         };
         self.save(&inst)?;
         Ok(inst)
@@ -330,6 +334,7 @@ impl InstanceStore {
             last_launch: None,
             external_game_dir: None,
             pack: None,
+            hooks: Default::default(),
         };
         self.save(&inst)?;
         Ok(inst)

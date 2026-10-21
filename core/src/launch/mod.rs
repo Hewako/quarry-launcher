@@ -2,6 +2,7 @@
 //! процесс → итог. Один запуск на профиль одновременно (single-flight).
 
 pub mod args;
+pub mod hooks;
 pub mod log4j;
 pub mod process;
 
@@ -563,7 +564,46 @@ async fn run(
         launcher_name: LAUNCHER_NAME,
         launcher_version: LAUNCHER_VERSION,
     };
-    let cmd = args::build(&spec);
+    let mut cmd = args::build(&spec);
+    // Хуки: только подтверждённые игроком строки; изменённые вне лаунчера не выполняются.
+    let hooks = (!inst.hooks.is_empty()).then(|| inst.hooks.clone());
+    let hooks = match hooks {
+        Some(h) if h.is_approved() => Some(h),
+        Some(_) => {
+            emit(LaunchEvent::Warning {
+                message: "Команды запуска изменены вне лаунчера и не выполнены — подтвердите их на вкладке «Запуск и память»".into(),
+            });
+            None
+        }
+        None => None,
+    };
+    if let Some(pre) = hooks
+        .as_ref()
+        .and_then(|h| h.pre.as_deref())
+        .filter(|c| !c.trim().is_empty())
+    {
+        emit(LaunchEvent::Warning {
+            message: format!("Команда перед запуском: {pre}"),
+        });
+        let (code, out) = hooks::run(pre, &game_dir, &inst.id).await?;
+        if code != 0 {
+            return Err(Error::invalid(format!(
+                "Команда перед запуском завершилась с кодом {code}. Вывод:\n{out}"
+            )));
+        }
+    }
+    if cfg!(target_os = "linux")
+        && let Some(w) = hooks.as_ref().and_then(|h| h.wrapper.as_deref())
+    {
+        let mut parts = w.split_whitespace().map(str::to_string);
+        if let Some(program) = parts.next() {
+            let mut args: Vec<String> = parts.collect();
+            args.push(cmd.program.display().to_string());
+            args.append(&mut cmd.args);
+            cmd.program = program.into();
+            cmd.args = args;
+        }
+    }
     if !cmd.unresolved.is_empty() {
         emit(LaunchEvent::Warning {
             message: format!(
@@ -694,6 +734,28 @@ async fn run(
     let prepare_secs = prepare_started.elapsed().as_secs();
     let mut info = proc.wait().await?;
     info.prepare_secs = Some(prepare_secs);
+    let after = hooks.as_ref().and_then(|h| {
+        if info.crashed {
+            h.post_crash.as_deref()
+        } else {
+            h.post_exit.as_deref()
+        }
+    });
+    if let Some(c) = after.filter(|c| !c.trim().is_empty()) {
+        let (code, _) = hooks::run(c, &game_dir, &inst.id)
+            .await
+            .unwrap_or((-1, String::new()));
+        emit(LaunchEvent::Warning {
+            message: format!(
+                "Команда после {}: {c} (код {code})",
+                if info.crashed {
+                    "краша"
+                } else {
+                    "выхода"
+                }
+            ),
+        });
+    }
     drop(safe_guard);
     if global.backup_after_exit
         && !info.killed

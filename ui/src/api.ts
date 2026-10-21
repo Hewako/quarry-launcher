@@ -48,7 +48,9 @@ export interface Instance {
   last_launch?: LastLaunch;
   external_game_dir?: string;
   pack?: { name: string; version: string };
+  hooks?: Hooks;
 }
+export interface Hooks { pre?: string; post_exit?: string; post_crash?: string; wrapper?: string; approved?: string }
 
 export interface ProfileMeta { group?: string; description?: string; color?: string; favorite: boolean; archived: boolean }
 export interface CloneParts { mods: boolean; configs: boolean; resources: boolean; worlds: boolean }
@@ -163,7 +165,7 @@ export const api = {
   createInstance: (name: string, gameVersion: string, loader: LoaderKind, loaderVersion?: string) =>
     invoke<Instance>("create_instance", { name, gameVersion, loader, loaderVersion: loaderVersion ?? null }),
   trashInstance: (id: string) => invoke<string>("trash_instance", { id }),
-  updateInstance: (id: string, patch: { name?: string; settings?: LaunchOverrides; authMode?: AuthMode; account?: string | null; meta?: ProfileMeta }) =>
+  updateInstance: (id: string, patch: { name?: string; settings?: LaunchOverrides; authMode?: AuthMode; account?: string | null; meta?: ProfileMeta; hooks?: Hooks }) =>
     invoke<Instance>("update_instance", {
       id,
       name: patch.name ?? null,
@@ -172,6 +174,7 @@ export const api = {
       // "" — аккаунт по умолчанию, null — не менять.
       account: patch.account === undefined ? null : (patch.account ?? ""),
       meta: patch.meta ?? null,
+      hooks: patch.hooks ?? null,
     }),
   cloneInstance: (id: string, name: string, parts: CloneParts) => invoke<Instance>("clone_instance", { id, name, parts }),
   diskUsage: (id: string) => invoke<{ parts: { label: string; size: number }[]; total: number }>("disk_usage", { id }),
