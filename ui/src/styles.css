@@ -238,3 +238,8 @@ select.field { padding: 6px 8px; }
 .servers td:first-child { vertical-align: top; }
 .sacts { gap: 14px; margin-top: 4px; }
 .servers td:last-child > * + * { margin-left: 10px; }
+
+/* Наборы модов */
+.groupbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 13px; cursor: pointer; }
+.field.mini { padding: 3px 6px; font-size: 12px; }

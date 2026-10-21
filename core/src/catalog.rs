@@ -99,6 +99,8 @@ pub struct Project {
     pub client_side: String,
     #[serde(default)]
     pub server_side: String,
+    #[serde(default)]
+    pub categories: Vec<String>,
 }
 
 /// Подождать, если лимит запросов почти исчерпан.
@@ -241,6 +243,19 @@ pub async fn versions(project: &str, loaders: &[&str], game_version: &str) -> Re
         ));
     }
     get(&url).await
+}
+
+/// Несколько проектов одним запросом.
+pub async fn projects(ids: &[String]) -> Result<Vec<Project>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = serde_json::to_string(ids).unwrap_or_default();
+    get(&format!(
+        "{API}/projects?ids={}",
+        urlencoding::encode(&list)
+    ))
+    .await
 }
 
 pub async fn version(id: &str) -> Result<Version> {

@@ -177,7 +177,12 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState(false);
 
-  const load = useCallback(() => { mods.view(inst.id).then((d) => { setData(d); setError(""); }).catch((e) => setError(errText(e))); }, [inst.id]);
+  const [groups, setGroups] = useState<{ names: string[]; groups: Record<string, string> }>({ names: [], groups: {} });
+  const [grouping, setGrouping] = useState(false);
+  const load = useCallback(() => {
+    mods.view(inst.id).then((d) => { setData(d); setError(""); }).catch((e) => setError(errText(e)));
+    mods.groups(inst.id).then(setGroups).catch(() => {});
+  }, [inst.id]);
   useEffect(load, [load]);
   const refreshUpdates = useCallback(() => {
     if (inst.loader === "vanilla") return;
@@ -230,6 +235,17 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   if (error) return <div className="alert err"><span>{error}</span></div>;
   if (!data) return <p className="muted"><span className="spinner" /> Проверяем моды…</p>;
 
+  const toggleGroup = async (g: string, enabled: boolean) => {
+    try { await mods.toggleGroup(inst.id, g, enabled); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
+  };
+  const autoGroups = async () => {
+    setGrouping(true);
+    try {
+      const n = await mods.autoGroups(inst.id);
+      load();
+      await dialog.alert("Готово", n ? `Разложено по группам: ${n}. Остальные можно отнести к группе вручную в колонке «Группа».` : "Новых модов, которые можно разложить автоматически, нет. Отнесите их к группе вручную в колонке «Группа».");
+    } catch (e) { await dialog.alert("Не получилось", errText(e)); } finally { setGrouping(false); }
+  };
   const toggle = async (file: string, enabled: boolean) => {
     try { await mods.toggle(inst.id, file, enabled); load(); } catch (e) { await dialog.alert("Не получилось", errText(e)); }
   };
@@ -274,6 +290,23 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         <div className="kpi warn"><b>{r.warnings}</b><span>есть предупреждение</span></div>
         <div className="kpi err"><b>{r.blocked}</b><span>блокирует запуск</span></div>
       </div>
+      {data.files.length > 0 && (
+        <div className="groupbar" role="group" aria-label="Наборы модов">
+          <span className="muted small">Наборы:</span>
+          {groups.names.map((g) => {
+            const files = data.files.filter((f) => groups.groups[f.file_name] === g);
+            if (files.length === 0) return null;
+            const on = files.filter((f) => f.enabled).length;
+            return (
+              <label key={g} className="chip" title={`Включено ${on} из ${files.length}`}>
+                <input type="checkbox" checked={on === files.length} ref={(el) => { if (el) el.indeterminate = on > 0 && on < files.length; }}
+                  disabled={running} onChange={(e) => toggleGroup(g, e.target.checked)} /> {g} <span className="muted">{on}/{files.length}</span>
+              </label>
+            );
+          })}
+          <button className="btn link small" disabled={grouping} onClick={autoGroups}>{grouping ? "Раскладываем…" : "Разложить автоматически"}</button>
+        </div>
+      )}
       <div className="modbar">
         <input className="field" style={{ maxWidth: 260 }} placeholder="Найти мод…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span style={{ flex: 1 }} />
@@ -288,7 +321,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
       ) : (
         <div className="card" style={{ padding: 0, overflow: "auto" }}>
           <table className="modtable">
-            <thead><tr><th style={{ width: 44 }} /><th>Мод</th><th>Версия</th><th>Доступна версия</th><th>Сторона</th><th>Источник</th><th>Слой</th><th>Состояние</th><th /></tr></thead>
+            <thead><tr><th style={{ width: 44 }} /><th>Мод</th><th>Версия</th><th>Доступна версия</th><th>Группа</th><th>Сторона</th><th>Источник</th><th>Слой</th><th>Состояние</th><th /></tr></thead>
             <tbody>
               {shown.map((f) => {
                 const st = stateOf(f);
@@ -308,6 +341,13 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
                         </label>
                       );
                     })()}</td>
+                    <td>
+                      <select className="field auto mini" aria-label={`Группа для ${m?.name ?? f.file_name}`} value={groups.groups[f.file_name] ?? ""}
+                        onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert("Не получилось", errText(er)))}>
+                        <option value="">—</option>
+                        {groups.names.map((g) => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </td>
                     <td>{sideName[m?.side ?? "unknown"]}</td>
                     <td>{f.source ? sourceName[f.source.source] : "вручную"}</td>
                     <td className="layer">{f.source?.layer === "base" ? "сборка" : "мои моды"}</td>

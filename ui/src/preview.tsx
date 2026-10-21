@@ -37,6 +37,7 @@ mockIPC((cmd, args) => {
         { file_name: "ComplementaryReimagined.zip", description: "", size: 1_200_000, is_dir: false, enabled: true },
         { file_name: "BSL.zip", description: "", size: 900_000, is_dir: false, enabled: false },
       ] };
+    case "mods_groups": return { names: ["Оптимизация", "Визуал", "Удобство", "Серверные", "Разработка"], groups: { "sodium.jar": "Оптимизация", "iris.jar": "Визуал", "indium.jar": "Визуал" } };
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"
       ? { version: "Paper 26.3", protocol: 800, online: 7, max: 50, motd: "Добро пожаловать!\nВыживание с друзьями", latency_ms: 38 }

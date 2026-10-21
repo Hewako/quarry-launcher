@@ -248,6 +248,10 @@ export const mods = {
   addFiles: (id: string, paths: string[]) => invoke<{ file_name: string; title: string; known: boolean }[]>("mods_add_files", { id, paths }),
   search: (id: string, query: string, kind: ProjectKind, offset = 0, category = "") =>
     invoke<{ hits: SearchHit[]; total_hits: number }>("catalog_search", { id, query, kind, offset, category: category || null }),
+  groups: (id: string) => invoke<{ names: string[]; groups: Record<string, string> }>("mods_groups", { id }),
+  setGroup: (id: string, file: string, group: string | null) => invoke<void>("mods_set_group", { id, file, group }),
+  toggleGroup: (id: string, group: string, enabled: boolean) => invoke<string[]>("mods_toggle_group", { id, group, enabled }),
+  autoGroups: (id: string) => invoke<number>("mods_auto_groups", { id }),
   planInstall: (id: string, project: string, channel: Channel = "auto") => invoke<Plan>("mods_plan_install", { id, project, channel }),
   checkUpdates: (id: string) => invoke<Plan>("mods_check_updates", { id }),
   apply: (id: string, plan: Plan, reason: string) => invoke<SnapshotInfo>("mods_apply", { id, plan, reason }),

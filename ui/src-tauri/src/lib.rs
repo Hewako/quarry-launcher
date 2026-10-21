@@ -1024,6 +1024,67 @@ async fn resource_install(
     .map_err(err)
 }
 
+#[derive(Serialize)]
+struct GroupsView {
+    names: Vec<&'static str>,
+    groups: std::collections::BTreeMap<String, String>,
+}
+
+#[tauri::command]
+fn mods_groups(state: State<AppState>, id: String) -> CmdResult<GroupsView> {
+    let dir = InstanceStore::new(state.data.clone())
+        .dir(&id)
+        .map_err(err)?;
+    Ok(GroupsView {
+        names: quarry_core::mods::groups::GROUPS.to_vec(),
+        groups: quarry_core::mods::groups::ModGroups::load(&dir)
+            .map_err(err)?
+            .groups,
+    })
+}
+
+#[tauri::command]
+fn mods_set_group(
+    state: State<AppState>,
+    id: String,
+    file: String,
+    group: Option<String>,
+) -> CmdResult<()> {
+    quarry_core::mods::groups::set_group(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        &file,
+        group.as_deref(),
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+fn mods_toggle_group(
+    state: State<AppState>,
+    id: String,
+    group: String,
+    enabled: bool,
+) -> CmdResult<Vec<String>> {
+    if state.registry.is_running(&id) {
+        return Err("Сначала закройте игру в этом профиле".into());
+    }
+    quarry_core::mods::groups::toggle_group(
+        &InstanceStore::new(state.data.clone()),
+        &id,
+        &group,
+        enabled,
+    )
+    .map_err(err)
+}
+
+#[tauri::command]
+async fn mods_auto_groups(state: State<'_, AppState>, id: String) -> CmdResult<usize> {
+    quarry_core::mods::groups::auto_assign(&InstanceStore::new(state.data.clone()), &id)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 fn servers_list(
     state: State<AppState>,
@@ -1188,6 +1249,10 @@ pub fn run() {
             disk_usage,
             copy_between,
             servers_list,
+            mods_groups,
+            mods_set_group,
+            mods_toggle_group,
+            mods_auto_groups,
             resources_list,
             resources_set_enabled,
             shader_set,

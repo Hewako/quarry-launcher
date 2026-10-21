@@ -3,6 +3,7 @@
 
 pub mod crash;
 pub mod doctor;
+pub mod groups;
 pub mod lock;
 pub mod manage;
 pub mod meta;
