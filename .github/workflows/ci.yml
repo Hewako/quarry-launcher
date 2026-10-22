@@ -48,6 +48,7 @@ jobs:
           npm ci
           npm run build
           npm run i18n:check
+          npm run ipc:check
 
       - name: cargo fmt
         run: cargo fmt --all --check

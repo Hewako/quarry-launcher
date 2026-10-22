@@ -203,6 +203,7 @@ export const EN: Record<string, string> = {
   "Закрепить": "Pin",
   "Закреплённая версия не обновляется": "A pinned version is not updated",
   "Закрыть": "Close",
+  "Закрыть окно": "Close window",
   "Закрыть игру": "Close game",
   "Закрыть игру?": "Close the game?",
   "Заметка": "Note",
@@ -899,4 +900,10 @@ export const EN: Record<string, string> = {
   "друзья, выживание": "friends, survival",
   "Показывать серверы с тегом": "Show servers with tag",
   "Все серверы": "All servers",
+  "Зелёный": "Green",
+  "Синий": "Blue",
+  "Фиолетовый": "Violet",
+  "Оранжевый": "Orange",
+  "Малиновый": "Crimson",
+  "Бирюзовый": "Teal",
 };

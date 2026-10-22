@@ -4,7 +4,7 @@ import { useDialog } from "../ui/Dialog";
 import { path, setStreamer } from "../streamer";
 import { switchLang, t, tc } from "../i18n";
 
-const ACCENTS = ["#3fb950", "#2563eb", "#7c3aed", "#d0703a", "#c2415d", "#2a9d8f"];
+const ACCENTS: [string, string][] = [["#3fb950", t("Зелёный")], ["#2563eb", t("Синий")], ["#7c3aed", t("Фиолетовый")], ["#d0703a", t("Оранжевый")], ["#c2415d", t("Малиновый")], ["#2a9d8f", t("Бирюзовый")]];
 
 export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo; theme: string; onTheme: (t: string) => void; onAppearance: (g: GlobalSettings) => void }) {
   const dialog = useDialog();
@@ -77,9 +77,9 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
         <div className="setting">
           <div className="lbl">{t("Акцентный цвет")}</div>
           <div className="row" role="radiogroup" aria-label={t("Акцентный цвет")}>
-            <button className={`swatch auto ${!s.accent ? "on" : ""}`} role="radio" aria-checked={!s.accent} title={t("Как в теме")} onClick={() => { const n = { ...s, accent: undefined }; setS(n); onAppearance(n); }}>A</button>
-            {ACCENTS.map((c) => (
-              <button key={c} className={`swatch ${s.accent === c ? "on" : ""}`} role="radio" aria-checked={s.accent === c} aria-label={c} style={{ background: c }}
+            <button className={`swatch auto ${!s.accent ? "on" : ""}`} role="radio" aria-checked={!s.accent} aria-label={t("Как в теме")} title={t("Как в теме")} onClick={() => { const n = { ...s, accent: undefined }; setS(n); onAppearance(n); }}>A</button>
+            {ACCENTS.map(([c, name]) => (
+              <button key={c} className={`swatch ${s.accent === c ? "on" : ""}`} role="radio" aria-checked={s.accent === c} aria-label={name} title={name} style={{ background: c }}
                 onClick={() => { const n = { ...s, accent: c }; setS(n); onAppearance(n); }} />
             ))}
           </div>

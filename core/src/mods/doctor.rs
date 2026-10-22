@@ -439,7 +439,12 @@ pub fn check(
         })
         .collect();
     let count = |s: ModState| mods.iter().filter(|m| m.state == s).count();
-    let blocked = count(ModState::Blocked);
+    // Проблема самого профиля (находка без файлов) тоже блокирует запуск.
+    let blocked = count(ModState::Blocked)
+        + findings
+            .iter()
+            .filter(|f| f.severity == Severity::Blocking && f.files.is_empty())
+            .count();
     Report {
         total: files.len(),
         ok: count(ModState::Ok),
@@ -484,6 +489,15 @@ pub fn macos_icon_fix(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn profile_problem_counts_as_blocking() {
+        // Находка без файлов (проблема самого профиля) — счётчик не должен показывать 0 рядом с ✖.
+        let r = check(&[], LoaderKind::Fabric, "1.16.5", Some("0.19.5"));
+        assert!(!r.can_launch);
+        assert_eq!(r.blocked, 1);
+    }
+
     #[test]
     fn macos_icon_fix_is_required_for_old_fabric() {
         let none = std::collections::BTreeSet::new();

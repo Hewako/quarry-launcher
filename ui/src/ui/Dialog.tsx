@@ -48,6 +48,8 @@ export function Modal({ title, children, onClose, wide }: { title: string; child
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} ref={ref} style={wide ? { width: "min(720px, calc(100vw - 40px))" } : undefined}>
         <h3>{title}</h3>
         {children}
+        {/* В конце, чтобы автофокус и Tab сначала шли по содержимому окна. */}
+        <button className="iconbtn dialog-x" aria-label={t("Закрыть окно")} title={t("Закрыть окно")} onClick={onClose}>×</button>
       </div>
     </div>
   );
