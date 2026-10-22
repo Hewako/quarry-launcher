@@ -160,12 +160,12 @@ pub fn analyze(
     if let Some(l) = text_has("Regular windows do not have icons on macOS") {
         return Analysis {
             title: "Старая версия игры не открывает окно на macOS".into(),
-            explanation: "Версии 1.14–1.18 пытаются поставить иконку окна, а современная macOS этого не позволяет (ошибка игры MCL-15163, исправлена Mojang в 1.19). Для Fabric-профиля помогает мод-исправление; для обычной игры — версия 1.19 и новее.".into(),
+            explanation: "Версии 1.13–1.17 ставят иконку окна, а современная macOS это запрещает (ошибка игры MCL-15163). Профилю Fabric 1.14–1.17 помогает мод MacOS LWJGL Fix — Mod Doctor предложит его поставить. Без модов работают версии 1.12.2 и старше или 1.18 и новее.".into(),
             confidence: Confidence::High,
             confidence_label: Confidence::High.label(),
             evidence: vec![l],
             suspects: Vec::new(),
-            actions: Vec::new(),
+            actions: vec![Action::OpenModDoctor],
         };
     }
     // 3. Загрузчик сам перечислил несовместимые моды.

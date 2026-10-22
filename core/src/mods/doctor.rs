@@ -182,6 +182,14 @@ pub fn check(
         }
     }
 
+    if cfg!(target_os = "macos") {
+        findings.extend(macos_icon_fix(
+            loader,
+            game_version,
+            &present.keys().cloned().collect(),
+        ));
+    }
+
     if loader == LoaderKind::Vanilla && !enabled.is_empty() {
         findings.push(Finding {
             severity: Severity::Warning,
@@ -452,8 +460,50 @@ pub fn present_ids(files: &[ModFile]) -> BTreeSet<String> {
         .collect()
 }
 
+/// На macOS Fabric-профилю 1.14–1.17.1 нужен мод-исправление иконки окна, иначе игра не
+/// откроет окно (см. `install::lwjgl::icon_crash`). Мод отменяет только этот вызов (MIT, исходники открыты).
+pub fn macos_icon_fix(
+    loader: LoaderKind,
+    game_version: &str,
+    present: &BTreeSet<String>,
+) -> Option<Finding> {
+    (loader == LoaderKind::Fabric
+        && crate::install::lwjgl::icon_crash(game_version)
+        && !present.contains("macoslwjglfix"))
+    .then(|| Finding {
+        severity: Severity::Blocking,
+        title: "Без исправления игра не откроет окно на macOS".into(),
+        detail: "Эта версия ставит иконку окна, а современная macOS это запрещает (ошибка игры MCL-15163). Мод MacOS LWJGL Fix отменяет только этот вызов.".into(),
+        evidence: format!("Minecraft {game_version} на macOS, мода macoslwjglfix нет"),
+        files: Vec::new(),
+        fixes: vec![Fix::Install {
+            mod_id: "macos-lwjgl-fix".into(),
+        }],
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn macos_icon_fix_is_required_for_old_fabric() {
+        let none = std::collections::BTreeSet::new();
+        let f = macos_icon_fix(LoaderKind::Fabric, "1.16.5", &none).expect("нужна находка");
+        assert_eq!(f.severity, Severity::Blocking);
+        assert_eq!(
+            f.fixes,
+            vec![Fix::Install {
+                mod_id: "macos-lwjgl-fix".into()
+            }]
+        );
+        let with_fix = std::collections::BTreeSet::from(["macoslwjglfix".to_string()]);
+        assert!(macos_icon_fix(LoaderKind::Fabric, "1.16.5", &with_fix).is_none());
+        assert!(macos_icon_fix(LoaderKind::Fabric, "1.18.2", &none).is_none());
+        assert!(
+            macos_icon_fix(LoaderKind::Vanilla, "1.16.5", &none).is_none(),
+            "для vanilla — запрет запуска, не Mod Doctor"
+        );
+    }
+
     use super::*;
     use crate::mods::meta::{Dependency, Side};
 

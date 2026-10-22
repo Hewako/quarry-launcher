@@ -92,10 +92,55 @@ pub fn replace(
     ))
 }
 
+/// Версия падает на macOS при установке иконки окна (ошибка игры MCL-15163): GLFW из LWJGL 3.3
+/// сообщает, что иконок у окон macOS нет, а игра считает любую ошибку GLFW при старте фатальной.
+/// Снапшоты не угадываем — для них сработает разбор краша.
+pub fn icon_crash(game_version: &str) -> bool {
+    let minor = game_version
+        .strip_prefix("1.")
+        .and_then(|r| r.split(['.', '-']).next())
+        .and_then(|m| m.parse::<u32>().ok());
+    matches!(minor, Some(13..=17))
+}
+
+/// Почему vanilla-профиль этой версии не откроет окно на macOS и что делать; `None` — откроет.
+pub fn vanilla_icon_crash(game_version: &str) -> Option<String> {
+    if !icon_crash(game_version) {
+        return None;
+    }
+    let way = if game_version.starts_with("1.13") {
+        "Выберите версию 1.12.2 или старше либо 1.18 и новее."
+    } else {
+        "Создайте профиль Fabric той же версии (Mod Doctor предложит мод-исправление) или выберите версию 1.18 и новее."
+    };
+    Some(format!(
+        "Minecraft {game_version} без модов не откроет окно на современной macOS: игра ставит иконку окна, а macOS это запрещает (ошибка игры MCL-15163). {way}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::metadata::Arch;
+
+    #[test]
+    fn icon_crash_only_for_1_13_to_1_17() {
+        // Проверено запуском 22.10.2026 (macOS, Apple M4): 1.13.2 и 1.16.5 падают, 1.12.2 и 1.18.2 — нет.
+        for v in ["1.13", "1.13.2", "1.14.4", "1.16.5", "1.16.5-rc1", "1.17.1"] {
+            assert!(icon_crash(v), "{v}");
+        }
+        for v in [
+            "1.12.2", "1.18", "1.18.2", "1.21.11", "26.3", "21w03a", "b1.7.3",
+        ] {
+            assert!(!icon_crash(v), "{v}");
+        }
+        assert!(vanilla_icon_crash("1.16.5").unwrap().contains("Fabric"));
+        assert!(
+            !vanilla_icon_crash("1.13.2").unwrap().contains("Fabric"),
+            "для 1.13 Fabric нет"
+        );
+        assert!(vanilla_icon_crash("1.18.2").is_none());
+    }
 
     fn fixture(name: &str) -> VersionJson {
         let path = format!(

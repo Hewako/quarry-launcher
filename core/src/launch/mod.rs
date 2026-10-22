@@ -468,6 +468,12 @@ async fn run(
     if let Some(note) = recover_safe_mode(&game_dir) {
         emit(LaunchEvent::Warning { message: note });
     }
+    if cfg!(target_os = "macos")
+        && inst.loader == crate::loader::LoaderKind::Vanilla
+        && let Some(why) = crate::install::lwjgl::vanilla_icon_crash(&inst.game_version)
+    {
+        return Err(Error::invalid(why));
+    }
     // Mod Doctor до запуска: объявленные конфликты и недостающие моды останавливают запуск
     // сразу, а не после минуты загрузки.
     if inst.loader != crate::loader::LoaderKind::Vanilla && !options.safe_mode {

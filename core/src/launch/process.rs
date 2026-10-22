@@ -281,13 +281,16 @@ pub async fn spawn(
         let crash_report = newest_crash_report(&game_dir, started_at);
         // 130/143 — игру закрыли сигналом (Ctrl+C, завершение сеанса), это не краш.
         let closed_by_signal = matches!(code, Some(130) | Some(143));
-        let crashed = !killed && (crash_report.is_some() || (code != Some(0) && !closed_by_signal));
-        let tail = tail
+        let tail: Vec<String> = tail
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .iter()
             .cloned()
             .collect();
+        // Окно не создалось: Minecraft пишет об этом в лог и выходит с кодом 0.
+        let window_failed = tail.iter().any(|l| l.contains("Failed to create window"));
+        let crashed = !killed
+            && (crash_report.is_some() || window_failed || (code != Some(0) && !closed_by_signal));
         Ok(ExitInfo {
             code,
             duration_secs: started.elapsed().as_secs(),
@@ -408,6 +411,32 @@ mod tests {
         assert!(info.killed);
         assert!(!info.crashed, "остановка пользователем — не краш");
         assert!(info.duration_secs < 10);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[tokio::test]
+    async fn window_failure_is_a_crash() {
+        // Minecraft пишет «Failed to create window» и выходит с кодом 0 — для игрока это краш.
+        let d = tmpdir("window");
+        let cmd = LaunchCommand {
+            program: "/bin/sh".into(),
+            args: vec![
+                "-c".into(),
+                "echo '[Render thread/WARN]: Failed to create window: GLFW error 65548'; exit 0"
+                    .into(),
+            ],
+            cwd: d.clone(),
+            env: vec![],
+            unresolved: vec![],
+        };
+        let info = spawn(&cmd, &d.join("run.log"), Masker::new(), None)
+            .await
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
+        assert_eq!(info.code, Some(0));
+        assert!(info.crashed);
         std::fs::remove_dir_all(&d).unwrap();
     }
 
