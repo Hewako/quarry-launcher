@@ -33,9 +33,14 @@ export function t(ru: string, ...args: unknown[]): string {
   return args.length ? s.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? "")) : s;
 }
 
-const core = lang === "en" ? coreTranslator(CORE_EN) : (s: string) => s;
+const core = lang === "en" ? coreTranslator({ ...EN, ...CORE_EN }) : (s: string) => s;
 
-/** Перевести сообщение ядра: ошибку, предупреждение запуска, находку Mod Doctor, разбор краша. */
+/** Русский исходник с подстановками — для того, что хранится (уведомления) и переводится при показе через tc(). */
+export function src(ru: string, ...args: unknown[]): string {
+  return args.length ? ru.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? "")) : ru;
+}
+
+/** Перевести сообщение ядра или сохранённый исходник: ошибку, предупреждение, находку Mod Doctor, уведомление. */
 export function tc(ru: string): string;
 export function tc(ru: string | undefined): string | undefined;
 export function tc(ru?: string) {

@@ -15,7 +15,7 @@ import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
 import { clearNotes, markRead, pushNote, useNotes } from "./notify";
 import { Palette, type Command } from "./ui/Palette";
-import { syncLang, t } from "./i18n";
+import { src, syncLang, t, tc } from "./i18n";
 
 type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
 
@@ -130,7 +130,7 @@ function Shell() {
     api.launcherUpdate().then((r) => {
       if (!r) return;
       setRelease(r);
-      pushNote({ kind: "info", title: t("Вышла новая версия Quarry {0}", r.version) });
+      pushNote({ kind: "info", title: src("Вышла новая версия Quarry {0}", r.version) });
     }).catch(() => {});
     const off = listen("launch-finished", () => refresh());
     // Ctrl+K / ⌘K — палитра команд.
@@ -233,7 +233,7 @@ function Shell() {
                 <div className="row" style={{ justifyContent: "space-between" }}><b>{t("Уведомления")}</b>{notes.notes.length > 0 && <button className="btn link small" onClick={clearNotes}>{t("Очистить")}</button>}</div>
                 {notes.notes.length === 0 ? <p className="muted small">{t("Пока ничего нового.")}</p> : notes.notes.map((n) => (
                   <div key={n.id} className={`note ${n.kind}`}>
-                    <b>{n.title}</b>{n.body && <span className="small">{n.body}</span>}
+                    <b>{tc(n.title)}</b>{n.body && <span className="small">{tc(n.body)}</span>}
                     <span className="muted small">{n.profile ? `${instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
                   </div>
                 ))}

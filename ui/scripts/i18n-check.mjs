@@ -16,7 +16,7 @@ function walk(dir) {
     const p = join(dir, f);
     if (statSync(p).isDirectory()) walk(p);
     else if (/\.tsx?$/.test(f) && !/^(i18n|preview)/.test(f)) {
-      for (const m of readFileSync(p, "utf8").matchAll(/\bt\(\s*("(?:[^"\\]|\\.)*")/g)) {
+      for (const m of readFileSync(p, "utf8").matchAll(/\b(?:t|src)\(\s*("(?:[^"\\]|\\.)*")/g)) {
         const s = JSON.parse(m[1]);
         if (!keys.has(s)) missing.set(s, p);
       }
@@ -90,6 +90,10 @@ for (const [ru, en] of [
   ["нужна Java 21 (21+) — найдена 17; Java для Apple Silicon не найдена — используется x64-версия через Rosetta 2", "Java 21 (21+) is needed — found 17; no Java for Apple Silicon found — using the x64 build through Rosetta 2"],
   ["Просто текст игрока", "Просто текст игрока"],
 ]) if (tr(ru) !== en) missing.set(ru, `i18n.core.ts: перевёл как ${JSON.stringify(tr(ru))}, ждали ${JSON.stringify(en)}`);
+// Сохранённые уведомления переводятся при показе общим словарём интерфейса и ядра.
+const both = coreTranslator({ ...Object.fromEntries(keys), ...Object.fromEntries(coreDict) });
+const note = "Вышла новая версия Quarry {0}";
+if (keys.has(note) && both(note.replace("{0}", "0.2.0")) !== keys.get(note).replace("{0}", "0.2.0")) missing.set(note, "i18n.core.ts: сохранённое уведомление не переводится");
 for (const [ru, en] of coreDict) if (holes(ru) !== holes(en)) missing.set(ru, `i18n.core.en.ts: в переводе другие {N} — ${JSON.stringify(en)}`);
 
 if (process.argv.includes("--core-list")) { for (const s of core.keys()) console.log(JSON.stringify(s)); process.exit(0); }

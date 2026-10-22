@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import type { ExitInfo, LaunchEvent, Progress } from "./api";
 import { pushNote } from "./notify";
-import { t, tc } from "./i18n";
+import { src, t, tc } from "./i18n";
 
 export interface LaunchState {
   phase: "preparing" | "running" | "done" | "failed";
@@ -65,7 +65,7 @@ class LaunchStore {
           case "progress": return { ...s, progress: e.progress };
           case "account": return { ...s, account: `${e.name} (${e.provider})` };
           case "java": return { ...s, javaLabel: tc(e.label), javaReason: tc(e.reason) };
-          case "warning": pushNote({ kind: "warn", title: tc(e.message), profile: id }); return { ...s, warnings: [...s.warnings, tc(e.message)] };
+          case "warning": pushNote({ kind: "warn", title: e.message, profile: id }); return { ...s, warnings: [...s.warnings, tc(e.message)] };
           case "started": return { ...s, phase: "running", stageLabel: t("Игра запущена"), command: e.command, progress: undefined };
           case "log": {
             const logs = s.logs.length >= MAX_LOG_LINES ? s.logs.slice(-MAX_LOG_LINES + 1) : s.logs.slice();
@@ -73,14 +73,14 @@ class LaunchStore {
             return { ...s, logs };
           }
           case "exited":
-            if (e.info.crashed) pushNote({ kind: "err", title: t("Игра упала"), body: tc(e.info.analysis?.title), profile: id });
+            if (e.info.crashed) pushNote({ kind: "err", title: src("Игра упала"), body: e.info.analysis?.title, profile: id });
             return { ...s, exit: e.info, phase: "done", stageLabel: e.info.crashed ? t("Игра упала") : t("Игра закрыта") };
         }
       });
       schedule();
     });
     await listen<{ id: string; error?: string }>("launch-finished", ({ payload }) => {
-      if (payload.error) pushNote({ kind: "err", title: t("Запуск не удался"), body: tc(payload.error), profile: payload.id });
+      if (payload.error) pushNote({ kind: "err", title: src("Запуск не удался"), body: payload.error, profile: payload.id });
       this.update(payload.id, (s) =>
         payload.error ? { ...s, phase: "failed", error: tc(payload.error) } : { ...s, phase: "done" },
       );

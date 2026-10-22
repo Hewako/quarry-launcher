@@ -238,7 +238,7 @@ export function Home(p: Props) {
           <div className="card feed">
             {notes.slice(0, 5).map((n) => (
               <div key={n.id} className={`fitem ${n.kind}`}>
-                <b>{n.title}</b>{n.body && <span className="small">{n.body}</span>}
+                <b>{tc(n.title)}</b>{n.body && <span className="small">{tc(n.body)}</span>}
                 <span className="muted small">{n.profile ? `${p.instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
               </div>
             ))}
