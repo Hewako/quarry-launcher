@@ -37,8 +37,10 @@ jobs:
         run: cargo build -p quarry-core --bin quarry
 
       - name: Последняя релизная версия Minecraft
+        # Сначала в файл: awk выходит на первой строке, и quarry упал бы на закрытом канале.
         run: |
-          v=$(target/debug/quarry versions | awk '$2 == "release" { print $1; exit }')
+          target/debug/quarry versions > "$RUNNER_TEMP/versions.txt"
+          v=$(awk '$2 == "release" { print $1; exit }' "$RUNNER_TEMP/versions.txt")
           test -n "$v"
           echo "MC=$v" >> "$GITHUB_ENV"
           echo "Версия: $v"

@@ -10,6 +10,12 @@ on:
 permissions:
   contents: write
 
+# Один тег — одна сборка за раз: GitHub иногда присылает событие push дважды, и два прогона
+# одновременно писали бы файлы в один черновик релиза.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: ${{ matrix.name }}
