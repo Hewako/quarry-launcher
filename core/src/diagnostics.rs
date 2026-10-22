@@ -62,7 +62,7 @@ pub fn crash_reports(game_dir: &Path) -> Vec<CrashReportInfo> {
 }
 
 fn crash_path(game_dir: &Path, file: &str) -> Result<PathBuf> {
-    if file.contains(['/', '\\']) || file.contains("..") || !file.ends_with(".txt") {
+    if !crate::paths::is_plain_file_name(file) || !file.ends_with(".txt") {
         return Err(Error::invalid(format!("Нет такого отчёта: {file}")));
     }
     Ok(game_dir.join("crash-reports").join(file))

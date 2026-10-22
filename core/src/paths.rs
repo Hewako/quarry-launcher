@@ -166,6 +166,17 @@ pub fn unique_sibling(path: &Path, tag: &str) -> PathBuf {
     path.with_file_name(format!("{name}.{tag}-{suffix:016x}"))
 }
 
+/// Имя одного файла из чужих данных (API каталога, архив, интерфейс): без папок, `..`, `:` и
+/// буквы диска. На Windows `dir.join("C:evil.jar")` заменяет `dir` целиком — файл уйдёт из папки.
+pub fn is_plain_file_name(name: &str) -> bool {
+    use std::path::Component;
+    !name.contains(['/', '\\', ':'])
+        && matches!(
+            Path::new(name).components().collect::<Vec<_>>()[..],
+            [Component::Normal(_)]
+        )
+}
+
 /// Соединить базовую папку с относительным путём из недоверенного источника (JSON версии,
 /// архив, .mrpack). Абсолютные пути, `..` и префиксы дисков отклоняются.
 pub fn safe_join(base: &Path, relative: &str) -> Option<PathBuf> {
@@ -263,6 +274,27 @@ pub fn dir_size(p: &Path) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn plain_file_names_only() {
+        for ok in ["sodium-0.6.jar", "a..b.jar", "Мод.jar", "pack.zip"] {
+            assert!(is_plain_file_name(ok), "{ok}");
+        }
+        // C:evil.jar на Windows: join() с буквой диска заменяет всю папку назначения.
+        for bad in [
+            "",
+            ".",
+            "..",
+            "a/b.jar",
+            "a\\b.jar",
+            "../x.jar",
+            "/x.jar",
+            "C:evil.jar",
+            "C:\\x.jar",
+        ] {
+            assert!(!is_plain_file_name(bad), "{bad}");
+        }
+    }
+
     use super::*;
 
     #[test]

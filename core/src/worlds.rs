@@ -162,7 +162,8 @@ pub fn list(game_dir: &Path, backups_dir: &Path) -> Vec<WorldInfo> {
 }
 
 /// Восстановить мир из бэкапа. Текущий мир не удаляется: сначала он сам бэкапится,
-/// затем откладывается в `backups/<профиль>/replaced/`.
+/// затем откладывается в `<папка игры>/.quarry-replaced/` — на тот же диск, что и мир
+/// (папку игры могли перенести на другой диск, а rename между дисками не работает).
 pub fn restore(game_dir: &Path, backups_dir: &Path, backup_file: &Path) -> Result<String> {
     let backup_file = std::fs::canonicalize(backup_file).at(backup_file)?;
     let base = std::fs::canonicalize(backups_dir).at(backups_dir)?;
@@ -188,6 +189,29 @@ pub fn restore(game_dir: &Path, backups_dir: &Path, backup_file: &Path) -> Resul
     let saves = game_dir.join("saves");
     std::fs::create_dir_all(&saves).at(&saves)?;
     let staging = crate::paths::unique_sibling(&saves.join(&world), "restore");
+    // Оборвавшаяся распаковка не должна оставить в saves/ полмира, который игра покажет.
+    if let Err(e) = unpack_world(&mut zip, &world, &staging, &backup_file) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+    let current = saves.join(&world);
+    if current.exists() {
+        snapshot::backup_world(game_dir, backups_dir, &world)?;
+        let replaced = game_dir.join(".quarry-replaced");
+        std::fs::create_dir_all(&replaced).at(&replaced)?;
+        let aside = replaced.join(format!("{world}-{}", crate::instance::now()));
+        std::fs::rename(&current, &aside).at(&current)?;
+    }
+    std::fs::rename(&staging, &current).at(&staging)?;
+    Ok(world)
+}
+
+fn unpack_world(
+    zip: &mut zip::ZipArchive<std::fs::File>,
+    world: &str,
+    staging: &Path,
+    backup_file: &Path,
+) -> Result<()> {
     for i in 0..zip.len() {
         let mut e = zip.by_index(i).map_err(|e| Error::parse("бэкап мира", e))?;
         let name = e.name().unwrap_or_default().to_string();
@@ -197,25 +221,16 @@ pub fn restore(game_dir: &Path, backups_dir: &Path, backup_file: &Path) -> Resul
         if e.is_dir() || rel.is_empty() {
             continue;
         }
-        let target = safe_join(&staging, rel)
+        let target = safe_join(staging, rel)
             .ok_or_else(|| Error::invalid(format!("Недопустимый путь в бэкапе: {name}")))?;
         if let Some(p) = target.parent() {
             std::fs::create_dir_all(p).at(p)?;
         }
         let mut buf = Vec::new();
-        e.read_to_end(&mut buf).at(&backup_file)?;
+        e.read_to_end(&mut buf).at(backup_file)?;
         std::fs::write(&target, buf).at(&target)?;
     }
-    let current = saves.join(&world);
-    if current.exists() {
-        snapshot::backup_world(game_dir, backups_dir, &world)?;
-        let replaced = backups_dir.join("replaced");
-        std::fs::create_dir_all(&replaced).at(&replaced)?;
-        let aside = replaced.join(format!("{world}-{}", crate::instance::now()));
-        std::fs::rename(&current, &aside).at(&current)?;
-    }
-    std::fs::rename(&staging, &current).at(&staging)?;
-    Ok(world)
+    Ok(())
 }
 
 /// Миры, сохранённые в более новой версии игры, чем запускаемая.
@@ -299,10 +314,37 @@ mod tests {
                 .len(),
             1000
         );
-        // Испорченная версия не пропала: отложена и забэкаплена.
-        assert!(backups.join("replaced").read_dir().unwrap().count() == 1);
+        // Испорченная версия не пропала: забэкаплена и отложена на том же диске, что и мир.
+        assert!(game.join(".quarry-replaced").read_dir().unwrap().count() == 1);
         assert!(restore(&game, &backups, &root.join("elsewhere.zip")).is_err());
         assert!(backup_latest(&game, &backups).is_some());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn broken_backup_leaves_no_half_world() {
+        let root = std::env::temp_dir().join(format!("quarry-worlds-bad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (game, backups) = (root.join("game"), root.join("backups"));
+        make_world(&game, "W1", "Мир", 4671, 1);
+        std::fs::create_dir_all(&backups).unwrap();
+        let bad = backups.join("W1-bad.zip");
+        let mut z = zip::ZipWriter::new(std::fs::File::create(&bad).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        z.start_file("W1/level.dat", opts).unwrap();
+        z.write_all(b"x").unwrap();
+        z.start_file("W1/../../evil", opts).unwrap();
+        z.write_all(b"x").unwrap();
+        z.finish().unwrap();
+        assert!(restore(&game, &backups, &bad).is_err());
+        let leftovers: Vec<_> = std::fs::read_dir(game.join("saves"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "W1")
+            .collect();
+        assert!(leftovers.is_empty(), "в saves остались {leftovers:?}");
+        assert!(!root.join("evil").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

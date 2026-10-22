@@ -65,15 +65,6 @@ pub fn suggest(
     }
 }
 
-fn check_file(file_name: &str) -> Result<()> {
-    if file_name.contains(['/', '\\']) || file_name.contains("..") || !file_name.ends_with(".jar") {
-        return Err(Error::invalid(format!(
-            "Недопустимое имя файла мода: {file_name}"
-        )));
-    }
-    Ok(())
-}
-
 /// Отнести мод к группе (`None` — убрать из группы).
 pub fn set_group(
     store: &InstanceStore,
@@ -81,7 +72,7 @@ pub fn set_group(
     file_name: &str,
     group: Option<&str>,
 ) -> Result<()> {
-    check_file(file_name)?;
+    super::jar_file_name(file_name)?;
     if let Some(g) = group
         && !GROUPS.contains(&g)
     {

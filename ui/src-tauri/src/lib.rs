@@ -489,7 +489,7 @@ fn read_log_file(
     let path = match file {
         Some(name) => {
             // Только файлы из папки логов профиля.
-            if name.contains(['/', '\\']) || name.contains("..") {
+            if !quarry_core::paths::is_plain_file_name(&name) {
                 return Err("Недопустимое имя файла".into());
             }
             logs.join(name)

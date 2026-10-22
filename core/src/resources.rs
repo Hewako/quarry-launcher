@@ -250,7 +250,7 @@ pub fn list(game_dir: &Path, kind: Kind, game_format: Option<i64>) -> Vec<PackIn
 }
 
 fn check_name(dir: &Path, name: &str) -> Result<()> {
-    if name.contains(['/', '\\']) || name.contains("..") || !dir.join(name).exists() {
+    if !crate::paths::is_plain_file_name(name) || !dir.join(name).exists() {
         return Err(Error::invalid(format!("Нет такого файла: {name}")));
     }
     Ok(())
@@ -391,7 +391,7 @@ pub async fn install(
         ));
     }
     let name = &f.filename;
-    if name.contains(['/', '\\']) || name.contains("..") {
+    if !crate::paths::is_plain_file_name(name) {
         return Err(Error::invalid(format!("Недопустимое имя файла: {name}")));
     }
     let sha1 = f

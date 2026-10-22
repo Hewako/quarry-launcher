@@ -414,7 +414,7 @@ pub async fn add_files(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        safe_file_name(&name)
+        super::jar_file_name(&name)
             .map_err(|_| Error::invalid(format!("{name}: можно добавлять только .jar")))?;
         let metas = super::meta::read_jar(p)?;
         if metas.is_empty() {
@@ -496,17 +496,6 @@ fn stability(t: &str) -> u8 {
     }
 }
 
-fn safe_file_name(name: &str) -> Result<&str> {
-    if name.is_empty()
-        || name.contains(['/', '\\'])
-        || name.contains("..")
-        || !name.ends_with(".jar")
-    {
-        return Err(Error::invalid(format!("Недопустимое имя файла: {name}")));
-    }
-    Ok(name)
-}
-
 /// Применить план (возможно, частично: только выбранные `titles`). Перед изменением — снимок.
 pub async fn apply(
     store: &InstanceStore,
@@ -541,7 +530,7 @@ pub async fn apply(
                 .ok_or_else(|| Error::invalid("Modrinth не прислал хэш файла"))?;
             tasks.push(Task {
                 url: f.url.clone(),
-                dest: mods_dir.join(safe_file_name(name)?),
+                dest: mods_dir.join(super::jar_file_name(name)?),
                 expected: Expected::Sha1(sha1.to_ascii_lowercase()),
                 size: Some(f.size),
             });
@@ -559,7 +548,7 @@ pub async fn apply(
                 .ok_or_else(|| Error::invalid("CurseForge не прислал хэш файла"))?;
             tasks.push(Task {
                 url: url.to_string(),
-                dest: mods_dir.join(safe_file_name(name)?),
+                dest: mods_dir.join(super::jar_file_name(name)?),
                 expected: Expected::Sha1(sha1),
                 size: Some(f.file_length),
             });
@@ -570,7 +559,8 @@ pub async fn apply(
     let mut lock = PackLock::load(&c.instance_dir)?;
     for ch in &plan.changes {
         if let Some(old) = &ch.old_file {
-            let old = safe_file_name(old.trim_end_matches(".disabled")).map(|_| old.as_str())?;
+            let old =
+                super::jar_file_name(old.trim_end_matches(".disabled")).map(|_| old.as_str())?;
             if ch.file_name.as_deref() != Some(old) {
                 for candidate in [mods_dir.join(old), mods_dir.join(format!("{old}.disabled"))] {
                     if candidate.exists() {
@@ -669,7 +659,7 @@ pub fn remove(
 ) -> Result<SnapshotInfo> {
     let game_dir = store.game_dir(id)?;
     let instance_dir = store.dir(id)?;
-    let base = safe_file_name(file_name)?;
+    let base = super::jar_file_name(file_name)?;
     let snap = snapshot::create(
         &instance_dir,
         &game_dir,

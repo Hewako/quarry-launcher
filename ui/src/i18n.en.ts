@@ -295,7 +295,7 @@ export const EN: Record<string, string> = {
   "Метаданные версии": "Version metadata",
   "Механики": "Mechanics",
   "Мир": "World",
-  "Мир вернётся к состоянию на {0}. Текущий мир не удаляется: сначала он сам сохранится в бэкап и отложится в папку backups/…/replaced.": "The world will return to its state as of {0}. The current world is not deleted: it is backed up first and moved to backups/…/replaced.",
+  "Мир вернётся к состоянию на {0}. Текущий мир не удаляется: сначала он сам сохранится в бэкап и отложится в папку .quarry-replaced внутри папки игры.": "The world will return to its state as of {0}. The current world is not deleted: it is backed up first and moved to the .quarry-replaced folder inside the game folder.",
   "Мир восстановлен": "World restored",
   "Мир не восстановлен": "World not restored",
   "Миров в профиле пока нет.": "No worlds in this profile yet.",

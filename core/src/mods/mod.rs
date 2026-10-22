@@ -100,14 +100,20 @@ pub fn inventory(game_dir: &Path, instance_dir: &Path) -> Result<Vec<ModFile>> {
     Ok(out)
 }
 
-/// Проверить, что имя файла из интерфейса — именно файл в `mods/`, без выхода за папку.
-fn mod_path(game_dir: &Path, file_name: &str) -> Result<PathBuf> {
-    if file_name.contains(['/', '\\']) || file_name.contains("..") || !file_name.ends_with(".jar") {
-        return Err(Error::invalid(format!(
-            "Недопустимое имя файла мода: {file_name}"
-        )));
+/// Имя JAR-файла мода (из каталога, архива или интерфейса) — один файл в `mods/`, не путь.
+pub(crate) fn jar_file_name(name: &str) -> Result<&str> {
+    if crate::paths::is_plain_file_name(name) && name.ends_with(".jar") {
+        Ok(name)
+    } else {
+        Err(Error::invalid(format!(
+            "Недопустимое имя файла мода: {name}"
+        )))
     }
-    Ok(game_dir.join("mods").join(file_name))
+}
+
+/// Путь к файлу мода в `mods/` по имени из интерфейса.
+fn mod_path(game_dir: &Path, file_name: &str) -> Result<PathBuf> {
+    Ok(game_dir.join("mods").join(jar_file_name(file_name)?))
 }
 
 /// Включить или выключить мод: `x.jar` ↔ `x.jar.disabled`. Файл не удаляется.

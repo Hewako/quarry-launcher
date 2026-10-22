@@ -323,7 +323,7 @@ pub struct WorldBackup {
 /// Бэкап мира в zip: `backups/<профиль>/<мир>-<время>.zip`. Хранится KEEP_WORLD_BACKUPS последних.
 pub fn backup_world(game_dir: &Path, backups_dir: &Path, world: &str) -> Result<WorldBackup> {
     use std::io::Write;
-    if world.contains(['/', '\\']) || world.contains("..") || world.is_empty() {
+    if !crate::paths::is_plain_file_name(world) {
         return Err(Error::invalid("Недопустимое имя мира"));
     }
     let src = game_dir.join("saves").join(world);
