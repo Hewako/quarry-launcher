@@ -1,20 +1,30 @@
-/* Quarry — оформление по макету v1.4. Тёмная тема по умолчанию, светлая — data-theme="light". */
+/* Quarry — оформление по варианту F (docs/INTERFACE_F.md). Тёмная мята по умолчанию, светлая выведена
+   из тёмной теми же токенами — data-theme="light". Контраст текста ≥ 4.5:1 в обеих темах. */
 :root {
-  --bg: #0f1216; --panel: #161b21; --panel2: #1c232b; --line: #26303a; --text: #e6ebf0; --muted: #8b98a5;
-  --accent: #4cc38a; --accent-ink: #06210f; --blue: #5aa9e6; --warn: #e8b04a; --err: #ef6b6b; --violet: #a78bfa;
-  --radius: 10px;
-  --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --bg: #0b1110; --panel: #121b19; --panel2: #1a2622; --line: #28382f; --line-strong: #34463c; --rail: #070c0b;
+  --text: #eaf2ed; --muted: #a2b5ac;
+  --accent: #52d6a0; --accent-ink: #04231a; --blue: #6bb6ff; --violet: #a78bfa;
+  --warn: #f2bd4e; --warn-ink: #2b1d00; --err: #ff8585;
+  /* Главная кнопка: отдельный токен, чтобы пользовательский акцент её не перекрашивал. */
+  --cta: #f2bd4e; --cta-ink: #2b1d00;
+  --err-bg: #2b1618; --err-line: #5a2a2d; --warn-bg: #292411; --ok-bg: #12261f;
+  --radius: 12px; --radius-sm: 8px;
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
 }
 [data-theme="light"] {
-  --bg: #f3f5f7; --panel: #ffffff; --panel2: #f7f9fb; --line: #dde3e9; --text: #17202a; --muted: #5f6c79;
-  --accent: #17804f; --accent-ink: #ffffff; --blue: #2f7fc1; --warn: #8a5a12; --err: #c53b3b; --violet: #6d4fd8;
+  --bg: #f4f7f5; --panel: #ffffff; --panel2: #eaf1ed; --line: #d5e0da; --line-strong: #a9bbb1; --rail: #e4ece7;
+  --text: #13201b; --muted: #4f6158;
+  --accent: #127352; --accent-ink: #ffffff; --blue: #2f7fc1; --violet: #6d4fd8;
+  --warn: #8a5a00; --warn-ink: #2b1d00; --err: #b3261e;
+  --cta: #f2bd4e; --cta-ink: #2b1d00;
+  --err-bg: #fdecec; --err-line: #f2c4c4; --warn-bg: #fff3d4; --ok-bg: #e1f3ea;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
+body { background: var(--bg); color: var(--text); font: 14.5px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 input, select, textarea { font: inherit; color: inherit; }

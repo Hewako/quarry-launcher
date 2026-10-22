@@ -7,6 +7,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import type { Instance } from "./api";
 import App from "./App";
+import "./fonts";
 import "./styles.css";
 
 const now = Math.floor(Date.now() / 1000);
