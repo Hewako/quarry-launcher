@@ -34,6 +34,13 @@
     ],
     "category": "Game",
     "shortDescription": "Открытый лаунчер Minecraft Java Edition",
-    "license": "GPL-3.0-or-later"
+    "license": "GPL-3.0-or-later",
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "linux": {
+      "deb": { "depends": ["libdbus-1-3"] },
+      "rpm": { "depends": ["dbus-libs"] }
+    }
   }
 }
