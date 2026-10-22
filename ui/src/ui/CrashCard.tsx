@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, errText, mods, snapshots, type CrashAction, type CrashAnalysis, type Instance, type SnapshotInfo } from "../api";
 import { launches } from "../launches";
 import { useDialog } from "./Dialog";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 type Choice = { key: string; title: string; hint: string; run: () => Promise<string | null> };
 
@@ -42,9 +42,9 @@ export function CrashCard({ inst, a, code, onOpenTab, onReport }: {
     ...a.actions.map(fromAction).filter((c): c is Choice => !!c),
     ...(snap ? [{
       key: "rollback",
-      title: t("Откатиться к снимку «{0}»", snap.reason),
+      title: t("Откатиться к снимку «{0}»", tc(snap.reason)),
       hint: t("Моды и настройки вернутся к {0}; изменения после этого пропадут (текущее состояние сохранится отдельным снимком).", new Date(snap.created_at * 1000).toLocaleString()),
-      run: async () => { await snapshots.restore(inst.id, snap.id); return t("профиль возвращён к снимку «{0}»", snap.reason); },
+      run: async () => { await snapshots.restore(inst.id, snap.id); return t("профиль возвращён к снимку «{0}»", tc(snap.reason)); },
     }] : []),
     { key: "none", title: t("Не чинить"), hint: t("Ничего не менять. Разбор останется в журнале, запуск, скорее всего, снова упадёт."), run: async () => t("ничего не меняли") },
   ];
@@ -56,10 +56,10 @@ export function CrashCard({ inst, a, code, onOpenTab, onReport }: {
 
   return (
     <div className="alert err">
-      <div className="h">{t("Игра упала")}{code != null ? t(" (код {0})", code) : ""}: {a.title}</div>
-      <span>{a.explanation}</span>
+      <div className="h">{t("Игра упала")}{code != null ? t(" (код {0})", code) : ""}: {tc(a.title)}</div>
+      <span>{tc(a.explanation)}</span>
       {a.evidence.length > 0 && <div className="trace">{a.evidence.join("\n")}</div>}
-      <span className="muted small">{t("Уверенность:")} <b>{t(a.confidence_label)}</b>{t(". Вывод сделан по логу игры по правилам, без ИИ; это подсказка, а не приговор.")}</span>
+      <span className="muted small">{t("Уверенность:")} <b>{tc(a.confidence_label)}</b>{t(". Вывод сделан по логу игры по правилам, без ИИ; это подсказка, а не приговор.")}</span>
       <div className="fixopts" role="radiogroup" aria-label={t("Как починить")}>
         {choices.map((c, i) => (
           <label key={c.key} className={`fixopt ${pick === i ? "on" : ""}`}>

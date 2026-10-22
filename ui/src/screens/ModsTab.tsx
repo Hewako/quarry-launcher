@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, errText, mods, sizeText, type Bisect, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
 const sideName: Record<string, string> = { client: t("клиент"), server: t("сервер"), both: t("обе"), unknown: "—" };
@@ -32,13 +32,13 @@ export function PlanDialog({ title, plan, onClose, onApply }: { title: string; p
               <div>
                 <b>{c.kind === "add" ? "+ " : c.kind === "update" ? "~ " : "− "}{c.title}</b>{" "}
                 <span className="muted small">{c.old_version ? `${c.old_version} → ` : ""}{c.new_version ?? ""}</span>
-                <small>{c.reason}{c.size ? ` · ${sizeText(c.size)}` : ""}</small>
+                <small>{tc(c.reason)}{c.size ? ` · ${sizeText(c.size)}` : ""}</small>
               </div>
             </label>
           ))}
         </div>
       )}
-      {plan.notes.map((n, i) => <span key={i} className="muted small">• {n}</span>)}
+      {plan.notes.map((n, i) => <span key={i} className="muted small">• {tc(n)}</span>)}
       <span className="muted small">{t("Перед изменением будет создан снимок — отменить можно на вкладке «Снимки». Файлы скачиваются с Modrinth и проверяются по хэшу.")}</span>
       {error && <div className="alert err"><span>{error}</span></div>}
       <div className="acts">
@@ -153,9 +153,9 @@ function FindingCard({ f, files, onToggle, onSearch }: { f: Finding; files: ModF
   const name = (file: string) => files.find((x) => x.file_name === file)?.mods[0]?.name ?? file;
   return (
     <div className={`alert ${f.severity === "blocking" ? "err" : "warn"}`}>
-      <div className="h">{f.severity === "blocking" ? "✖" : "⚠"} {f.title}</div>
-      <span className="small">{f.detail}</span>
-      <span className="muted small">{t("Основание:")} {f.evidence}</span>
+      <div className="h">{f.severity === "blocking" ? "✖" : "⚠"} {tc(f.title)}</div>
+      <span className="small">{tc(f.detail)}</span>
+      <span className="muted small">{t("Основание:")} {tc(f.evidence)}</span>
       {f.fixes.length > 0 && (
         <div className="acts">
           {f.fixes.map((x, i) =>
@@ -345,7 +345,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
             return (
               <label key={g} className="chip" title={t("Включено {0} из {1}", on, files.length)}>
                 <input type="checkbox" checked={on === files.length} ref={(el) => { if (el) el.indeterminate = on > 0 && on < files.length; }}
-                  disabled={running} onChange={(e) => toggleGroup(g, e.target.checked)} /> {t(g)} <span className="muted">{on}/{files.length}</span>
+                  disabled={running} onChange={(e) => toggleGroup(g, e.target.checked)} /> {tc(g)} <span className="muted">{on}/{files.length}</span>
               </label>
             );
           })}
@@ -375,7 +375,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
                 return (
                   <tr key={f.rel_path} className={f.enabled ? "" : "off"}>
                     <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={f.enabled ? t("Выключить") : t("Включить")} onClick={() => toggle(f.file_name, !f.enabled)} /></td>
-                    <td><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <small>{st!.notes[0]}</small>}{!m && <small>{f.file_name}</small>}</td>
+                    <td><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <small>{tc(st!.notes[0])}</small>}{!m && <small>{f.file_name}</small>}</td>
                     <td>{m?.version ?? "?"}{f.source?.pinned && <small style={{ color: "var(--warn)" }}>{t("закреплена")}</small>}</td>
                     <td>{(() => {
                       const u = updateFor(f);
@@ -391,13 +391,13 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
                       <select className="field auto mini" aria-label={t("Группа для {0}", m?.name ?? f.file_name)} value={groups.groups[f.file_name] ?? ""}
                         onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert(t("Не получилось"), errText(er)))}>
                         <option value="">—</option>
-                        {groups.names.map((g) => <option key={g} value={g}>{t(g)}</option>)}
+                        {groups.names.map((g) => <option key={g} value={g}>{tc(g)}</option>)}
                       </select>
                     </td>
                     <td>{sideName[m?.side ?? "unknown"]}</td>
                     <td>{f.source ? sourceName[f.source.source] : t("вручную")}</td>
                     <td className="layer">{f.source?.layer === "base" ? t("сборка") : t("мои моды")}</td>
-                    <td>{st && <span className={`badge ${stateCls[st.state]}`}>{t(st.state_label)}</span>}</td>
+                    <td>{st && <span className={`badge ${stateCls[st.state]}`}>{tc(st.state_label)}</span>}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       <button className="btn link small" disabled={running} onClick={() => pin(f)} title={t("Закреплённая версия не обновляется")}>{f.source?.pinned ? t("Открепить") : t("Закрепить")}</button>{" · "}
                       <button className="btn link small" disabled={running} onClick={() => remove(f)}>{t("Удалить")}</button>
@@ -415,7 +415,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
         <details>
           <summary className="muted small" style={{ cursor: "pointer" }}>{t("Журнал изменений (")}{data.journal.length})</summary>
           <ul className="small" style={{ margin: "8px 0", paddingLeft: 18 }}>
-            {data.journal.map((j, i) => <li key={i}>{new Date(j.at * 1000).toLocaleString("ru-RU")} · <b>{j.action}</b> {j.what} <span className="muted">— {j.reason}</span></li>)}
+            {data.journal.map((j, i) => <li key={i}>{new Date(j.at * 1000).toLocaleString("ru-RU")} · <b>{tc(j.action)}</b> {j.what} <span className="muted">— {tc(j.reason)}</span></li>)}
           </ul>
         </details>
       )}

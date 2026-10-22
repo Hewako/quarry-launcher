@@ -5,7 +5,7 @@ import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/comm
 import { CrashCard } from "../ui/CrashCard";
 import type { Tab } from "./InstancePage";
 import { nick, useStreamer } from "../streamer";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 import { useNotes } from "../notify";
 
 type Sort = "recent" | "name" | "version" | "created";
@@ -43,7 +43,7 @@ function remarks(inst: Instance, accounts: AccountRef[], info: AppInfo) {
   }
   const l = inst.last_launch;
   if (l && (l.outcome === "crashed" || l.outcome === "failed_to_start")) {
-    out.push({ cls: "err", text: l.outcome === "crashed" ? t("Последний запуск упал ({0})", relTime(l.at)) : t("Последний запуск не начался"), hint: l.message });
+    out.push({ cls: "err", text: l.outcome === "crashed" ? t("Последний запуск упал ({0})", relTime(l.at)) : t("Последний запуск не начался"), hint: tc(l.message) });
   }
   return out;
 }
@@ -249,7 +249,7 @@ export function Home(p: Props) {
       {p.broken.length > 0 && (
         <div className="alert warn" style={{ marginTop: 14 }}>
           <div className="h">{t("Не удалось прочитать профили:")} {p.broken.length}</div>
-          {p.broken.map((b) => <span key={b.dir} className="small mono">{b.dir}: {b.reason}</span>)}
+          {p.broken.map((b) => <span key={b.dir} className="small mono">{b.dir}: {tc(b.reason)}</span>)}
           <span className="small muted">{t("Файлы не изменены. Исправьте instance.toml или уберите папку из instances/.")}</span>
         </div>
       )}

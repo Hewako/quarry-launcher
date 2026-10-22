@@ -2,6 +2,8 @@
 // Язык читается при запуске (кеш в localStorage, источник — настройки лаунчера); при смене
 // языка окно перезагружается, поэтому строки в константах модулей тоже переводятся.
 import { EN } from "./i18n.en";
+import { CORE_EN } from "./i18n.core.en";
+import { coreTranslator } from "./i18n.core";
 
 const KEY = "quarry.lang";
 
@@ -29,4 +31,13 @@ export function syncLang(fromSettings: string) {
 export function t(ru: string, ...args: unknown[]): string {
   const s = lang === "en" ? EN[ru] ?? ru : ru;
   return args.length ? s.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? "")) : s;
+}
+
+const core = lang === "en" ? coreTranslator(CORE_EN) : (s: string) => s;
+
+/** Перевести сообщение ядра: ошибку, предупреждение запуска, находку Mod Doctor, разбор краша. */
+export function tc(ru: string): string;
+export function tc(ru: string | undefined): string | undefined;
+export function tc(ru?: string) {
+  return ru && core(ru);
 }

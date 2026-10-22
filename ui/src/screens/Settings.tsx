@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, diagnostics, errText, sizeText, type AppInfo, type GlobalSettings } from "../api";
 import { useDialog } from "../ui/Dialog";
 import { path, setStreamer } from "../streamer";
-import { switchLang, t } from "../i18n";
+import { switchLang, t, tc } from "../i18n";
 
 const ACCENTS = ["#3fb950", "#2563eb", "#7c3aed", "#d0703a", "#c2415d", "#2a9d8f"];
 
@@ -163,7 +163,7 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
             <div className="usage">
               {storage.map((p) => (
                 <div key={p.label} className="urow">
-                  <span>{p.label}</span>
+                  <span>{tc(p.label)}</span>
                   <div className="bar"><i style={{ width: `${Math.max(1, (p.size / Math.max(1, storage[0]?.size ?? 1)) * 100)}%` }} /></div>
                   <span className="muted small">{sizeText(p.size)}</span>
                 </div>

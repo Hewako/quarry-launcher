@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { configs, errText, relTime, sizeText, type ConfigFile, type DiffLine, type Instance } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 function Diff({ lines }: { lines: DiffLine[] }) {
   const changed = lines.filter((l) => l.kind !== "=").length;
@@ -113,7 +113,7 @@ export function ConfigsTab({ inst, running }: { inst: Instance; running: boolean
       </div>
       {preview && (
         <Modal title={t("Сохранить {0}?", path)} onClose={() => setPreview(null)} wide>
-          {preview.error && <div className="alert err"><span>{preview.error}</span></div>}
+          {preview.error && <div className="alert err"><span>{tc(preview.error)}</span></div>}
           <Diff lines={preview.diff} />
           <p className="muted small">{t("Прежняя версия сохранится в историю. Файл отметится как ваш — обновление сборки его не заменит.")}</p>
           <div className="acts">

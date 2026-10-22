@@ -5,7 +5,7 @@ import { Modal, useDialog } from "../ui/Dialog";
 import type { LaunchState } from "../launches";
 import { LogView } from "../ui/LogView";
 import { CrashCard } from "../ui/CrashCard";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 /** Логи и краши: последний запуск выбранного профиля, живой или из файла. */
 export function Logs({ instances, states, id, onPick }: { instances: Instance[]; states: Map<string, LaunchState>; id?: string; onPick: (id: string) => void }) {
@@ -52,7 +52,7 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
       {crashed && !exit?.analysis && (
         <div className="alert err">
           <div className="h">{t("Игра упала")}{exit?.code != null ? t(" с кодом {0}", exit.code) : last?.exit_code != null ? t(" с кодом {0}", last.exit_code) : ""}</div>
-          {last?.message && <span>{last.message}</span>}
+          {last?.message && <span>{tc(last.message)}</span>}
           <span className="small">{t("Подробный разбор виден сразу после краша. Здесь — сохранённый лог: посмотрите вкладку «Ошибки», обычно причина в первой строке «Caused by».")}</span>
           {exit?.crash_report && <span className="small mono" style={{ userSelect: "text" }}>Crash report: {exit.crash_report}</span>}
           <div className="acts">
@@ -62,7 +62,7 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
         </div>
       )}
       {last?.outcome === "failed_to_start" && !live && (
-        <div className="alert err"><div className="h">{t("Запуск не начался")}</div><span style={{ userSelect: "text" }}>{last.message}</span></div>
+        <div className="alert err"><div className="h">{t("Запуск не начался")}</div><span style={{ userSelect: "text" }}>{tc(last.message)}</span></div>
       )}
       {live ? <LogView lines={state.logs} /> : file ? <LogView lines={file} follow={false} /> : <p className="muted">{err || <><span className="spinner" /> {t("Загружаем лог…")}</>}</p>}
       {crashes.length > 0 && (

@@ -1,6 +1,6 @@
 // Типизированные обёртки над командами Tauri. Формы данных совпадают с serde в quarry-core.
 import { invoke } from "@tauri-apps/api/core";
-import { currentLang, t } from "./i18n";
+import { currentLang, t, tc } from "./i18n";
 
 export type LoaderKind = "vanilla" | "fabric" | "quilt" | "neoforge" | "forge";
 export type AuthMode = "microsoft" | "ely_by";
@@ -234,7 +234,7 @@ export const api = {
 };
 
 export function errText(e: unknown): string {
-  return typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+  return tc(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
 }
 
 export const loaderName: Record<LoaderKind, string> = {

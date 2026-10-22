@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, errText, importer, type ImportResult, type Instance, type LoaderKind, type SearchHit } from "../api";
 import { Modal } from "../ui/Dialog";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: (i: Instance) => void }) {
   const [sources, setSources] = useState<{ prism: [string, string][]; official?: string } | null>(null);
@@ -75,7 +75,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
     return (
       <Modal title={t("Импорт завершён")} onClose={() => onDone(result.instance)}>
         <p style={{ margin: 0 }}>{t("Профиль «")}{result.instance.name}» — Minecraft {result.instance.game_version} · {result.instance.loader}.</p>
-        {result.notes.map((n, i) => <span key={i} className="muted small">• {n}</span>)}
+        {result.notes.map((n, i) => <span key={i} className="muted small">• {tc(n)}</span>)}
         {result.manual.length > 0 && (
           <div className="alert warn">
             <div className="h">{t("Скачайте вручную:")} {result.manual.length}</div>

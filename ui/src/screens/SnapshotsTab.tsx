@@ -2,7 +2,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { errText, relTime, sizeText, snapshots, type Instance, type SnapshotDiff, type SnapshotInfo, type WorldBackup, type WorldInfo } from "../api";
 import { useDialog } from "../ui/Dialog";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 function DiffView({ d }: { d: SnapshotDiff }) {
   const empty = !d.added.length && !d.removed.length && !d.changed.length && !d.options.length;
@@ -37,7 +37,7 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
   };
   const restore = async (s: SnapshotInfo) => {
     const ok = await dialog.confirm({
-      title: t("Откатить к «{0}»?", s.reason),
+      title: t("Откатить к «{0}»?", tc(s.reason)),
       body: t("Моды, настройки модов и options.txt вернутся к состоянию снимка. Текущее состояние сначала сохранится отдельным снимком, так что откат тоже можно отменить. Миры не затрагиваются."),
       confirm: t("Откатить"),
     });
@@ -70,7 +70,7 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
           <div className="timeline">
             {list.map((s) => (
               <div className="snap" key={s.id}>
-                <b>{s.reason}</b>{" "}
+                <b>{tc(s.reason)}</b>{" "}
                 <span className="muted small">· {relTime(s.created_at)} · {s.auto ? t("автоматически") : t("вручную")} {t("· модов")} {s.mods}{t(", конфигов")} {s.configs}</span>
                 {s.pinned && <span className="pin"> {t("● закреплён — ротация его не удалит")}</span>}
                 {diffs[s.id] && <DiffView d={diffs[s.id]} />}
@@ -98,7 +98,7 @@ export function SnapshotsTab({ inst, running, onRestored }: { inst: Instance; ru
                     <td>
                       <b>{w.name}</b>{w.hardcore && <span className="badge err" style={{ marginLeft: 6 }}>{t("хардкор")}</span>}
                       <div className="muted small">
-                        {w.version_name ?? t("версия неизвестна")} · {t(w.game_mode)} · {sizeText(w.size)}{w.last_played ? t(" · играли {0}", relTime(w.last_played)) : ""}
+                        {w.version_name ?? t("версия неизвестна")} · {tc(w.game_mode)} · {sizeText(w.size)}{w.last_played ? t(" · играли {0}", relTime(w.last_played)) : ""}
                         {w.folder !== w.name && <> {t("· папка")} <span className="mono">{w.folder}</span></>}
                       </div>
                     </td>

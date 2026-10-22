@@ -14,7 +14,7 @@ import { ConfigsTab } from "./ConfigsTab";
 import { OptionsTab } from "./OptionsTab";
 import { DepsTab } from "./DepsTab";
 import { nick, useStreamer } from "../streamer";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 export type Tab = "mods" | "deps" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
 
@@ -119,7 +119,7 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
             <input type="range" min={1024} max={ceiling} step={512} value={Math.min(max.value, ceiling)} aria-label={t("Память, МБ")}
               onChange={(e) => setDraft({ ...draft, max_memory_mb: Number(e.target.value), min_memory_mb: undefined })} />
             <span className="muted small">{t("Xms = Xmx: память не перевыделяется посреди игры.")}{inst.pack_settings.max_memory_mb ? t(" Сборка рекомендует {0} МБ.", inst.pack_settings.max_memory_mb) : ""}</span>
-            {advice.map((a) => <span key={a} className="small" style={{ color: "var(--warn)" }}>⚠ {a}</span>)}
+            {advice.map((a) => <span key={a} className="small" style={{ color: "var(--warn)" }}>⚠ {tc(a)}</span>)}
           </div>
           <SourceTag source={max.source} onReset={() => setDraft({ ...draft, max_memory_mb: undefined, min_memory_mb: undefined })} />
         </div>

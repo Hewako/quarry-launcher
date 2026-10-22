@@ -2,7 +2,7 @@
 // что конфликтует (по метаданным модов и находкам Mod Doctor). Моды без связей скрыты.
 import { useEffect, useMemo, useState } from "react";
 import { errText, mods, type DoctorReport, type JournalEntry, type ModFile, type Instance } from "../api";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 /** Загрузчик и игра — не моды профиля, в связях их не показываем. */
 const BUILTIN = new Set(["minecraft", "java", "fabricloader", "quilt_loader", "neoforge", "forge", "fml"]);
@@ -27,11 +27,11 @@ function buildGraph(files: ModFile[], report: DoctorReport, journal: JournalEntr
       // Обязательная зависимость, по которой Mod Doctor нашёл блокирующую проблему, — конфликт.
       const bad = report.findings.find((fd) => fd.severity === "blocking" && fd.files.includes(f.file_name) && fd.title.toLowerCase().includes(d.id));
       const kind: Kind = d.kind === "breaks" || d.kind === "conflicts" || bad ? "bad" : d.kind === "required" ? "req" : "opt";
-      edges.push({ from: f.file_name, to, kind, why: bad ? `${bad.title}. ${bad.detail}` : undefined });
+      edges.push({ from: f.file_name, to, kind, why: bad ? `${tc(bad.title)}. ${tc(bad.detail)}` : undefined });
     }
   }
   for (const fd of report.findings.filter((x) => x.severity === "blocking" && x.files.length >= 2)) {
-    edges.push({ from: fd.files[0], to: fd.files[1], kind: "bad", why: `${fd.title}. ${fd.detail}` });
+    edges.push({ from: fd.files[0], to: fd.files[1], kind: "bad", why: `${tc(fd.title)}. ${tc(fd.detail)}` });
   }
   const linked = new Set(edges.flatMap((e) => [e.from, e.to]));
   // «Библиотека» — мод, который лаунчер поставил как чью-то зависимость (по журналу).

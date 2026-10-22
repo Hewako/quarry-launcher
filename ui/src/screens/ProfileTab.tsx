@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, errText, importer, metaOf, type Channel, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { path, useStreamer } from "../streamer";
-import { t } from "../i18n";
+import { t, tc } from "../i18n";
 
 const COLORS = ["#4f8a5b", "#3b7dd8", "#8b5cf6", "#d0703a", "#c2415d", "#2a9d8f", "#a3a3a3"];
 
@@ -216,7 +216,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
           <div className="usage">
             {usage.parts.map((p) => (
               <div key={p.label} className="urow">
-                <span>{p.label}</span>
+                <span>{tc(p.label)}</span>
                 <div className="bar"><i style={{ width: `${Math.max(1, (p.size / usage.total) * 100)}%` }} /></div>
                 <span className="muted small">{sizeText(p.size)}</span>
               </div>
@@ -267,7 +267,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
           {update.changelog && (
             <details open><summary>{t("Что нового в версии")}</summary><pre className="cfgdiff" style={{ whiteSpace: "pre-wrap", userSelect: "text" }}>{update.changelog}</pre></details>
           )}
-          {update.plan.game_change && <div className="alert warn"><span>{t("Сборка меняет версию:")} {update.plan.game_change}</span></div>}
+          {update.plan.game_change && <div className="alert warn"><span>{t("Сборка меняет версию:")} {tc(update.plan.game_change)}</span></div>}
           <div className="diff cfgdiff">
             {update.plan.add.map((f) => <span key={f} className="add">+ {f}</span>)}
             {update.plan.update.map((f) => <span key={f} className="chg">~ {f}</span>)}
