@@ -390,6 +390,140 @@ pub async fn launch(
     result
 }
 
+/// Версия загрузчика для запуска; без сети — сохранённая в профиле.
+async fn resolve_loader_version(inst: &Instance) -> Result<Option<String>> {
+    crate::loader::resolve_version(
+        inst.loader,
+        &inst.game_version,
+        inst.loader_version.as_deref(),
+    )
+    .await
+    .or_else(|e| match &inst.loader_version {
+        // Без сети: доверяем уже сохранённой версии загрузчика.
+        Some(v) if e.is_retryable() || matches!(e, Error::Network { .. }) => Ok(Some(v.clone())),
+        _ => Err(e),
+    })
+}
+
+/// Скачать и проверить всё, что нужно для запуска: версию, библиотеки, ресурсы, Java и
+/// процессоры NeoForge. Без входа и без игры — общая часть запуска и [`install`].
+async fn prepare_files(
+    data: &DataDir,
+    inst: &Instance,
+    game_dir: &std::path::Path,
+    java_path: Option<&PathBuf>,
+    full_verify: bool,
+    cancel: &Cancel,
+    emit: &LaunchEventFn,
+) -> Result<(crate::install::Installed, Choice)> {
+    let mut version = crate::loader::resolve_profile(
+        data,
+        inst.loader,
+        &inst.game_version,
+        inst.loader_version.as_deref(),
+    )
+    .await?;
+    for note in
+        crate::install::apply_platform_fixes(data, &mut version, &Environment::current()).await?
+    {
+        emit(LaunchEvent::Warning { message: note });
+    }
+    cancel.check()?;
+
+    let event_cb = emit.clone();
+    let on_event: EventFn = Arc::new(move |e: InstallEvent| match e.progress {
+        Some(p) => event_cb(LaunchEvent::Progress {
+            stage: e.stage,
+            progress: p,
+        }),
+        None => event_cb(LaunchEvent::Stage {
+            stage: e.stage,
+            label: e.stage.label(),
+        }),
+    });
+    let installer = Installer {
+        data,
+        env: Environment::current(),
+        verify: if full_verify {
+            Verify::Full
+        } else {
+            Verify::Quick
+        },
+        cancel: cancel.clone(),
+        on_event: Some(on_event.clone()),
+    };
+    let installed = installer
+        .install(version, &inst.game_version, game_dir)
+        .await?;
+    if !installed.unverified.is_empty() {
+        emit(LaunchEvent::Warning {
+            message: format!(
+                "{} файл(ов) скачано без проверки хэша: источник его не публикует",
+                installed.unverified.len()
+            ),
+        });
+    }
+
+    let (major, reason) = installed.version.required_java();
+    let req = Requirement::for_version(major, reason, installed.version.has_macos_arm64_natives());
+    let java = choose_java(data, &req, java_path, cancel, &on_event).await?;
+    emit(LaunchEvent::Java {
+        label: java.install.label(),
+        reason: java.reason.clone(),
+    });
+    cancel.check()?;
+
+    // NeoForge: процессоры установщика нужны Java игры и скачанный ванильный клиент.
+    if inst.loader == crate::loader::LoaderKind::NeoForge {
+        let lv = inst
+            .loader_version
+            .as_deref()
+            .ok_or_else(|| Error::invalid("Не указана версия NeoForge"))?;
+        emit(LaunchEvent::Stage {
+            stage: Stage::Loader,
+            label: Stage::Loader.label(),
+        });
+        crate::loader::neoforge::run_processors(
+            data,
+            &inst.game_version,
+            lv,
+            &java.install.path,
+            &installed.client_jar,
+            cancel,
+        )
+        .await?;
+    }
+    Ok((installed, java))
+}
+
+/// Подготовить профиль без входа и без запуска игры: скачать и проверить все файлы и Java.
+/// Для проверки «чистая машина» в CI (`quarry install`).
+pub async fn install(
+    data: &DataDir,
+    instance_id: &str,
+    full_verify: bool,
+    cancel: &Cancel,
+    emit: &LaunchEventFn,
+) -> Result<()> {
+    let store = InstanceStore::new(data.clone());
+    let mut inst = store.get(instance_id)?;
+    inst.loader_version = resolve_loader_version(&inst).await?;
+    let game_dir = store.game_dir(&inst.id)?;
+    let global = GlobalSettings::load(data)?;
+    let resolved = settings::resolve(&inst.settings, &inst.pack_settings, &global.launch);
+    prepare_files(
+        data,
+        &inst,
+        &game_dir,
+        resolved.java_path.value.as_ref(),
+        full_verify,
+        cancel,
+        emit,
+    )
+    .await?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run(
     data: &DataDir,
@@ -422,56 +556,9 @@ async fn run(
     cancel.check()?;
 
     // Совместимость загрузчика проверяется до скачивания.
-    let loader_version = crate::loader::resolve_version(
-        inst.loader,
-        &inst.game_version,
-        inst.loader_version.as_deref(),
-    )
-    .await
-    .or_else(|e| match &inst.loader_version {
-        // Без сети: доверяем уже сохранённой версии загрузчика.
-        Some(v) if e.is_retryable() || matches!(e, Error::Network { .. }) => Ok(Some(v.clone())),
-        _ => Err(e),
-    })?;
+    let loader_version = resolve_loader_version(inst).await?;
     inst.loader_version = loader_version.clone();
-    let mut version = crate::loader::resolve_profile(
-        data,
-        inst.loader,
-        &inst.game_version,
-        loader_version.as_deref(),
-    )
-    .await?;
-    for note in
-        crate::install::apply_platform_fixes(data, &mut version, &Environment::current()).await?
-    {
-        emit(LaunchEvent::Warning { message: note });
-    }
-    cancel.check()?;
-
-    let event_cb = emit.clone();
-    let on_event: EventFn = Arc::new(move |e: InstallEvent| match e.progress {
-        Some(p) => event_cb(LaunchEvent::Progress {
-            stage: e.stage,
-            progress: p,
-        }),
-        None => event_cb(LaunchEvent::Stage {
-            stage: e.stage,
-            label: e.stage.label(),
-        }),
-    });
-    let env = Environment::current();
     let game_dir = store.game_dir(&inst.id)?;
-    let installer = Installer {
-        data,
-        env: env.clone(),
-        verify: if options.full_verify {
-            Verify::Full
-        } else {
-            Verify::Quick
-        },
-        cancel: cancel.clone(),
-        on_event: Some(on_event.clone()),
-    };
     if let Some(note) = recover_safe_mode(&game_dir) {
         emit(LaunchEvent::Warning { message: note });
     }
@@ -503,51 +590,17 @@ async fn run(
             });
         }
     }
-    let installed = installer
-        .install(version, &inst.game_version, &game_dir)
-        .await?;
-    if !installed.unverified.is_empty() {
-        emit(LaunchEvent::Warning {
-            message: format!(
-                "{} файл(ов) скачано без проверки хэша: источник его не публикует",
-                installed.unverified.len()
-            ),
-        });
-    }
-
-    let (major, reason) = installed.version.required_java();
-    let req = Requirement::for_version(major, reason, installed.version.has_macos_arm64_natives());
     let resolved = settings::resolve(&inst.settings, &inst.pack_settings, &global.launch);
-    let java = choose_java(
+    let (installed, java) = prepare_files(
         data,
-        &req,
+        inst,
+        &game_dir,
         resolved.java_path.value.as_ref(),
+        options.full_verify,
         cancel,
-        &on_event,
+        emit,
     )
     .await?;
-    emit(LaunchEvent::Java {
-        label: java.install.label(),
-        reason: java.reason.clone(),
-    });
-    cancel.check()?;
-
-    // NeoForge: процессоры установщика нужны Java игры и скачанный ванильный клиент.
-    if inst.loader == crate::loader::LoaderKind::NeoForge {
-        let lv = loader_version
-            .as_deref()
-            .ok_or_else(|| Error::invalid("Не указана версия NeoForge"))?;
-        stage(Stage::Loader);
-        crate::loader::neoforge::run_processors(
-            data,
-            &inst.game_version,
-            lv,
-            &java.install.path,
-            &installed.client_jar,
-            cancel,
-        )
-        .await?;
-    }
 
     let authlib = if inst.auth_mode == AuthMode::ElyBy {
         let jar = account::ely::ensure_authlib_injector(data, cancel).await?;
@@ -573,7 +626,7 @@ async fn run(
         java: &java.install.path,
         game_dir: &game_dir,
         auth: &auth,
-        env,
+        env: Environment::current(),
         min_memory_mb: resolved.min_memory_mb.value,
         max_memory_mb: resolved.max_memory_mb.value,
         extra_jvm_args: resolved.jvm_args.value.clone(),

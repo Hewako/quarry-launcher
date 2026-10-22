@@ -66,6 +66,13 @@ enum Command {
         #[arg(long)]
         safe: bool,
     },
+    /// Скачать и проверить всё для запуска профиля — без входа и без запуска игры
+    Install {
+        id: String,
+        /// Проверить хэши всех файлов
+        #[arg(long)]
+        verify: bool,
+    },
     /// Итоговая команда запуска профиля (без токена и без запуска)
     Preview { id: String },
     /// Импорт: папка Prism/MultiMC, .mrpack или zip CurseForge
@@ -153,6 +160,41 @@ fn data_dir(root: Option<PathBuf>) -> Result<DataDir> {
 
 fn mb(bytes: u64) -> f64 {
     bytes as f64 / 1_048_576.0
+}
+
+/// Печать событий запуска и установки в терминал.
+fn cli_events() -> launch::LaunchEventFn {
+    Arc::new(|e| match e {
+        LaunchEvent::Stage { label, .. } => eprintln!("→ {label}"),
+        LaunchEvent::Progress { progress: p, .. } => {
+            eprint!(
+                "\r   {}/{} файлов, {:.1}/{:.1} МБ   ",
+                p.files_done,
+                p.files_total,
+                mb(p.bytes_done),
+                mb(p.bytes_total)
+            );
+            let _ = std::io::stderr().flush();
+            if p.files_done == p.files_total {
+                eprintln!();
+            }
+        }
+        LaunchEvent::Account { provider, name } => {
+            eprintln!("Аккаунт: {name} ({provider})")
+        }
+        LaunchEvent::Java { label, reason } => eprintln!("Java: {label}\n   {reason}"),
+        LaunchEvent::Warning { message } => eprintln!("⚠ {message}"),
+        LaunchEvent::Started { pid, command } => {
+            eprintln!("Игра запущена (PID {:?})\n   {command}", pid)
+        }
+        LaunchEvent::Log { line } => println!("{line}"),
+        LaunchEvent::Exited { info } => eprintln!(
+            "Игра завершилась: код {:?}, {} с{}",
+            info.code,
+            info.duration_secs,
+            if info.crashed { " — краш" } else { "" }
+        ),
+    })
 }
 
 #[tokio::main]
@@ -279,37 +321,7 @@ async fn main() -> Result<()> {
             let quick_play = world
                 .map(QuickPlay::Singleplayer)
                 .or(server.map(QuickPlay::Multiplayer));
-            let emit: launch::LaunchEventFn = Arc::new(|e| match e {
-                LaunchEvent::Stage { label, .. } => eprintln!("→ {label}"),
-                LaunchEvent::Progress { progress: p, .. } => {
-                    eprint!(
-                        "\r   {}/{} файлов, {:.1}/{:.1} МБ   ",
-                        p.files_done,
-                        p.files_total,
-                        mb(p.bytes_done),
-                        mb(p.bytes_total)
-                    );
-                    let _ = std::io::stderr().flush();
-                    if p.files_done == p.files_total {
-                        eprintln!();
-                    }
-                }
-                LaunchEvent::Account { provider, name } => {
-                    eprintln!("Аккаунт: {name} ({provider})")
-                }
-                LaunchEvent::Java { label, reason } => eprintln!("Java: {label}\n   {reason}"),
-                LaunchEvent::Warning { message } => eprintln!("⚠ {message}"),
-                LaunchEvent::Started { pid, command } => {
-                    eprintln!("Игра запущена (PID {:?})\n   {command}", pid)
-                }
-                LaunchEvent::Log { line } => println!("{line}"),
-                LaunchEvent::Exited { info } => eprintln!(
-                    "Игра завершилась: код {:?}, {} с{}",
-                    info.code,
-                    info.duration_secs,
-                    if info.crashed { " — краш" } else { "" }
-                ),
-            });
+            let emit = cli_events();
             let registry = LaunchRegistry::default();
             let info = launch::launch(
                 &data,
@@ -328,6 +340,10 @@ async fn main() -> Result<()> {
             if let Some(cr) = info.crash_report {
                 eprintln!("Crash report: {}", cr.display());
             }
+        }
+        Command::Install { id, verify } => {
+            launch::install(&data, &id, verify, &Cancel::new(), &cli_events()).await?;
+            eprintln!("Готово: файлы игры и Java скачаны и проверены.");
         }
         Command::Preview { id } => {
             println!("{}", launch::preview(&data, &KeyringStore, &id).await?);
