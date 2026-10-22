@@ -211,7 +211,7 @@ function Shell() {
           <button className="tile add" aria-label={t("Новый профиль")} title={t("Новый профиль")} onClick={() => setCreating(true)}>+</button>
         </div>
         <div className="rail-tools">
-          <button className="rail-btn" aria-label={t("Поиск и команды ({0})", MAC ? "⌘K" : "Ctrl+K")} title={t("Поиск и команды")} onClick={() => setPalette(true)}>⌕</button>
+          <button className="rail-btn" aria-label={t("Палитра команд (Ctrl+K)")} title={t("Палитра команд (Ctrl+K)")} onClick={() => setPalette(true)}>⌕</button>
           <button className={`rail-btn ${screen === "logs" ? "on" : ""}`} aria-label={t("Логи и краши{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} title={t("Логи и краши")}
             onClick={() => { markRead(); setScreen("logs"); }}>
             🔔{notes.unread > 0 && <span className="adot" aria-hidden />}
@@ -249,7 +249,7 @@ function Shell() {
               onTrashed={() => { refresh(); setProfileTab(undefined); }} />
           ) : (
             <div className="card empty">
-              <p>{t("Профилей пока нет.")}</p>
+              <p>{t("Профилей нет.")}</p>
               <div className="row" style={{ justifyContent: "center" }}>
                 <button className="btn pri" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button>
                 <button className="btn" onClick={() => setImporting(true)}>{t("Импорт .mrpack / zip / Prism")}</button>

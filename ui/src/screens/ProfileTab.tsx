@@ -77,12 +77,14 @@ function CopyFromDialog({ inst, instances, onClose }: { inst: Instance; instance
   );
 }
 
-export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
+export function ProfileTab({ inst, instances, running, onChanged, onCloned, action }: {
   inst: Instance;
   instances: Instance[];
   running: boolean;
   onChanged: (i: Instance) => void;
   onCloned: (i: Instance) => void;
+  /** Просьба из меню «Ещё» в шапке профиля: открыть копирование или начать экспорт. */
+  action?: { kind: "clone" | "export"; n: number } | null;
 }) {
   const dialog = useDialog();
   const [meta, setMeta] = useState<ProfileMeta>(metaOf(inst));
@@ -116,6 +118,10 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned }: {
       </>);
     } catch (e) { await dialog.alert(t("Не сохранено"), errText(e)); }
   };
+  useEffect(() => {
+    if (action?.kind === "clone") setModal("clone");
+    else if (action?.kind === "export") exportPack();
+  }, [action?.n]);
   const pickUpdate = async () => {
     const path = await open({ title: t("Новая версия сборки"), filters: [{ name: ".mrpack", extensions: ["mrpack"] }] }).catch(() => null);
     if (typeof path !== "string") return;
