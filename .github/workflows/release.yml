@@ -35,7 +35,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Свой ключ: иначе релиз на ubuntu-22.04 берёт кеш CI с ubuntu-24.04 (новая glibc) и не компонуется.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.os }}-${{ matrix.target }}
 
       - uses: actions/setup-node@v4
         with:
