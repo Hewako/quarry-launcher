@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errText, loaderName, sizeText, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
+import { api, errText, loaderName, modsLabel, sizeText, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { useDialog } from "../ui/Dialog";
-import { LaunchProgress, PlayButton, StatusBadge } from "../ui/common";
-import { LogView } from "../ui/LogView";
+import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
 import { CrashCard } from "../ui/CrashCard";
 import { ModsTab } from "./ModsTab";
 import { SnapshotsTab } from "./SnapshotsTab";
@@ -16,9 +15,50 @@ import { DepsTab } from "./DepsTab";
 import { nick, useStreamer } from "../streamer";
 import { t, tc } from "../i18n";
 
-export type Tab = "mods" | "deps" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "logs" | "profile";
+/** Адрес места в профиле: так на него ссылаются палитра, разбор краша и уведомления. */
+export type Tab = "overview" | "mods" | "deps" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "profile";
+type Main = "overview" | "mods" | "rollback" | "game";
+type Sub = "mods" | "resources" | "deps" | "launch" | "options" | "servers" | "profile";
 
-const TABS: [Tab, string][] = [["mods", t("Моды · Mod Doctor")], ["deps", t("Зависимости")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
+/** Вариант F: 4 вкладки вместо 10, остальное — подвкладки (docs/INTERFACE_F.md). */
+const MAIN: [Main, string][] = [["overview", t("Обзор")], ["mods", t("Моды")], ["rollback", t("Откат")], ["game", t("Игра")]];
+const SUBS: Record<"mods" | "game", [Sub, string][]> = {
+  mods: [["mods", t("Моды")], ["resources", t("Ресурсы и конфиги")], ["deps", t("Зависимости")]],
+  game: [["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["servers", t("Серверы")], ["profile", t("О профиле")]],
+};
+function place(tab: Tab): [Main, Sub | undefined] {
+  switch (tab) {
+    case "overview": return ["overview", undefined];
+    case "mods": case "deps": return ["mods", tab];
+    case "resources": case "configs": return ["mods", "resources"];
+    case "snapshots": return ["rollback", undefined];
+    default: return ["game", tab];
+  }
+}
+
+/** Переключатель с ролью tablist: стрелки, Home и End, как у вкладок. */
+function TabStrip<K extends string>({ items, value, onPick, className, label }: { items: [K, string][]; value: K; onPick: (k: K) => void; className: string; label: string }) {
+  return (
+    <div className={className} role="tablist" aria-label={label}>
+      {items.map(([id, text], i) => (
+        <button key={id} role="tab" aria-selected={value === id} tabIndex={value === id ? 0 : -1} className={value === id ? "on" : ""} onClick={() => onPick(id)}
+          onKeyDown={(e) => {
+            const next = e.key === "ArrowRight" ? (i + 1) % items.length : e.key === "ArrowLeft" ? (i - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : -1;
+            if (next < 0) return;
+            e.preventDefault();
+            onPick(items[next][0]);
+            (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
+          }}>{text}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Клавиша не должна срабатывать, пока фокус в поле, списке или диалоге. */
+export const typing = (e: KeyboardEvent) => {
+  const el = e.target as HTMLElement | null;
+  return !!el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable || !!document.querySelector("[role=dialog]"));
+};
 
 function SourceTag({ source, onReset }: { source: Source; onReset?: () => void }) {
   return (
@@ -210,29 +250,9 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   );
 }
 
-function LogsTab({ inst, state }: { inst: Instance; state?: LaunchState }) {
-  const [file, setFile] = useState<string[] | null>(null);
-  const [err, setErr] = useState("");
-  const live = state && state.logs.length > 0;
-  useEffect(() => {
-    if (live) return;
-    api.readLog(inst.id).then(setFile).catch((e) => setErr(errText(e)));
-  }, [inst.id, live]);
-  return (
-    <>
-      {state?.command && (
-        <details style={{ marginBottom: 12 }}>
-          <summary className="muted small" style={{ cursor: "pointer" }}>{t("Точная команда запуска (токен скрыт)")}</summary>
-          <div className="cmd" style={{ marginTop: 6 }}>{state.command}</div>
-        </details>
-      )}
-      {live ? <LogView lines={state.logs} /> : file ? <LogView lines={file} follow={false} /> : <p className="muted">{err || t("Загружаем лог…")}</p>}
-    </>
-  );
-}
-
-export function InstancePage({ inst, instances, state, accounts, initialTab, onChanged, onTrashed, onCloned }: {
+export function InstancePage({ inst, mods: modCount, instances, state, accounts, initialTab, onChanged, onTrashed, onCloned }: {
   inst: Instance;
+  mods?: number;
   instances: Instance[];
   onCloned: (i: Instance) => void;
   state?: LaunchState;
@@ -242,12 +262,34 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
   onTrashed: () => void;
 }) {
   const dialog = useDialog();
-  const [tab, setTab] = useState<Tab>(initialTab ?? (inst.loader === "vanilla" ? "launch" : "mods"));
+  const [[main, sub], setPlace] = useState<[Main, Sub | undefined]>(() => place(initialTab ?? "overview"));
+  const go = (tab: Tab) => setPlace(place(tab));
+  const subOf = (m: "mods" | "game") => (main === m && sub ? sub : SUBS[m][0][0]);
   const [reload, setReload] = useState(0);
   const [disk, setDisk] = useState<number | null>(null);
+  const [more, setMore] = useState(false);
   useEffect(() => { api.diskUsage(inst.id).then((u) => setDisk(u.total)).catch(() => setDisk(null)); }, [inst.id, reload]);
-  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
-
+  useEffect(() => { if (initialTab) setPlace(place(initialTab)); }, [initialTab]);
+  // Меню «Ещё» закрывается кликом мимо него.
+  useEffect(() => {
+    if (!more) return;
+    const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest(".menuwrap")) setMore(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [more]);
+  // Запуск закончился ошибкой или крашем — разбор на «Обзоре».
+  const failed = state?.phase === "failed" || (state?.phase === "done" && !!state.exit?.analysis);
+  useEffect(() => { if (failed) setPlace(["overview", undefined]); }, [failed]);
+  // 1–4 — вкладки (подсказка в нижней панели).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= MAIN.length) { e.preventDefault(); setPlace([MAIN[n - 1][0], undefined]); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const trash = async () => {
     const ok = await dialog.confirm({
       title: t("Убрать «{0}» в корзину?", inst.name),
@@ -264,47 +306,64 @@ export function InstancePage({ inst, instances, state, accounts, initialTab, onC
     }
   };
 
+  const mac = navigator.platform.includes("Mac");
   return (
     <>
-      <div className="pagehead">
-        <div>
+      <div className="phead">
+        <ProfileIcon id={inst.id} color={inst.color} size={44} className="pi phead-ico" />
+        <div className="phead-text">
           <h2>{inst.name}</h2>
-          <p className="sub" style={{ margin: 0 }}>Minecraft {inst.game_version} · {loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""}{disk !== null ? ` · ${t("{0} на диске", sizeText(disk))}` : ""} · <StatusBadge inst={inst} state={state} /></p>
+          <p className="sub">Minecraft {inst.game_version}, {loaderName[inst.loader]}{inst.loader_version ? ` ${inst.loader_version}` : ""}{modCount !== undefined && inst.loader !== "vanilla" ? `, ${modsLabel(modCount)}` : ""}{disk !== null ? `, ${t("{0} на диске", sizeText(disk))}` : ""} · <StatusBadge inst={inst} state={state} /></p>
         </div>
-        <div className="row">
-          <button className="btn" onClick={() => api.openFolder(inst.id).catch((e) => dialog.alert(t("Не удалось открыть папку"), errText(e)))}>{t("Папка")}</button>
-          <button className="btn danger" onClick={trash} disabled={isActive(state)}>{t("В корзину")}</button>
+        <div className="phead-acts">
+          <button className="btn square" aria-label={t("Открыть папку профиля")} title={t("Папка")} onClick={() => api.openFolder(inst.id).catch((e) => dialog.alert(t("Не удалось открыть папку"), errText(e)))}>⌂</button>
+          <div className="menuwrap">
+            <button className="btn square" aria-label={t("Ещё")} aria-haspopup="menu" aria-expanded={more} onClick={() => setMore(!more)}>⋯</button>
+            {more && (
+              <div className="menu" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setMore(false); }}>
+                <button role="menuitem" onClick={() => { setMore(false); setPlace(["game", "profile"]); }}>{t("Сделать копию, экспорт…")}</button>
+                <button role="menuitem" className="danger" disabled={isActive(state)} onClick={() => { setMore(false); trash(); }}>{t("В корзину")}</button>
+              </div>
+            )}
+          </div>
           <PlayButton inst={inst} state={state} compact />
         </div>
       </div>
-      {state && isActive(state) && <LaunchProgress state={state} />}
-      {state?.phase === "failed" && state.error && <div className="alert err" style={{ marginTop: 12, whiteSpace: "pre-line" }}><div className="h">{t("Запуск не удался")}</div><span>{state.error}</span></div>}
-      {state?.phase === "done" && state.exit?.analysis && (
-        <div style={{ marginTop: 12 }}><CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={setTab} /></div>
-      )}
-      <div className="ptabs" role="tablist">
-        {TABS.map(([tabId, label]) => (
-          <button key={tabId} role="tab" aria-selected={tab === tabId} tabIndex={tab === tabId ? 0 : -1} className={tab === tabId ? "on" : ""} onClick={() => setTab(tabId)}
-            onKeyDown={(e) => {
-              const i = TABS.findIndex(([x]) => x === tabId);
-              const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
-              if (next < 0) return;
-              e.preventDefault();
-              setTab(TABS[next][0]);
-              (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
-            }}>{label}</button>
-        ))}
+      <div className="tabsrow">
+        <TabStrip className="mtabs" label={t("Вкладки профиля")} items={MAIN} value={main} onPick={(m) => setPlace([m, undefined])} />
+        <span className="muted small hide-narrow">{t("Всё остальное:")} <kbd>{mac ? "⌘ K" : "Ctrl K"}</kbd></span>
       </div>
-      {tab === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}
-      {tab === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
-      {tab === "snapshots" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
-      {tab === "deps" && <DepsTab key={inst.id} inst={inst} />}
-      {tab === "options" && <OptionsTab key={inst.id} inst={inst} running={isActive(state)} />}
-      {tab === "configs" && <ConfigsTab key={inst.id} inst={inst} running={isActive(state)} />}
-      {tab === "resources" && <ResourcesTab key={inst.id} inst={inst} running={isActive(state)} />}
-      {tab === "servers" && <ServersTab key={inst.id} inst={inst} running={isActive(state)} />}
-      {tab === "logs" && <LogsTab inst={inst} state={state} />}
-      {tab === "profile" && <ProfileTab key={inst.id} inst={inst} instances={instances} running={isActive(state)} onChanged={onChanged} onCloned={onCloned} />}
+      {state && isActive(state) && <LaunchProgress state={state} />}
+      {main === "overview" && (
+        <div className="stack">
+          {state?.phase === "failed" && state.error && <div className="alert err" style={{ whiteSpace: "pre-line" }}><div className="h">{t("Запуск не удался")}</div><span>{state.error}</span></div>}
+          {state?.phase === "done" && state.exit?.analysis && <CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={go} />}
+          {!failed && <div className="card muted">{t("Обзор профиля появится на следующем шаге работы над интерфейсом.")}</div>}
+        </div>
+      )}
+      {main === "mods" && (
+        <>
+          <TabStrip className="seg subtabs" label={t("Разделы модов")} items={SUBS.mods} value={subOf("mods")} onPick={(s) => setPlace(["mods", s])} />
+          {subOf("mods") === "mods" && <ModsTab key={`${inst.id}-${reload}`} inst={inst} running={isActive(state)} />}
+          {subOf("mods") === "resources" && (
+            <div className="split2">
+              <ResourcesTab key={`r-${inst.id}`} inst={inst} running={isActive(state)} />
+              <ConfigsTab key={`c-${inst.id}`} inst={inst} running={isActive(state)} />
+            </div>
+          )}
+          {subOf("mods") === "deps" && <DepsTab key={inst.id} inst={inst} />}
+        </>
+      )}
+      {main === "rollback" && <SnapshotsTab inst={inst} running={isActive(state)} onRestored={() => setReload((n) => n + 1)} />}
+      {main === "game" && (
+        <>
+          <TabStrip className="seg subtabs" label={t("Разделы игры")} items={SUBS.game} value={subOf("game")} onPick={(s) => setPlace(["game", s])} />
+          {subOf("game") === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
+          {subOf("game") === "options" && <OptionsTab key={inst.id} inst={inst} running={isActive(state)} />}
+          {subOf("game") === "servers" && <ServersTab key={inst.id} inst={inst} running={isActive(state)} />}
+          {subOf("game") === "profile" && <ProfileTab key={inst.id} inst={inst} instances={instances} running={isActive(state)} onChanged={onChanged} onCloned={onCloned} />}
+        </>
+      )}
     </>
   );
 }

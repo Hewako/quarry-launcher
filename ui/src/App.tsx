@@ -1,33 +1,26 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
-import { api, mb, relTime, type AccountRef, type AppInfo, type GlobalSettings, type Instance } from "./api";
+import { api, mb, statusOf, type AccountRef, type AppInfo, type GlobalSettings, type Instance } from "./api";
 import { isActive, launches, useLaunches } from "./launches";
 import { Accounts } from "./screens/Accounts";
 import { CreateInstance } from "./screens/CreateInstance";
-import { Home } from "./screens/Home";
 import { ImportDialog } from "./screens/Import";
-import { InstancePage, type Tab } from "./screens/InstancePage";
+import { InstancePage, typing, type Tab } from "./screens/InstancePage";
 import { Logs } from "./screens/Logs";
 import { Settings } from "./screens/Settings";
 import { FirstRun } from "./screens/FirstRun";
 import { Avatar } from "./ui/Avatar";
+import { ProfileIcon } from "./ui/common";
 import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
-import { clearNotes, markRead, pushNote, useNotes } from "./notify";
+import { markRead, pushNote, useNotes } from "./notify";
 import { Palette, type Command } from "./ui/Palette";
-import { src, syncLang, t, tc } from "./i18n";
+import { src, syncLang, t } from "./i18n";
 
-type Screen = "home" | "profile" | "doctor" | "history" | "logs" | "accounts" | "settings";
-
-const NAV: { id: Screen; label: string; ico: string }[] = [
-  { id: "home", label: t("Главная"), ico: "⌂" },
-  { id: "profile", label: t("Профили"), ico: "▦" },
-  { id: "doctor", label: "Mod Doctor", ico: "⚙" },
-  { id: "history", label: t("Снимки и откат"), ico: "↺" },
-  { id: "logs", label: t("Логи и краши"), ico: "≡" },
-  { id: "accounts", label: t("Аккаунты и скины"), ico: "☺" },
-  { id: "settings", label: t("Настройки"), ico: "✎" },
-];
+/** Профиль с вкладками или один из общих экранов, открытых с рельсы. */
+type Screen = "profile" | "logs" | "accounts" | "settings";
+const SCREENS: [Exclude<Screen, "profile">, string][] = [["logs", t("Логи и краши")], ["accounts", t("Аккаунты и скины")], ["settings", t("Настройки")]];
+const MAC = navigator.platform.includes("Mac");
 
 function applyTheme(theme: string) {
   const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme !== "light";
@@ -61,7 +54,7 @@ export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | 
   root.dataset.density = g.compact ? "compact" : "normal";
 }
 
-const TAB_LABELS: [Tab, string][] = [["mods", t("Моды")], ["deps", t("Зависимости")], ["resources", t("Ресурсы")], ["configs", t("Конфиги")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["snapshots", t("Снимки и миры")], ["servers", t("Серверы")], ["logs", t("Логи")], ["profile", t("Профиль")]];
+const TAB_LABELS: [Tab, string][] = [["overview", t("Обзор")], ["mods", t("Моды")], ["resources", t("Ресурсы и конфиги")], ["deps", t("Зависимости")], ["snapshots", t("Откат")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["servers", t("Серверы")], ["profile", t("О профиле")]];
 
 /** Подпись строки настроек (div.lbl) называет поле этой строки для экранных читалок. */
 function useSettingLabels() {
@@ -91,7 +84,7 @@ function Shell() {
   const [modsCount, setModsCount] = useState<Record<string, number>>({});
   const [accounts, setAccounts] = useState<AccountRef[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>("profile");
   const [profileTab, setProfileTab] = useState<Tab | undefined>();
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -100,7 +93,6 @@ function Shell() {
   const [palette, setPalette] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
   const [release, setRelease] = useState<{ version: string; url: string } | null>(null);
-  const [bell, setBell] = useState(false);
   const notes = useNotes();
 
   const refresh = useCallback(async () => {
@@ -133,9 +125,10 @@ function Shell() {
       pushNote({ kind: "info", title: src("Вышла новая версия Quarry {0}", r.version) });
     }).catch(() => {});
     const off = listen("launch-finished", () => refresh());
-    // Ctrl+K / ⌘K — палитра команд.
+    // Ctrl+K / ⌘K — палитра команд; Esc — назад к профилю. Enter (играть) — ниже, ему нужен выбранный профиль.
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
+      if (e.key === "Escape" && !typing(e)) setScreen("profile");
     };
     window.addEventListener("keydown", onKey);
     return () => { off.then((f) => f()); window.removeEventListener("keydown", onKey); };
@@ -160,10 +153,23 @@ function Shell() {
   const msAll = accounts.filter((a) => a.provider === "microsoft");
   const ms = msAll.find((a) => `${a.provider}:${a.uuid}` === defaultKey) ?? msAll[0];
 
+  // Enter — играть выбранным профилем, только когда фокус не на кнопке, поле или в диалоге.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const free = document.activeElement === document.body || document.activeElement?.id === "main";
+      if (e.key !== "Enter" || typing(e) || !free || screen !== "profile" || !selectedId || isActive(states.get(selectedId))) return;
+      e.preventDefault();
+      launches.begin(selectedId);
+      api.launch(selectedId).catch(() => {});
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screen, selectedId, states]);
+
   if (!info) return <div className="content muted">{t("Загрузка…")}</div>;
   const open = (id: string, tab?: Tab) => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
   const commands: Command[] = [
-    ...NAV.filter((n) => n.id !== "doctor" && n.id !== "history").map((n) => ({ id: `s-${n.id}`, label: n.label, hint: t("экран"), run: () => { setProfileTab(undefined); setScreen(n.id); } })),
+    ...SCREENS.map(([id, label]) => ({ id: `s-${id}`, label, hint: t("экран"), run: () => setScreen(id) })),
     ...instances.flatMap((i) => [
       { id: `p-${i.id}`, label: i.name, hint: t("профиль · {0}", i.game_version), run: () => open(i.id) },
       { id: `play-${i.id}`, label: t("Играть: {0}", i.name), hint: t("запуск"), run: () => { launches.begin(i.id); api.launch(i.id).catch(() => {}); } },
@@ -173,32 +179,49 @@ function Shell() {
     { id: "a-import", label: t("Импорт сборки"), hint: ".mrpack / zip / Prism", run: () => setImporting(true) },
     { id: "a-theme", label: t("Сменить тему"), hint: t("светлая / тёмная"), run: () => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") },
   ];
+  // Рельса: сначала избранные, потом по последнему запуску; архивные — только в палитре.
+  const rail = instances.filter((i) => !i.archived).sort((a, b) =>
+    Number(!!b.favorite) - Number(!!a.favorite) || (b.last_launch?.at ?? 0) - (a.last_launch?.at ?? 0));
+  const status = (i: Instance) => {
+    const st = states.get(i.id);
+    const s = statusOf(i, isActive(st) ? st!.phase : undefined);
+    return { ...s, cls: i.last_launch || isActive(st) ? s.cls || "idle" : "idle" };
+  };
+  const selStatus = selected ? status(selected) : null;
 
   return (
     <div className="app">
       <a href="#main" className="skip">{t("Перейти к содержимому")}</a>
-      <aside className="side">
-        <div className="logo"><i /><div>Quarry<small>{t("рабочее название · v")}{info.version}</small></div></div>
-        <nav className="nav" aria-label={t("Разделы")}>
-          {NAV.map((n) => (
-            <button key={n.id} className={(n.id === "doctor" ? screen === "profile" && profileTab === "mods" : n.id === "history" ? screen === "profile" && profileTab === "snapshots" : n.id === "profile" ? screen === "profile" && profileTab !== "mods" && profileTab !== "snapshots" : screen === n.id) ? "on" : ""} aria-current={screen === n.id ? "page" : undefined} onClick={() => {
-              if (n.id === "doctor" || n.id === "history") { setProfileTab(n.id === "doctor" ? "mods" : "snapshots"); setScreen("profile"); return; }
-              setProfileTab(undefined); setScreen(n.id);
-            }}>
-              <span className="ico" aria-hidden>{n.ico}</span>{n.label}
-              {n.id === "profile" && instances.length > 0 && <span className="count">{instances.length}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="grow" />
-        <button className="acct" onClick={() => setScreen("accounts")}>
-          <Avatar account={ms} />
-          <div style={{ minWidth: 0 }}>
-            <b>{ms ? nick(ms.name, streamer) : t("Нет аккаунта")}</b>
-            {ms ? <span className={`badge ${ms.owns_java_edition ? "ms" : "err"}`}>Microsoft · {ms.owns_java_edition ? t("владение ✓") : t("игра не куплена")}</span> : <span className="badge">{t("войти")}</span>}
-          </div>
-        </button>
-      </aside>
+      <nav className="rail" aria-label={t("Профили и разделы")}>
+        <div className="rail-logo" aria-hidden title={`Quarry ${info.version}`}><i /></div>
+        <div className="rail-list">
+          {rail.map((i, n) => {
+            const s = status(i);
+            const sep = n > 0 && rail[n - 1].favorite && !i.favorite;
+            return (
+              <div key={i.id} className={sep ? "rail-sep" : undefined}>
+                <button className={`tile ${screen === "profile" && i.id === selectedId ? "on" : ""}`} aria-label={`${i.name}, ${s.text}`} title={`${i.name} · ${s.text}`}
+                  aria-current={screen === "profile" && i.id === selectedId ? "page" : undefined} onClick={() => open(i.id)}>
+                  <ProfileIcon id={i.id} color={i.color} size={34} />
+                  <span className={`sdot ${s.cls}`} aria-hidden />
+                </button>
+              </div>
+            );
+          })}
+          <button className="tile add" aria-label={t("Новый профиль")} title={t("Новый профиль")} onClick={() => setCreating(true)}>+</button>
+        </div>
+        <div className="rail-tools">
+          <button className="rail-btn" aria-label={t("Поиск и команды ({0})", MAC ? "⌘K" : "Ctrl+K")} title={t("Поиск и команды")} onClick={() => setPalette(true)}>⌕</button>
+          <button className={`rail-btn ${screen === "logs" ? "on" : ""}`} aria-label={t("Логи и краши{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} title={t("Логи и краши")}
+            onClick={() => { markRead(); setScreen("logs"); }}>
+            🔔{notes.unread > 0 && <span className="adot" aria-hidden />}
+          </button>
+          <button className={`rail-btn ${screen === "settings" ? "on" : ""}`} aria-label={t("Настройки")} title={t("Настройки")} onClick={() => setScreen("settings")}>⚙</button>
+          <button className={`rail-btn avatar ${screen === "accounts" ? "on" : ""}`} aria-label={t("Аккаунты и скины: {0}", ms ? nick(ms.name, streamer) : t("нет аккаунта"))} title={t("Аккаунты и скины")} onClick={() => setScreen("accounts")}>
+            <Avatar account={ms} />
+          </button>
+        </div>
+      </nav>
 
       <div className="main">
         {info.dev_launch && (
@@ -211,71 +234,46 @@ function Shell() {
             <button className="btn link small" onClick={() => setRelease(null)}>{t("Позже")}</button>
           </div>
         )}
-        <header className="top">
-          <button className="searchbox" onClick={() => setPalette(true)} aria-label={t("Палитра команд (Ctrl+K)")}>
-            <span>{t("Профиль, вкладка или действие…")}</span><kbd>{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}</kbd>
-          </button>
-          <div className="sp" />
-          {downloading ? (
-            <div className="dl" aria-live="polite">
-              ↓ {downloading.name}: {t(downloading.s.stageLabel)} · {downloading.s.progress!.files_done} {t("из")} {downloading.s.progress!.files_total} {t("файлов ·")} {mb(downloading.s.progress!.bytes_done)} {t("МБ")}
-              <div className="bar"><i style={{ width: `${downloading.s.progress!.bytes_total ? (downloading.s.progress!.bytes_done / downloading.s.progress!.bytes_total) * 100 : 0}%` }} /></div>
-            </div>
-          ) : runningCount > 0 ? (
-            <span className="dl">{t("Запущено профилей:")} {runningCount}</span>
-          ) : <span className="dl" />}
-          <div className="bellwrap">
-            <button className="iconbtn" aria-label={t("Уведомления{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} aria-expanded={bell} onClick={() => { setBell(!bell); markRead(); }}>
-              🔔{notes.unread > 0 && <span className="dot">{notes.unread}</span>}
-            </button>
-            {bell && (
-              <div className="bellpanel" role="region" aria-label={t("Уведомления")}>
-                <div className="row" style={{ justifyContent: "space-between" }}><b>{t("Уведомления")}</b>{notes.notes.length > 0 && <button className="btn link small" onClick={clearNotes}>{t("Очистить")}</button>}</div>
-                {notes.notes.length === 0 ? <p className="muted small">{t("Пока ничего нового.")}</p> : notes.notes.map((n) => (
-                  <div key={n.id} className={`note ${n.kind}`}>
-                    <b>{tc(n.title)}</b>{n.body && <span className="small">{tc(n.body)}</span>}
-                    <span className="muted small">{n.profile ? `${instances.find((i) => i.id === n.profile)?.name ?? n.profile} · ` : ""}{relTime(Math.floor(n.at / 1000))}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <button className="iconbtn" aria-label={t("Переключить тему")} title={t("Тема")} onClick={() => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}>◐</button>
-        </header>
 
         <main className="content" id="main" tabIndex={-1}>
           {loadError && <div className="alert err"><div className="h">{t("Не удалось прочитать профили")}</div><span>{loadError}</span></div>}
-          {screen === "home" && (
-            <Home info={info} instances={instances} modsCount={modsCount} broken={broken} accounts={accounts} states={states} selected={selected}
-              onSelect={setSelectedId} onOpen={(id, tab) => open(id, tab)} onCreate={() => setCreating(true)} onImport={() => setImporting(true)}
-              onAccounts={() => setScreen("accounts")} onLogs={(id) => { setSelectedId(id); setScreen("logs"); }} />
+          {broken.length > 0 && (
+            <div className="alert warn"><div className="h">{t("Не удалось прочитать профили:")} {broken.length}</div>
+              {broken.map((b) => <span key={b.dir} className="small mono">{path(b.dir, streamer)}</span>)}
+            </div>
           )}
           {screen === "profile" && (selected ? (
-            <>
-              {instances.length > 1 && (
-                <div className="row" style={{ marginBottom: 12 }}>
-                  <select className="field" style={{ maxWidth: 280 }} value={selected.id} onChange={(e) => setSelectedId(e.target.value)} aria-label={t("Профиль")}>
-                    {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                  </select>
-                  <button className="btn" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button>
-                </div>
-              )}
-              <InstancePage key={selected.id} inst={selected} instances={instances} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
-                onCloned={async (i) => { await refresh(); open(i.id, "profile"); }}
-                onChanged={(i) => setInstances((list) => list.map((x) => (x.id === i.id ? i : x)))}
-                onTrashed={() => { refresh(); setScreen("home"); }} />
-            </>
+            <InstancePage key={selected.id} inst={selected} mods={modsCount[selected.id]} instances={instances} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
+              onCloned={async (i) => { await refresh(); open(i.id, "profile"); }}
+              onChanged={(i) => setInstances((list) => list.map((x) => (x.id === i.id ? i : x)))}
+              onTrashed={() => { refresh(); setProfileTab(undefined); }} />
           ) : (
-            <div className="card empty"><p>{t("Профилей нет.")}</p><button className="btn pri" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button></div>
+            <div className="card empty">
+              <p>{t("Профилей пока нет.")}</p>
+              <div className="row" style={{ justifyContent: "center" }}>
+                <button className="btn pri" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button>
+                <button className="btn" onClick={() => setImporting(true)}>{t("Импорт .mrpack / zip / Prism")}</button>
+              </div>
+            </div>
           ))}
           {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
           {screen === "accounts" && <Accounts info={info} accounts={accounts} defaultKey={defaultKey} onChanged={refreshAccounts} />}
           {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} onAppearance={applyAppearance} />}
         </main>
 
-        <footer className="foot">
-          <span>{t("Данные:")} {path(info.data_dir, streamer)}</span>
-          <span>Quarry {info.version}{info.dev_launch ? " · dev-launch" : ""}</span>
+        <footer className="bottombar">
+          <span className="keys">
+            <kbd>{MAC ? "⌘ K" : "Ctrl K"}</kbd> {t("всё остальное")}
+            {screen === "profile" && selected && <><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> {t("вкладки")}</>}
+            {screen !== "profile" && <><kbd>Esc</kbd> {t("назад")}</>}
+            {selected && <><kbd>Enter</kbd> {t("играть")}</>}
+          </span>
+          <span className="status" aria-live="polite">
+            {downloading ? (
+              <>↓ {downloading.name}: {t(downloading.s.stageLabel)} · {downloading.s.progress!.files_done}/{downloading.s.progress!.files_total} · {mb(downloading.s.progress!.bytes_done)} {t("МБ")}</>
+            ) : runningCount > 0 ? t("Запущено профилей: {0}", runningCount)
+              : selected && selStatus ? t("Профиль «{0}»: {1}", selected.name, selStatus.text) : ""}
+          </span>
         </footer>
       </div>
 
@@ -292,7 +290,7 @@ function Shell() {
         <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />
       )}
       {creating && (
-        <CreateInstance onClose={() => setCreating(false)} onCreated={(i) => { setCreating(false); refresh().then(() => { setSelectedId(i.id); setScreen("home"); }); }} />
+        <CreateInstance onClose={() => setCreating(false)} onCreated={(i) => { setCreating(false); refresh().then(() => open(i.id)); }} />
       )}
     </div>
   );
