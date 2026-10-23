@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
-pub const LAUNCHER_NAME: &str = "Lime";
+pub const LAUNCHER_NAME: &str = "Axel";
 pub const LAUNCHER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Сборка с функцией `dev-launch` (только отладка, в релизе недоступна).

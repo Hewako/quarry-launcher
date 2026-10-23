@@ -378,7 +378,7 @@ pub fn check(
                 severity: Severity::Blocking,
                 title: format!("«{a}» и «{b}» не работают вместе"),
                 detail: format!("{why}. Оставьте один."),
-                evidence: format!("правило базы Lime (версия от {})", rules.updated),
+                evidence: format!("правило базы Axel (версия от {})", rules.updated),
                 files: vec![fa.clone(), fb.clone()],
                 fixes: vec![
                     Fix::Disable {

@@ -103,7 +103,7 @@ export function ImportDialog({ onClose, onDone, embedded }: { onClose: () => voi
           <button className="btn" disabled={busy !== ""} onClick={() => installPack(h)}>{busy === h.project_id ? t("Скачиваем…") : t("Установить")}</button>
         </div>
       ))}
-      <span className="muted small">{t("Исходные файлы не меняются: Lime делает свою копию. Если импорт не удастся, недоделанный профиль убирается.")}</span>
+      <span className="muted small">{t("Исходные файлы не меняются: Axel делает свою копию. Если импорт не удастся, недоделанный профиль убирается.")}</span>
       <h4 style={{ margin: 0 }}>{t("Из Prism Launcher или MultiMC")}</h4>
       {sources === null ? <span className="muted small"><span className="spinner" /> {t("Ищем инстансы…")}</span> : sources.prism.length === 0 ? (
         <span className="muted small">{t("Инстансов Prism/MultiMC в стандартной папке не найдено.")}</span>
@@ -131,7 +131,7 @@ export function ImportDialog({ onClose, onDone, embedded }: { onClose: () => voi
             </div>
           ) : (
             <form className="form" onSubmit={(e) => { e.preventDefault(); run("link", () => importer.link(link.path, link.name, link.version, link.loader)); }}>
-              <span className="muted small">{t("Профиль будет работать прямо в этой папке: миры и настройки общие с официальным лаунчером. Корзина Lime эту папку не трогает.")}</span>
+              <span className="muted small">{t("Профиль будет работать прямо в этой папке: миры и настройки общие с официальным лаунчером. Корзина Axel эту папку не трогает.")}</span>
               <div className="row">
                 <input className="field" style={{ flex: 2 }} value={link.name} onChange={(e) => setLink({ ...link, name: e.target.value })} aria-label={t("Название")} />
                 <input className="field" style={{ flex: 1 }} placeholder={t("Версия, например 26.3")} value={link.version} onChange={(e) => setLink({ ...link, version: e.target.value.trim() })} aria-label={t("Версия")} />

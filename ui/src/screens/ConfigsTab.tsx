@@ -86,7 +86,7 @@ export function ConfigsTab({ inst, running }: { inst: Instance; running: boolean
       </div>
       <div className="cfgedit">
         {!path ? (
-          <div className="card empty"><p>{t("Выберите файл слева. Lime проверит синтаксис JSON и TOML перед сохранением, покажет изменения и сохранит прежнюю версию в историю.")}</p></div>
+          <div className="card empty"><p>{t("Выберите файл слева. Axel проверит синтаксис JSON и TOML перед сохранением, покажет изменения и сохранит прежнюю версию в историю.")}</p></div>
         ) : (
           <>
             <div className="row" style={{ marginBottom: 8 }}>

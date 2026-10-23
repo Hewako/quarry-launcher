@@ -329,7 +329,7 @@ async fn minecraft_chain(ms: MsToken) -> Result<Chain> {
         Ok(l) => l,
         Err((403, _)) => {
             return Err(Error::Auth(
-                "Minecraft Services ответил 403: приложение Lime ещё не одобрено Mojang (Invalid app registration). Вход заработает после одобрения client ID — см. docs/MICROSOFT_SETUP.md."
+                "Minecraft Services ответил 403: приложение Axel ещё не одобрено Mojang (Invalid app registration). Вход заработает после одобрения client ID — см. docs/MICROSOFT_SETUP.md."
                     .into(),
             ));
         }

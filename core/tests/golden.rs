@@ -110,7 +110,7 @@ fn build(
         extra_env: vec![],
         quick_play: quick,
         authlib_injector: None,
-        launcher_name: "Lime",
+        launcher_name: "Axel",
         launcher_version: "0.1.0",
     };
     args::build(&spec)

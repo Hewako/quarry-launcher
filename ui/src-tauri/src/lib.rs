@@ -35,7 +35,7 @@ struct AppInfo {
     microsoft_configured: bool,
     /// В сборку подставлен ключ CurseForge.
     curseforge: bool,
-    /// Свободно на диске с данными Lime (для проверки перед запуском).
+    /// Свободно на диске с данными Axel (для проверки перед запуском).
     free_bytes: Option<u64>,
     os: &'static str,
 }
@@ -1380,7 +1380,7 @@ fn options_layout_export(state: State<AppState>, id: String, path: String) -> Cm
     }
     std::fs::write(
         &path,
-        format!("# Раскладка управления Minecraft (Lime)\n{keys}"),
+        format!("# Раскладка управления Minecraft (Axel)\n{keys}"),
     )
     .map_err(|e| e.to_string())
 }
@@ -1542,7 +1542,7 @@ fn bisect_step(
     .map_err(err)
 }
 
-/// Новая версия Lime на GitHub (если проверка включена). Ошибки сети — не повод мешать.
+/// Новая версия Axel на GitHub (если проверка включена). Ошибки сети — не повод мешать.
 #[tauri::command]
 async fn launcher_update(
     state: State<'_, AppState>,
@@ -1988,7 +1988,7 @@ pub fn run() {
             link_minecraft,
         ])
         .run(tauri::generate_context!())
-        .expect("ошибка запуска приложения Lime");
+        .expect("ошибка запуска приложения Axel");
 }
 
 #[cfg(test)]

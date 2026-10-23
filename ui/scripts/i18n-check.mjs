@@ -92,7 +92,7 @@ for (const [ru, en] of [
 ]) if (tr(ru) !== en) missing.set(ru, `i18n.core.ts: перевёл как ${JSON.stringify(tr(ru))}, ждали ${JSON.stringify(en)}`);
 // Сохранённые уведомления переводятся при показе общим словарём интерфейса и ядра.
 const both = coreTranslator({ ...Object.fromEntries(keys), ...Object.fromEntries(coreDict) });
-const note = "Вышла новая версия Lime {0}";
+const note = "Вышла новая версия Axel {0}";
 if (keys.has(note) && both(note.replace("{0}", "0.2.0")) !== keys.get(note).replace("{0}", "0.2.0")) missing.set(note, "i18n.core.ts: сохранённое уведомление не переводится");
 for (const [ru, en] of coreDict) if (holes(ru) !== holes(en)) missing.set(ru, `i18n.core.en.ts: в переводе другие {N} — ${JSON.stringify(en)}`);
 

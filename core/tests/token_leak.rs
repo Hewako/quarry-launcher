@@ -76,7 +76,7 @@ async fn token_never_reaches_logs_events_or_preview() {
         extra_env: vec![],
         quick_play: None,
         authlib_injector: None,
-        launcher_name: "Lime",
+        launcher_name: "Axel",
         launcher_version: "test",
     });
     assert!(cmd.args.iter().any(|a| a == TOKEN), "игра получает токен");

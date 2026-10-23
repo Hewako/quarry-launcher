@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Lime",
+  "productName": "Axel Launcher",
   "identifier": "com.quarry.launcher",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Lime",
+        "title": "Axel",
         "width": 1280,
         "height": 820,
         "minWidth": 960,

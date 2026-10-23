@@ -203,7 +203,7 @@ fn copy_worlds(from: &Path, to: &Path, source_name: &str) -> Result<()> {
 }
 
 /// Перенести папку игры профиля в `target_parent/<id>` (например, на другой диск) или,
-/// при `None`, обратно в папку данных Lime. Профиль запоминает новое место.
+/// при `None`, обратно в папку данных Axel. Профиль запоминает новое место.
 pub fn move_game_dir(
     store: &InstanceStore,
     id: &str,
@@ -341,7 +341,7 @@ mod tests {
         assert!(!g.exists());
         assert_eq!(store.game_dir(&a.id).unwrap(), moved);
 
-        // Обратно в папку данных Lime.
+        // Обратно в папку данных Axel.
         let back = move_game_dir(&store, &a.id, None).unwrap();
         assert_eq!(back, g);
         assert!(g.join("saves/W/level.dat").is_file());

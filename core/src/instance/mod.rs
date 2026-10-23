@@ -96,7 +96,7 @@ pub struct Instance {
     pub pack_settings: LaunchOverrides,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_launch: Option<LastLaunch>,
-    /// Папка игры вне Lime (подключённая `.minecraft` без копирования). Корзина её не трогает.
+    /// Папка игры вне Axel (подключённая `.minecraft` без копирования). Корзина её не трогает.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_game_dir: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
