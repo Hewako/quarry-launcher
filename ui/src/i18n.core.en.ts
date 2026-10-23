@@ -462,4 +462,5 @@ export const CORE_EN: Record<string, string> = {
   "Без исправления игра не откроет окно на macOS": "Without a fix the game will not open a window on macOS",
   "Эта версия ставит иконку окна, а современная macOS это запрещает (ошибка игры MCL-15163). Мод MacOS LWJGL Fix отменяет только этот вызов.": "This version sets a window icon, and modern macOS does not allow it (game bug MCL-15163). The MacOS LWJGL Fix mod cancels only this call.",
   "Minecraft {0} на macOS, мода macoslwjglfix нет": "Minecraft {0} on macOS, no macoslwjglfix mod",
+  "Загрузчик": "Loader",
 };

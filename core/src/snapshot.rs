@@ -208,7 +208,7 @@ fn file_map(root: &Path, prefix: &str, out: &mut BTreeMap<String, (u64, String)>
     }
 }
 
-fn options_map(path: &Path) -> BTreeMap<String, String> {
+pub(crate) fn options_map(path: &Path) -> BTreeMap<String, String> {
     std::fs::read_to_string(path)
         .unwrap_or_default()
         .lines()

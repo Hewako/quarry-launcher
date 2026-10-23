@@ -412,6 +412,9 @@ details.adv summary::-webkit-details-marker { display: none; }
 .panel h3 { font-size: 16px; font-weight: 600; margin: 0; }
 .panel .acts { display: flex; gap: 8px; justify-content: flex-end; }
 
+.cmp td:first-child { color: var(--muted); }
+.cmp td { word-break: break-word; }
+
 /* «Моды» (макет 02): фильтры-чипы, таблица с группами, карточка выбранного мода справа */
 .modsgrid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }

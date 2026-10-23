@@ -145,6 +145,9 @@ export interface GlobalSettings {
   backup_before_risky_launch: boolean; backup_after_exit: boolean; backup_every_days: number; download_limit_kbps: number; check_launcher_updates: boolean;
 }
 export interface WorldBackup { world: string; file: string; size: number; created_at: number }
+/** Строка различия: что, в первом профиле, во втором. */
+export type DiffRow = [string, string, string];
+export interface ProfileDiff { basics: DiffRow[]; only_a: string[]; only_b: string[]; versions: DiffRow[]; settings: DiffRow[]; options: DiffRow[] }
 export interface WorldInfo {
   folder: string; name: string; version_name?: string; data_version?: number; game_mode: string; hardcore: boolean;
   last_played: number; size: number; backups: WorldBackup[];
@@ -216,6 +219,7 @@ export const api = {
   launch: (id: string, quickPlay?: QuickPlay, fullVerify = false, safeMode = false) =>
     invoke<void>("launch_instance", { id, quickPlay: quickPlay ?? null, fullVerify, safeMode }),
   stop: (id: string) => invoke<boolean>("stop_instance", { id }),
+  compareProfiles: (a: string, b: string) => invoke<ProfileDiff>("profiles_compare", { a, b }),
   previewCommand: (id: string) => invoke<string>("preview_command", { id }),
   openFolder: (id: string, sub?: string) => invoke<void>("open_instance_folder", { id, sub: sub ?? null }),
   readLog: (id: string) => invoke<string[]>("read_log_file", { id, file: null }),

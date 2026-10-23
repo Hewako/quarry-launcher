@@ -713,6 +713,17 @@ fn mods_view(state: State<AppState>, id: String) -> CmdResult<ModsView> {
     })
 }
 
+/// Сравнить два профиля: версия, моды, настройки запуска, options.txt.
+#[tauri::command]
+fn profiles_compare(
+    state: State<AppState>,
+    a: String,
+    b: String,
+) -> CmdResult<quarry_core::compare::ProfileDiff> {
+    let store = InstanceStore::new(state.data.clone());
+    quarry_core::compare::compare(&store, &a, &b).map_err(err)
+}
+
 #[tauri::command]
 fn mods_toggle(state: State<AppState>, id: String, file: String, enabled: bool) -> CmdResult<()> {
     if state.registry.is_running(&id) {
@@ -1879,6 +1890,7 @@ pub fn run() {
             list_versions,
             version_info,
             loader_versions,
+            profiles_compare,
             launch_instance,
             stop_instance,
             preview_command,

@@ -1,7 +1,7 @@
 // Вкладка «Профиль»: оформление, место на диске, копия профиля и перенос настроек из другого.
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { api, errText, importer, metaOf, type Channel, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type Instance, type ProfileMeta } from "../api";
+import { api, errText, importer, metaOf, type Channel, sizeText, SHARABLE, type PackUpdatePlan, type CloneParts, type DiffRow, type Instance, type ProfileDiff, type ProfileMeta } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { path, useStreamer } from "../streamer";
 import { t, tc } from "../i18n";
@@ -35,6 +35,57 @@ function CloneDialog({ inst, onClose, onDone }: { inst: Instance; onClose: () =>
         <button className="btn" onClick={onClose}>{t("Отмена")}</button>
         <button className="btn pri" disabled={busy || !name.trim()} onClick={go}>{busy ? t("Копируем…") : t("Создать копию")}</button>
       </div>
+    </Modal>
+  );
+}
+
+const SETTING_NAMES: Record<string, string> = { max_memory_mb: t("Память, МБ"), min_memory_mb: t("Память, МБ"), java_path: "Java", jvm_args: t("Аргументы JVM"), resolution: t("Размер окна игры"), game_args: t("Аргументы игры"), env: t("Переменные окружения") };
+
+/** Сравнение с другим профилем: версия, моды, настройки запуска, options.txt. */
+function CompareDialog({ inst, instances, onClose }: { inst: Instance; instances: Instance[]; onClose: () => void }) {
+  const others = instances.filter((i) => i.id !== inst.id);
+  const [other, setOther] = useState(others[0]?.id ?? "");
+  const [d, setD] = useState<ProfileDiff | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!other) return;
+    setD(null); setError("");
+    api.compareProfiles(inst.id, other).then(setD).catch((e) => setError(errText(e)));
+  }, [inst.id, other]);
+  const b = others.find((i) => i.id === other);
+  const table = (title: string, rows: DiffRow[]) => rows.length > 0 && (
+    <>
+      <h4 className="subhead">{title}</h4>
+      <table className="cmp"><thead><tr><th /><th>{inst.name}</th><th>{b?.name}</th></tr></thead>
+        <tbody>{rows.map(([k, x, y]) => <tr key={k}><td>{tc(k)}</td><td className="mono">{x || "—"}</td><td className="mono">{y || "—"}</td></tr>)}</tbody>
+      </table>
+    </>
+  );
+  const list = (title: string, items: string[]) => items.length > 0 && <><h4 className="subhead">{title}</h4><p className="small">{items.join(", ")}</p></>;
+  const same = d && !d.basics.length && !d.only_a.length && !d.only_b.length && !d.versions.length && !d.settings.length && !d.options.length;
+  return (
+    <Modal title={t("Сравнить «{0}» с другим профилем", inst.name)} onClose={onClose} wide>
+      {others.length === 0 ? <p className="muted">{t("Других профилей нет.")}</p> : (
+        <>
+          <select className="field" aria-label={t("С каким профилем сравнить")} value={other} onChange={(e) => setOther(e.target.value)}>
+            {others.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.game_version}</option>)}
+          </select>
+          {error && <div className="alert err"><span>{error}</span></div>}
+          {!d && !error && <p className="muted"><span className="spinner" /> {t("Сравниваем…")}</p>}
+          {same && <p className="muted">{t("Профили одинаковые: версия, моды и настройки совпадают.")}</p>}
+          {d && (
+            <div style={{ maxHeight: "60vh", overflow: "auto" }}>
+              {table(t("Версия"), d.basics)}
+              {list(t("Моды только в «{0}»", inst.name), d.only_a)}
+              {list(t("Моды только в «{0}»", b?.name ?? ""), d.only_b)}
+              {table(t("Моды разных версий"), d.versions)}
+              {table(t("Настройки запуска"), d.settings.map(([k, x, y]) => [SETTING_NAMES[k] ?? k, x, y] as DiffRow))}
+              {table(t("Настройки игры (options.txt)"), d.options)}
+            </div>
+          )}
+        </>
+      )}
+      <div className="acts"><button className="btn" onClick={onClose}>{t("Закрыть")}</button></div>
     </Modal>
   );
 }
@@ -91,7 +142,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
   const [meta, setMeta] = useState<ProfileMeta>(metaOf(inst));
   const [name, setName] = useState(inst.name);
   const [usage, setUsage] = useState<{ parts: { label: string; size: number }[]; total: number } | null>(null);
-  const [modal, setModal] = useState<"" | "clone" | "copy">("");
+  const [modal, setModal] = useState<"" | "clone" | "copy" | "compare">("");
   const [moving, setMoving] = useState(false);
   const [update, setUpdate] = useState<{ path: string; plan: PackUpdatePlan; off: string[]; versionId?: string; changelog?: string } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -256,6 +307,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
           <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
           <button className="btn" onClick={exportPack}>{t("Экспорт в .mrpack…")}</button>
           <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
+          <button className="btn" onClick={() => setModal("compare")}>{t("Сравнить с другим профилем…")}</button>
         </div>
         <div className="lbl" style={{ fontWeight: 500 }}>{t("Где лежит папка игры")}</div>
         <p className="small" style={{ marginTop: 0 }}>
@@ -306,6 +358,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
           </div>
         </Modal>
       )}
+      {modal === "compare" && <CompareDialog inst={inst} instances={instances} onClose={() => setModal("")} />}
       {modal === "clone" && <CloneDialog inst={inst} onClose={() => setModal("")} onDone={(i) => { setModal(""); onCloned(i); }} />}
       {modal === "copy" && <CopyFromDialog inst={inst} instances={instances} onClose={() => setModal("")} />}
     </div>

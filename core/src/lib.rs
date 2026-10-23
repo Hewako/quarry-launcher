@@ -9,6 +9,7 @@ compile_error!(
 pub mod account;
 pub mod archive;
 pub mod catalog;
+pub mod compare;
 pub mod configs;
 pub mod curseforge;
 pub mod diagnostics;

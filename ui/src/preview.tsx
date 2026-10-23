@@ -58,6 +58,7 @@ mockIPC((cmd, args) => {
     case "first_run_info": return { data_dir: "/Users/player/.quarry", free_bytes: 84_000_000_000, javas: [{ path: "/usr/bin/java", major: 21, version: "21.0.4", arch: "aarch64" }] };
     case "first_run_done": return null;
     case "account_skin": return null;
+    case "profiles_compare": return { basics: [["Minecraft", "26.3", "1.21.11"], ["Загрузчик", "Fabric 0.19.5", "Quilt 0.29.2"]], only_a: ["Fabric API 0.120.0"], only_b: ["Iris Shaders 1.10.8"], versions: [["Sodium", "0.8.14", "0.7.2"]], settings: [["max_memory_mb", "6144", "4096"]], options: [["fov", "70", "90"]] };
     case "preview_command": return "java -Xms6144M -Xmx6144M -XX:+UseG1GC -cp …87 модов, библиотеки… net.fabricmc.loader.impl.launch.knot.KnotClient --username Steve_Builder --accessToken ‹скрыт›";
     case "servers_list": return [{ name: "Сервер с друзьями", ip: "mc.example.org" }, { name: "Локальный", ip: "127.0.0.1:25566" }];
     case "server_ping": return a.address === "mc.example.org"

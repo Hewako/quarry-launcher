@@ -9,7 +9,7 @@ const LOADERS: { kind: LoaderKind; ready: boolean; note?: string }[] = [
   { kind: "vanilla", ready: true },
   { kind: "fabric", ready: true },
   { kind: "quilt", ready: true },
-  { kind: "neoforge", ready: false, note: t("скоро: нужен запуск установщика") },
+  { kind: "neoforge", ready: true },
   { kind: "forge", ready: false, note: t("позже") },
 ];
 
