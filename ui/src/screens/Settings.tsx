@@ -4,6 +4,7 @@ import { useDialog } from "../ui/Dialog";
 import { path, setStreamer } from "../streamer";
 import { switchLang, t, tc } from "../i18n";
 
+type Section = "general" | "look" | "game" | "data" | "privacy" | "about";
 const ACCENTS: [string, string][] = [["#3fb950", t("Зелёный")], ["#2563eb", t("Синий")], ["#7c3aed", t("Фиолетовый")], ["#d0703a", t("Оранжевый")], ["#c2415d", t("Малиновый")], ["#2a9d8f", t("Бирюзовый")]];
 
 export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo; theme: string; onTheme: (t: string) => void; onAppearance: (g: GlobalSettings) => void }) {
@@ -11,6 +12,7 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
   const [s, setS] = useState<GlobalSettings | null>(null);
   const [args, setArgs] = useState("");
   const [saved, setSaved] = useState(false);
+  const [sec, setSec] = useState<Section>("general");
   const [storage, setStorage] = useState<{ label: string; size: number; cleanable: boolean }[] | null>(null);
   const loadStorage = () => { diagnostics.storage().then(setStorage).catch(() => setStorage([])); };
 
@@ -32,28 +34,19 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
     }
   };
 
+  const SECTIONS: [Section, string][] = [["general", t("Общие")], ["look", t("Внешний вид")], ["game", t("Игра")], ["data", t("Данные и сеть")], ["privacy", t("Приватность")], ["about", t("О Quarry")]];
+  const title = SECTIONS.find(([k]) => k === sec)![1];
   return (
     <>
-      <h2>{t("Настройки")}</h2>
+      <h2>{t("Настройки Quarry")}</h2>
       <p className="sub">{t("Глобальные значения — нижний уровень наследования: профиль и сборка их переопределяют.")}</p>
-      <div className="card">
-        <div className="setting">
-          <div className="lbl">{t("Память по умолчанию")}<span className="hint">{t("для профилей без своего значения")}</span></div>
-          <input className="field" type="number" min={1024} step={512} placeholder="4096" value={s.launch.max_memory_mb ?? ""}
-            onChange={(e) => setS({ ...s, launch: { ...s.launch, max_memory_mb: e.target.value ? Number(e.target.value) : undefined, min_memory_mb: undefined } })} />
-          <span className="muted small">{t("МБ")}</span>
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Java по умолчанию")}<span className="hint">{t("пусто — подбор по версии игры")}</span></div>
-          <input className="field mono" placeholder={t("Авто")} value={s.launch.java_path ?? ""}
-            onChange={(e) => setS({ ...s, launch: { ...s.launch, java_path: e.target.value || undefined } })} />
-          <span />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Аргументы JVM по умолчанию")}</div>
-          <input className="field mono" value={args} onChange={(e) => setArgs(e.target.value)} placeholder={t("например -XX:+UseG1GC")} />
-          <span />
-        </div>
+      <div className="settings">
+        <nav className="secnav" aria-label={t("Разделы настроек")}>
+          {SECTIONS.map(([k, l]) => <button key={k} className={sec === k ? "on" : ""} aria-current={sec === k ? "page" : undefined} onClick={() => setSec(k)}>{l}</button>)}
+        </nav>
+        <section className="card" aria-label={title}>
+          <h3>{title}</h3>
+          {sec === "general" && <>
         <div className="setting">
           <div className="lbl">{t("Язык")}<span className="hint">Language</span></div>
           <select className="field" value={s.language} onChange={async (e) => {
@@ -67,13 +60,36 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
         </div>
         <div className="setting">
           <div className="lbl">{t("Тема")}</div>
-          <select className="field" value={theme} onChange={(e) => onTheme(e.target.value)}>
-            <option value="dark">{t("Тёмная")}</option>
-            <option value="light">{t("Светлая")}</option>
-            <option value="system">{t("Как в системе")}</option>
-          </select>
+          <div className="seg" role="radiogroup" aria-label={t("Тема")}>
+            {([["light", t("Светлая")], ["dark", t("Тёмная")], ["system", t("Как в системе")]] as const).map(([v, l]) => (
+              <button key={v} role="radio" aria-checked={theme === v} className={theme === v ? "on" : ""} onClick={() => onTheme(v)}>{l}</button>
+            ))}
+          </div>
           <span />
         </div>
+        <div className="setting">
+          <div className="lbl">{t("Папка данных")}</div>
+          <span className="mono" style={{ userSelect: "text" }}>{path(info.data_dir, s.streamer_mode)}</span>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">{t("Память по умолчанию")}<span className="hint">{t("для профилей без своего значения")}</span></div>
+          <input className="field" type="number" min={1024} step={512} placeholder="4096" value={s.launch.max_memory_mb ?? ""}
+            onChange={(e) => setS({ ...s, launch: { ...s.launch, max_memory_mb: e.target.value ? Number(e.target.value) : undefined, min_memory_mb: undefined } })} />
+          <span className="muted small">{t("МБ")}</span>
+        </div>
+        <div className="setting">
+          <div className="lbl">{t("Сообщать о новой версии Quarry")}<span className="hint">{t("проверка на GitHub при запуске; скачивание — только по вашему нажатию")}</span></div>
+          <label className="row"><input type="checkbox" checked={s.check_launcher_updates} onChange={(e) => setS({ ...s, check_launcher_updates: e.target.checked })} /> {t("включено")}</label>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">{t("Режим стримера")}<span className="hint">{t("скрывать ник, пути и адреса серверов на экране, в логах и в отчётах")}</span></div>
+          <label className="row"><input type="checkbox" checked={s.streamer_mode} onChange={(e) => setS({ ...s, streamer_mode: e.target.checked })} /> {t("включён")}</label>
+          <span />
+        </div>
+          </>}
+          {sec === "look" && <>
         <div className="setting">
           <div className="lbl">{t("Акцентный цвет")}</div>
           <div className="row" role="radiogroup" aria-label={t("Акцентный цвет")}>
@@ -106,11 +122,20 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           <label className="row"><input type="checkbox" checked={s.compact} onChange={(e) => { const n = { ...s, compact: e.target.checked }; setS(n); onAppearance(n); }} /> {t("включён")}</label>
           <span />
         </div>
+          </>}
+          {sec === "game" && <>
         <div className="setting">
-          <div className="lbl">{t("Режим стримера")}<span className="hint">{t("скрывать ник, пути и адреса серверов на экране, в логах и в отчётах")}</span></div>
-          <label className="row"><input type="checkbox" checked={s.streamer_mode} onChange={(e) => setS({ ...s, streamer_mode: e.target.checked })} /> {t("включён")}</label>
+          <div className="lbl">{t("Java по умолчанию")}<span className="hint">{t("пусто — подбор по версии игры")}</span></div>
+          <input className="field mono" placeholder={t("Авто")} value={s.launch.java_path ?? ""}
+            onChange={(e) => setS({ ...s, launch: { ...s.launch, java_path: e.target.value || undefined } })} />
           <span />
         </div>
+        <div className="setting">
+          <div className="lbl">{t("Аргументы JVM по умолчанию")}</div>
+          <input className="field mono" value={args} onChange={(e) => setArgs(e.target.value)} placeholder={t("например -XX:+UseG1GC")} />
+          <span />
+        </div>
+            <h4 className="subhead">{t("Бэкапы миров")}</h4>
         <div className="setting">
           <div className="lbl">{t("Бэкап мира перед рискованным запуском")}<span className="hint">{t("если моды менялись после прошлой игры")}</span></div>
           <label className="row"><input type="checkbox" checked={s.backup_before_risky_launch} onChange={(e) => setS({ ...s, backup_before_risky_launch: e.target.checked })} /> {t("включён")}</label>
@@ -131,6 +156,8 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           </select>
           <span />
         </div>
+          </>}
+          {sec === "data" && <>
         <div className="setting">
           <div className="lbl">{t("Скорость загрузок")}<span className="hint">{t("чтобы не мешать другим в сети")}</span></div>
           <select className="field" value={s.download_limit_kbps} onChange={(e) => setS({ ...s, download_limit_kbps: Number(e.target.value) })}>
@@ -143,19 +170,7 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           </select>
           <span />
         </div>
-        <div className="setting">
-          <div className="lbl">{t("Сообщать о новой версии Quarry")}<span className="hint">{t("проверка на GitHub при запуске; скачивание — только по вашему нажатию")}</span></div>
-          <label className="row"><input type="checkbox" checked={s.check_launcher_updates} onChange={(e) => setS({ ...s, check_launcher_updates: e.target.checked })} /> {t("включено")}</label>
-          <span />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Папка данных")}</div>
-          <span className="mono" style={{ userSelect: "text" }}>{path(info.data_dir, s.streamer_mode)}</span>
-          <span />
-        </div>
-      </div>
-      <h4 style={{ margin: "22px 0 10px" }}>{t("Место на диске")}</h4>
-      <div className="card">
+            <h4 className="subhead">{t("Место на диске")}</h4>
         {storage === null ? (
           <button className="btn" onClick={loadStorage}>{t("Посчитать, сколько занимают данные Quarry")}</button>
         ) : (
@@ -178,10 +193,26 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
             </div>
           </>
         )}
-      </div>
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn pri" onClick={save}>{saved ? t("Сохранено") : t("Сохранить")}</button>
-        <span className="muted small">Quarry {info.version} {t("· открытый проект под GPL-3.0 · не связан с Mojang и Microsoft.")}</span>
+          </>}
+          {sec === "privacy" && <>
+            <ul className="privacy">
+              <li>{t("Quarry не собирает статистику и ничего не отправляет разработчикам.")}</li>
+              <li>{t("Лаунчер обращается только к нужным сервисам: Mojang и Microsoft (игра и вход), Modrinth и CurseForge (моды), Adoptium (Java), GitHub (проверка новой версии Quarry).")}</li>
+              <li>{t("Данные входа хранятся в защищённом хранилище системы, а не в файлах.")}</li>
+              <li>{t("Из логов и отчётов скрываются токены, путь к домашней папке и IP-адреса.")}</li>
+            </ul>
+            <button className="btn link" onClick={() => api.openLink("https://github.com/Hewako/quarry-launcher/blob/main/docs/PRIVACY.md").catch(() => {})}>{t("Подробнее о приватности")}</button>
+          </>}
+          {sec === "about" && <>
+            <p>Quarry {info.version} {t("· открытый проект под GPL-3.0 · не связан с Mojang и Microsoft.")}</p>
+            <button className="btn link" onClick={() => api.openLink("https://github.com/Hewako/quarry-launcher/releases").catch(() => {})}>{t("Открыть страницу загрузки")}</button>
+          </>}
+          {!["privacy", "about"].includes(sec) && (
+            <div className="row" style={{ marginTop: 14 }}>
+              <button className="btn cta" onClick={save}>{saved ? t("Сохранено") : t("Сохранить")}</button>
+            </div>
+          )}
+        </section>
       </div>
     </>
   );

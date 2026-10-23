@@ -3,10 +3,11 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, errText, importer, type ImportResult, type Instance, type LoaderKind, type SearchHit } from "../api";
-import { Modal } from "../ui/Dialog";
+import { Modal, Panel } from "../ui/Dialog";
 import { t, tc } from "../i18n";
 
-export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: (i: Instance) => void }) {
+export function ImportDialog({ onClose, onDone, embedded }: { onClose: () => void; onDone: (i: Instance) => void; embedded?: boolean }) {
+  const Wrap = embedded ? Panel : Modal;
   const [sources, setSources] = useState<{ prism: [string, string][]; official?: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -92,7 +93,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
   }
 
   return (
-    <Modal title={t("Импорт")} onClose={onClose} wide>
+    <Wrap title={embedded ? t("Импортировать готовую сборку") : t("Импорт")} onClose={onClose} wide>
       <h4 style={{ margin: 0 }}>{t("Сборка из каталога Modrinth")}</h4>
       <input className="field" type="search" aria-label={t("Найти сборку")} placeholder={t("Найти сборку…")} value={packQuery} onChange={(e) => setPackQuery(e.target.value)} />
       {packs.map((h) => (
@@ -144,7 +145,7 @@ export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone:
         </>
       )}
       {error && <div className="alert err"><span style={{ userSelect: "text" }}>{error}</span></div>}
-      <div className="acts"><button className="btn" onClick={onClose}>{t("Закрыть")}</button></div>
-    </Modal>
+      {!embedded && <div className="acts"><button className="btn" onClick={onClose}>{t("Закрыть")}</button></div>}
+    </Wrap>
   );
 }

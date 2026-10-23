@@ -96,13 +96,18 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
   const streamer = useStreamer();
   const [skin, setSkin] = useState<Record<string, string | null>>({});
   const showSkin = (key: string) => {
-    if (key in skin) { const { [key]: _, ...rest } = skin; setSkin(rest); return; }
+    if (key in skin) return;
     api.accountSkin(key).then((url) => setSkin((s) => ({ ...s, [key]: url }))).catch(() => setSkin((s) => ({ ...s, [key]: null })));
   };
   const dialog = useDialog();
   const [msLogin, setMsLogin] = useState(false);
   const [elyBusy, setElyBusy] = useState(false);
   const [elyPassword, setElyPassword] = useState(false);
+  // Справа — скин выбранного аккаунта (сначала основного).
+  const [sel, setSel] = useState<string | null>(null);
+  const selAcc = accounts.find((a) => accountKey(a) === sel) ?? accounts.find((a) => accountKey(a) === defaultKey) ?? accounts[0];
+  const selKey = selAcc ? accountKey(selAcc) : undefined;
+  useEffect(() => { if (selKey) showSkin(selKey); }, [selKey]);
   const verified = accounts.some((a) => a.provider === "microsoft" && a.owns_java_edition);
 
   const remove = async (a: AccountRef) => {
@@ -131,8 +136,11 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
 
   return (
     <>
-      <h2>{t("Аккаунты")}</h2>
+      <h2>{t("Аккаунты и скины")}</h2>
       <p className="sub">{t("Провайдеры не смешиваются: у каждого аккаунта свой UUID и токены. Токены лежат только в хранилище секретов ОС.")}</p>
+      <div className="ov">
+      <section className="card">
+      <h3>{t("Аккаунты")}</h3>
       {accounts.length === 0 && (
         <div className="alert info">
           <div className="h">{t("Аккаунтов пока нет")}</div>
@@ -144,13 +152,7 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
           <Avatar account={a} size={40} />
           <div className="grow">
             <b>{nick(a.name, streamer)}</b>{" "}
-            <button className="btn link small" aria-expanded={skin[accountKey(a)] !== undefined} onClick={() => showSkin(accountKey(a))}>{t("Скин")}</button>
-            {skin[accountKey(a)] !== undefined && (
-              <div style={{ margin: "8px 0" }}>
-                {skin[accountKey(a)] ? <img className="skinfig" src={skin[accountKey(a)]!} alt={t("Скин спереди и сзади")} /> : <span className="muted small">{t("Скина нет — в игре будет стандартный Steve или Alex.")}</span>}
-                <div className="muted small">{a.provider === "elyby" ? t("Скин Ely.by виден только на серверах, которые используют Ely.by. Сменить его можно на ely.by.") : t("Сменить скин можно на minecraft.net.")}</div>
-              </div>
-            )}
+            <button className="btn link small" aria-pressed={selKey === accountKey(a)} onClick={() => setSel(accountKey(a))}>{t("Скин")}</button>
             <div className="row" style={{ gap: 6, marginTop: 4 }}>
               {a.provider === "microsoft" ? (
                 <>
@@ -173,8 +175,8 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
           <button className="btn" onClick={() => remove(a)}>{t("Выйти")}</button>
         </div>
       ))}
-      <div className="row" style={{ marginTop: 6 }}>
-        <button className="btn pri" disabled={!info.microsoft_configured} onClick={() => setMsLogin(true)}>{t("Войти через Microsoft")}</button>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn cta" disabled={!info.microsoft_configured} onClick={() => setMsLogin(true)}>{t("Войти через Microsoft")}</button>
         <button className="btn" disabled={!verified} onClick={() => setElyPassword(true)}>{t("Войти через Ely.by")}</button>
         {verified && <button className="btn link small" disabled={elyBusy} onClick={ely}>{elyBusy ? t("Ждём браузер…") : t("или через браузер (OAuth)")}</button>}
       </div>
@@ -186,6 +188,16 @@ export function Accounts({ info, accounts, defaultKey, onChanged }: { info: AppI
       )}
       {!verified && <p className="muted small">{t("Ely.by станет доступен после входа в Microsoft-аккаунт с купленной игрой.")}</p>}
       <p className="muted small">{t("Вход открывается в системном браузере. Пароль в лаунчер не вводится.")}</p>
+      </section>
+      {selAcc && (
+        <section className="card skincard" aria-label={t("Скин")}>
+          <h3>{t("Скин")} {nick(selAcc.name, streamer)}</h3>
+          {skin[selKey!] === undefined ? <p className="muted"><span className="spinner" /> {t("Загружаем…")}</p>
+            : skin[selKey!] ? <img className="skinfig" src={skin[selKey!]!} alt={t("Скин спереди и сзади")} /> : <p className="muted small">{t("Скина нет — в игре будет стандартный Steve или Alex.")}</p>}
+          <p className="muted small">{selAcc.provider === "elyby" ? t("Скин Ely.by виден только на серверах, которые используют Ely.by. Сменить его можно на ely.by.") : t("Сменить скин можно на minecraft.net.")}</p>
+        </section>
+      )}
+      </div>
       {elyPassword && (
         <ElyLogin onClose={() => setElyPassword(false)} onDone={async (a) => {
           setElyPassword(false);

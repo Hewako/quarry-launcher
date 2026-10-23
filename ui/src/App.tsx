@@ -17,7 +17,7 @@ import { markRead, pushNote, useNotes } from "./notify";
 import { src, syncLang, t } from "./i18n";
 
 /** Профиль с вкладками или один из общих экранов, открытых с рельсы. */
-type Screen = "profile" | "logs" | "accounts" | "settings";
+type Screen = "profile" | "logs" | "accounts" | "settings" | "new";
 
 function applyTheme(theme: string) {
   const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme !== "light";
@@ -82,8 +82,6 @@ function Shell() {
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [screen, setScreen] = useState<Screen>("profile");
   const [profileTab, setProfileTab] = useState<Tab | undefined>();
-  const [creating, setCreating] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [loadError, setLoadError] = useState("");
   const [firstRun, setFirstRun] = useState(false);
@@ -192,7 +190,7 @@ function Shell() {
               </div>
             );
           })}
-          <button className="tile add" aria-label={t("Новый профиль")} title={t("Новый профиль")} onClick={() => setCreating(true)}>+</button>
+          <button className={`tile add ${screen === "new" ? "on" : ""}`} aria-label={t("Новый профиль")} title={t("Новый профиль")} onClick={() => setScreen("new")}>+</button>
         </div>
         <div className="rail-tools">
           <button className={`rail-btn ${screen === "logs" ? "on" : ""}`} aria-label={t("Логи и краши{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} title={t("Логи и краши")}
@@ -234,13 +232,22 @@ function Shell() {
             <div className="card empty">
               <p>{t("Профилей нет.")}</p>
               <div className="row" style={{ justifyContent: "center" }}>
-                <button className="btn pri" onClick={() => setCreating(true)}>{t("+ Новый профиль")}</button>
-                <button className="btn" onClick={() => setImporting(true)}>{t("Импорт .mrpack / zip / Prism")}</button>
+                <button className="btn pri" onClick={() => setScreen("new")}>{t("+ Новый профиль")}</button>
               </div>
             </div>
           ))}
           {screen === "logs" && <Logs instances={instances} states={states} id={selectedId} onPick={setSelectedId} />}
           {screen === "accounts" && <Accounts info={info} accounts={accounts} defaultKey={defaultKey} onChanged={refreshAccounts} />}
+          {screen === "new" && (
+            <>
+              <h2>{t("Новый профиль")}</h2>
+              <p className="sub">{t("Создать с нуля или импортировать готовую сборку.")}</p>
+              <div className="split2">
+                <CreateInstance embedded onClose={() => setScreen("profile")} onCreated={(i) => refresh().then(() => open(i.id))} />
+                <ImportDialog embedded onClose={() => setScreen("profile")} onDone={(i) => refresh().then(() => open(i.id))} />
+              </div>
+            </>
+          )}
           {screen === "settings" && <Settings info={info} theme={theme} onTheme={changeTheme} onAppearance={applyAppearance} />}
         </main>
 
@@ -263,16 +270,10 @@ function Shell() {
         <FirstRun onDone={(next) => {
           setFirstRun(false);
           if (next === "accounts") setScreen("accounts");
-          else if (next === "create") setCreating(true);
-          else if (next === "import") setImporting(true);
+          else if (next === "create" || next === "import") setScreen("new");
         }} />
       )}
-      {importing && (
-        <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />
-      )}
-      {creating && (
-        <CreateInstance onClose={() => setCreating(false)} onImport={() => { setCreating(false); setImporting(true); }} onCreated={(i) => { setCreating(false); refresh().then(() => open(i.id)); }} />
-      )}
+
     </div>
   );
 }

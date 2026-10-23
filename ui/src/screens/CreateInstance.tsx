@@ -2,7 +2,7 @@
 // Совместимость проверяется до создания (ядро ещё раз проверит перед скачиванием).
 import { useEffect, useMemo, useState } from "react";
 import { api, errText, loaderName, type Instance, type LoaderKind, type LoaderVersion, type VersionEntry } from "../api";
-import { Modal } from "../ui/Dialog";
+import { Modal, Panel } from "../ui/Dialog";
 import { t } from "../i18n";
 
 const LOADERS: { kind: LoaderKind; ready: boolean; note?: string }[] = [
@@ -13,7 +13,7 @@ const LOADERS: { kind: LoaderKind; ready: boolean; note?: string }[] = [
   { kind: "forge", ready: false, note: t("позже") },
 ];
 
-export function CreateInstance({ onClose, onCreated, onImport }: { onClose: () => void; onCreated: (i: Instance) => void; onImport?: () => void }) {
+export function CreateInstance({ onClose, onCreated, embedded }: { onClose: () => void; onCreated: (i: Instance) => void; embedded?: boolean }) {
   const [name, setName] = useState("");
   const [snapshots, setSnapshots] = useState(false);
   const [query, setQuery] = useState("");
@@ -26,6 +26,7 @@ export function CreateInstance({ onClose, onCreated, onImport }: { onClose: () =
   const [loaderVersion, setLoaderVersion] = useState<string>("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const Wrap = embedded ? Panel : Modal;
 
   useEffect(() => {
     setVersions(null);
@@ -77,7 +78,7 @@ export function CreateInstance({ onClose, onCreated, onImport }: { onClose: () =
   };
 
   return (
-    <Modal title={t("Новый профиль")} onClose={onClose} wide>
+    <Wrap title={embedded ? t("Создать с нуля") : t("Новый профиль")} onClose={onClose} wide>
       <form className="form" onSubmit={(e) => { e.preventDefault(); if (canCreate) create(); }}>
         <label>
           <span>{t("Название")}</span>
@@ -128,11 +129,10 @@ export function CreateInstance({ onClose, onCreated, onImport }: { onClose: () =
         )}
         {error && <div className="alert err"><span>{error}</span></div>}
         <div className="acts">
-          {onImport && <button type="button" className="btn" style={{ marginRight: "auto" }} onClick={onImport}>{t("Импорт .mrpack / zip / Prism")}</button>}
           <button type="button" className="btn" onClick={onClose}>{t("Отмена")}</button>
-          <button type="submit" className="btn pri" disabled={!canCreate}>{busy ? t("Создаём…") : t("Создать")}</button>
+          <button type="submit" className="btn cta" disabled={!canCreate}>{busy ? t("Создаём…") : t("Создать")}</button>
         </div>
       </form>
-    </Modal>
+    </Wrap>
   );
 }

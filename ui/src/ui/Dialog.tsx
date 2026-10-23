@@ -23,6 +23,11 @@ export function useDialog(): DialogApi {
   return v;
 }
 
+/** То же содержимое, что у Modal, но карточкой на странице (экран «Новый профиль»). */
+export function Panel({ title, children }: { title: string; children: ReactNode; onClose?: () => void; wide?: boolean }) {
+  return <section className="card panel" aria-label={title}><h3>{title}</h3>{children}</section>;
+}
+
 export function Modal({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

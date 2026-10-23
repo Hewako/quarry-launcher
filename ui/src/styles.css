@@ -386,6 +386,32 @@ details.adv summary::-webkit-details-marker { display: none; }
 .psec.danger { border-color: var(--err-line); }
 .psec.danger h3 { color: var(--err); }
 
+/* Общие экраны (макеты 06–09) */
+.settings { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; max-width: 1100px; }
+.secnav { display: grid; gap: 2px; position: sticky; top: 0; }
+.secnav button { text-align: left; border: 0; background: none; color: var(--muted); padding: 10px 14px; border-radius: var(--radius-sm); font-weight: 500; }
+.secnav button:hover { color: var(--text); background: var(--panel); }
+.secnav button.on { color: var(--text); background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.settings > .card h3 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+
+.logsgrid { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+.runs { display: grid; gap: 0; padding: 12px 16px; }
+.runs h3 { margin: 0 0 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-weight: 500; }
+.run { display: grid; gap: 1px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); padding: 10px 10px 10px 14px; position: relative; border-radius: 0; }
+.run:last-child { border-bottom: 0; }
+.run::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; border-radius: 2px; background: var(--line-strong); }
+.run.ok::before { background: var(--accent); } .run.err::before { background: var(--err); } .run.warn::before { background: var(--warn); }
+.run:hover, .run.on { background: var(--panel2); }
+.logsgrid h3 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+
+.skincard { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.skincard h3 { justify-self: start; font-size: 15px; font-weight: 600; margin: 0; }
+.ov > .card > h3 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+
+.panel { display: grid; gap: 12px; align-content: start; }
+.panel h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.panel .acts { display: flex; gap: 8px; justify-content: flex-end; }
+
 /* «Моды» (макет 02): фильтры-чипы, таблица с группами, карточка выбранного мода справа */
 .modsgrid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -405,5 +431,5 @@ details.adv summary::-webkit-details-marker { display: none; }
 .modcard .alert { margin: 0; }
 .modcard .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 
-@media (max-width: 1100px) { .snaps li { grid-template-columns: minmax(0, 1fr); } .snaps .acts { grid-column: 1; } .modsgrid, .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
+@media (max-width: 1100px) { .logsgrid { grid-template-columns: minmax(0, 1fr); } .settings { grid-template-columns: minmax(0, 1fr); } .secnav { display: flex; flex-wrap: wrap; position: static; } .snaps li { grid-template-columns: minmax(0, 1fr); } .snaps .acts { grid-column: 1; } .modsgrid, .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
 

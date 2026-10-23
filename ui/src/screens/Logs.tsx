@@ -1,13 +1,13 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { api, diagnostics, duration, errText, relTime, sizeText, type Instance } from "../api";
+import { api, diagnostics, duration, errText, relTime, sizeText, statusOf, type Instance } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import type { LaunchState } from "../launches";
 import { LogView } from "../ui/LogView";
 import { CrashCard } from "../ui/CrashCard";
 import { t, tc } from "../i18n";
 
-/** Логи и краши: последний запуск выбранного профиля, живой или из файла. */
+/** Логи и краши (макет 06): слева последние запуски всех профилей, справа разбор и лог выбранного. */
 export function Logs({ instances, states, id, onPick }: { instances: Instance[]; states: Map<string, LaunchState>; id?: string; onPick: (id: string) => void }) {
   const inst = instances.find((i) => i.id === id) ?? instances[0];
   const state = inst ? states.get(inst.id) : undefined;
@@ -33,57 +33,70 @@ export function Logs({ instances, states, id, onPick }: { instances: Instance[];
   const last = inst.last_launch;
   const exit = state?.exit;
   const crashed = exit ? exit.crashed : last?.outcome === "crashed";
+  // Слева — последние запуски всех профилей (новые сверху); выбранный профиль — справа подробно.
+  const runs = instances.filter((i) => i.last_launch || i.id === inst.id).sort((a, b) => (b.last_launch?.at ?? 0) - (a.last_launch?.at ?? 0));
+  const tone = (i: Instance) => { const o = i.last_launch?.outcome; return o === "success" ? "ok" : o === "crashed" || o === "failed_to_start" ? "err" : o === "killed" ? "warn" : ""; };
   return (
     <>
-      <div className="pagehead">
-        <div>
-          <h2>{t("Логи и краши")}</h2>
-          <p className="sub">
-            {last ? <>{t("Профиль «")}{inst.name}{t("» · запуск")} {relTime(last.at)}{last.duration_secs ? ` · ${duration(last.duration_secs)}` : ""}
-              {last.prepare_secs !== undefined ? t(" · подготовка {0}", duration(last.prepare_secs)) : ""}{last.peak_ram_mb ? t(" · память до {0} ГБ", (last.peak_ram_mb / 1024).toFixed(1)) : ""}{last.cpu_percent ? t(" · процессор в среднем {0} %", last.cpu_percent) : ""}</> : <>{t("Профиль «")}{inst.name}{t("» ещё не запускался")}</>}
-          </p>
+      <h2>{t("Логи и краши")}</h2>
+      <p className="sub">
+        {last ? <>{t("Профиль «")}{inst.name}{t("» · запуск")} {relTime(last.at)}{last.duration_secs ? ` · ${duration(last.duration_secs)}` : ""}
+          {last.prepare_secs !== undefined ? t(" · подготовка {0}", duration(last.prepare_secs)) : ""}{last.peak_ram_mb ? t(" · память до {0} ГБ", (last.peak_ram_mb / 1024).toFixed(1)) : ""}{last.cpu_percent ? t(" · процессор в среднем {0} %", last.cpu_percent) : ""}</> : <>{t("Профиль «")}{inst.name}{t("» ещё не запускался")}</>}
+      </p>
+      <div className="logsgrid">
+        <nav className="card runs" aria-label={t("Последние запуски профилей")}>
+          <h3 className="muted small">{t("Последние запуски профилей")}</h3>
+          {runs.map((i) => (
+            <button key={i.id} className={`run ${tone(i)} ${i.id === inst.id ? "on" : ""}`} aria-current={i.id === inst.id ? "true" : undefined} onClick={() => onPick(i.id)}>
+              <span className="muted small">{i.last_launch ? relTime(i.last_launch.at) : t("ещё не запускался")}</span>
+              <b>{i.name}</b>
+              <span className="muted small">{statusOf(i, states.get(i.id)?.phase).text}{i.last_launch?.duration_secs ? ` · ${duration(i.last_launch.duration_secs)}` : ""}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="stack">
+          {exit?.analysis && <CrashCard inst={inst} a={exit.analysis} code={exit.code} onReport={openReport} />}
+          {crashed && !exit?.analysis && (
+            <div className="alert err">
+              <div className="h">{t("Игра упала")}{exit?.code != null ? t(" с кодом {0}", exit.code) : last?.exit_code != null ? t(" с кодом {0}", last.exit_code) : ""}</div>
+              {last?.message && <span>{tc(last.message)}</span>}
+              <span className="small">{t("Подробный разбор виден сразу после краша. Здесь — сохранённый лог: посмотрите вкладку «Ошибки», обычно причина в первой строке «Caused by».")}</span>
+              {exit?.crash_report && <span className="small mono" style={{ userSelect: "text" }}>Crash report: {exit.crash_report}</span>}
+            </div>
+          )}
+          {last?.outcome === "failed_to_start" && !live && (
+            <div className="alert err"><div className="h">{t("Запуск не начался")}</div><span style={{ userSelect: "text" }}>{tc(last.message)}</span></div>
+          )}
+          <section className="card">
+            <h3>{t("Лог запуска")}{last ? `, ${relTime(last.at)}` : ""}</h3>
+            {live ? <LogView lines={state.logs} /> : file ? <LogView lines={file} follow={false} /> : <p className="muted">{err || <><span className="spinner" /> {t("Загружаем лог…")}</>}</p>}
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn" onClick={openReport}>{t("Отчёт для поддержки…")}</button>
+              <button className="btn" onClick={() => api.openFolder(inst.id, "logs")}>{t("Папка логов игры")}</button>
+              <button className="btn" onClick={() => api.openFolder(inst.id, "crash-reports")}>{t("Открыть crash-reports")}</button>
+            </div>
+          </section>
+        {crashes.length > 0 && (
+          <>
+            <h4 className="subhead">{t("Отчёты о крашах ·")} {crashes.length}</h4>
+            <div className="card" style={{ padding: 0 }}>
+              <table className="servers">
+                <tbody>
+                  {crashes.map((c) => (
+                    <tr key={c.file}>
+                      <td><b>{c.description || t("Без описания")}</b><div className="muted small">{c.when} · {sizeText(c.size)}</div></td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn" onClick={() => diagnostics.readCrash(inst.id, c.file).then((text) => setShown({ title: c.when, text })).catch((e) => dialog.alert(t("Не открылся"), errText(e)))}>{t("Открыть")}</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         </div>
-        <button className="btn" onClick={openReport}>{t("Отчёт для поддержки…")}</button>
-        <select className="field" style={{ maxWidth: 260 }} value={inst.id} onChange={(e) => onPick(e.target.value)} aria-label={t("Профиль")}>
-          {instances.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-        </select>
       </div>
-      {exit?.analysis && <CrashCard inst={inst} a={exit.analysis} code={exit.code} onReport={openReport} />}
-      {crashed && !exit?.analysis && (
-        <div className="alert err">
-          <div className="h">{t("Игра упала")}{exit?.code != null ? t(" с кодом {0}", exit.code) : last?.exit_code != null ? t(" с кодом {0}", last.exit_code) : ""}</div>
-          {last?.message && <span>{tc(last.message)}</span>}
-          <span className="small">{t("Подробный разбор виден сразу после краша. Здесь — сохранённый лог: посмотрите вкладку «Ошибки», обычно причина в первой строке «Caused by».")}</span>
-          {exit?.crash_report && <span className="small mono" style={{ userSelect: "text" }}>Crash report: {exit.crash_report}</span>}
-          <div className="acts">
-            <button className="btn" onClick={() => api.openFolder(inst.id, "crash-reports")}>{t("Открыть crash-reports")}</button>
-            <button className="btn" onClick={() => api.openFolder(inst.id, "logs")}>{t("Папка логов игры")}</button>
-          </div>
-        </div>
-      )}
-      {last?.outcome === "failed_to_start" && !live && (
-        <div className="alert err"><div className="h">{t("Запуск не начался")}</div><span style={{ userSelect: "text" }}>{tc(last.message)}</span></div>
-      )}
-      {live ? <LogView lines={state.logs} /> : file ? <LogView lines={file} follow={false} /> : <p className="muted">{err || <><span className="spinner" /> {t("Загружаем лог…")}</>}</p>}
-      {crashes.length > 0 && (
-        <>
-          <h4 style={{ margin: "22px 0 10px" }}>{t("Отчёты о крашах ·")} {crashes.length}</h4>
-          <div className="card" style={{ padding: 0 }}>
-            <table className="servers">
-              <tbody>
-                {crashes.map((c) => (
-                  <tr key={c.file}>
-                    <td><b>{c.description || t("Без описания")}</b><div className="muted small">{c.when} · {sizeText(c.size)}</div></td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="btn" onClick={() => diagnostics.readCrash(inst.id, c.file).then((text) => setShown({ title: c.when, text })).catch((e) => dialog.alert(t("Не открылся"), errText(e)))}>{t("Открыть")}</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
       {shown && (
         <Modal title={t("Отчёт о краше · {0}", shown.title)} onClose={() => setShown(null)} wide>
           <pre className="cfgdiff" style={{ userSelect: "text" }}>{shown.text}</pre>
