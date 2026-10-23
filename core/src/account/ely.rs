@@ -33,7 +33,7 @@ use std::time::Duration;
 /// `QUARRY_ELY_CLIENT_ID=… cargo build`.
 pub const CLIENT_ID: &str = match option_env!("QUARRY_ELY_CLIENT_ID") {
     Some(id) => id,
-    None => "quarry1",
+    None => "axol",
 };
 const AUTH_URL: &str = "https://account.ely.by/oauth2/v1";
 const TOKEN_URL: &str = "https://account.ely.by/api/oauth2/v1/token";
