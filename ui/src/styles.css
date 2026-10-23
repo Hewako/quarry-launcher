@@ -121,9 +121,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .field.auto { width: auto; }
 .field.mono { font: 12.5px var(--mono); }
 select.field { padding: 6px 8px; }
-.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; min-width: 130px; }
-.kpi b { font-size: 20px; display: block; }
-.kpi span { font-size: 12px; color: var(--muted); }
 
 /* Логи */
 .logbox { background: #0a0d10; color: #c9d3dc; border: 1px solid var(--line); border-radius: var(--radius); font: 12px/1.6 var(--mono); padding: 10px 12px; height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; user-select: text; }
@@ -159,8 +156,6 @@ select.field { padding: 6px 8px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Моды и Mod Doctor */
-.summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.kpi.ok b { color: var(--accent); } .kpi.warn b { color: var(--warn); } .kpi.err b { color: var(--err); }
 .tog { width: 30px; height: 17px; border-radius: 10px; background: var(--line); position: relative; border: 0; padding: 0; flex: none; }
 .tog::after { content: ""; position: absolute; width: 13px; height: 13px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: .15s; }
 .tog.on { background: var(--accent); } .tog.on::after { left: 15px; }
@@ -367,5 +362,24 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .kv dd { text-align: right; font-weight: 500; }
 .kv dt:last-of-type, .kv dd:last-of-type { border-bottom: 0; }
 
-@media (max-width: 1100px) { .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
+/* «Моды» (макет 02): фильтры-чипы, таблица с группами, карточка выбранного мода справа */
+.modsgrid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 16px; align-items: start; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.fchip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: var(--radius-sm); padding: 5px 11px; font-size: 13px; font-weight: 500; }
+.fchip.on { border-color: var(--accent); background: var(--panel2); }
+.modtable tbody tr { cursor: pointer; }
+.modtable tbody tr:hover { background: var(--panel2); }
+.modtable tr.sel { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.modtable tr.grp td { background: var(--bg); font-weight: 600; font-size: 12.5px; cursor: default; }
+.modtable .rowname { border: 0; background: none; padding: 0; color: inherit; text-align: left; font: inherit; }
+.modtable .upd, .modcard .upd { color: var(--warn); }
+.state { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.state.err { color: var(--err); } .state.warn { color: var(--warn); } .state.ok { color: var(--muted); font-weight: 400; }
+.modcard { display: grid; gap: 10px; position: sticky; top: 0; }
+.modcard h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.modcard p { margin: 0; overflow-wrap: anywhere; }
+.modcard .alert { margin: 0; }
+.modcard .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 1100px) { .modsgrid, .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
 

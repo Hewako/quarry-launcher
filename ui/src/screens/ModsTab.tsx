@@ -1,10 +1,11 @@
 // Вкладка «Моды · Mod Doctor»: проверка сборки, список модов, каталог Modrinth, обновления.
 // Любое изменение модов — через предпросмотр и автоматический снимок.
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errText, mods, sizeText, type Bisect, type CatalogSource, type Channel, type Change, type DoctorReport, type Finding, type Instance, type JournalEntry, type ModFile, type ModState, type Plan, type ProjectKind, type SearchHit } from "../api";
 import { Modal, useDialog } from "../ui/Dialog";
 import { t, tc } from "../i18n";
+import { typing } from "./InstancePage";
 
 const stateCls: Record<ModState, string> = { ok: "ok", warning: "warn", blocked: "err", disabled: "", unknown: "warn" };
 const sideName: Record<string, string> = { client: t("клиент"), server: t("сервер"), both: t("обе"), unknown: "—" };
@@ -192,6 +193,15 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   const [groups, setGroups] = useState<{ names: string[]; groups: Record<string, string> }>({ names: [], groups: {} });
   const [grouping, setGrouping] = useState(false);
   const [bisect, setBisect] = useState<Bisect | null>(null);
+  const [chip, setChip] = useState<"all" | "issues" | "updates" | "off">("all");
+  const [selected, setSelected] = useState<string | null>(null);
+  const search = useRef<HTMLInputElement>(null);
+  // «/» — к поиску модов (как подсказано в поле).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "/" && !typing(e)) { e.preventDefault(); search.current?.focus(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const load = useCallback(() => {
     mods.view(inst.id).then((d) => { setData(d); setError(""); }).catch((e) => setError(errText(e)));
     mods.groups(inst.id).then(setGroups).catch(() => {});
@@ -311,18 +321,75 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   const updateCount = available?.changes.length ?? 0;
   const stateOf = (f: ModFile) => r.mods.find((m) => m.file_name === f.file_name);
 
+  const issue = (f: ModFile) => { const s = stateOf(f)?.state; return s === "blocked" || s === "warning"; };
+  const counts = { all: data.files.length, issues: data.files.filter(issue).length, updates: data.files.filter((f) => updateFor(f)).length, off: data.files.filter((f) => !f.enabled).length };
+  const visible = shown.filter((f) => chip === "all" || (chip === "issues" ? issue(f) : chip === "updates" ? !!updateFor(f) : !f.enabled));
+  const rowsIssues = visible.filter(issue);
+  const rowsRest = visible.filter((f) => !issue(f));
+  const sel = data.files.find((f) => f.file_name === selected) ?? rowsIssues[0] ?? visible[0];
+  const CHIPS: [typeof chip, string, number][] = [["all", t("Все"), counts.all], ["issues", t("Замечания"), counts.issues], ["updates", t("Обновления"), counts.updates], ["off", t("Выключены"), counts.off]];
+  const row = (f: ModFile) => {
+    const st = stateOf(f);
+    const m = f.mods[0];
+    const u = updateFor(f);
+    return (
+      <tr key={f.rel_path} className={`${f.enabled ? "" : "off"} ${sel?.file_name === f.file_name ? "sel" : ""}`} onClick={() => setSelected(f.file_name)}>
+        <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={`${f.enabled ? t("Выключить") : t("Включить")} ${m?.name ?? f.file_name}`} onClick={(e) => { e.stopPropagation(); toggle(f.file_name, !f.enabled); }} /></td>
+        <td><button className="rowname" aria-pressed={sel?.file_name === f.file_name} onClick={() => setSelected(f.file_name)}><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <span className="muted"> {tc(st!.notes[0])}</span>}</button></td>
+        <td className="mono">{m?.version ?? "?"}{u && <span className="upd"> → {u.new_version}</span>}{f.source?.pinned && <span className="muted" title={t("закреплена")}> 🔒</span>}</td>
+        <td>{f.source ? sourceName[f.source.source] : t("вручную")}</td>
+        <td>{st && <span className={`state ${stateCls[st.state]}`}>{tc(st.state_label)}</span>}</td>
+      </tr>
+    );
+  };
+  // Карточка выбранного мода: почему мешает (с кнопками починки), сведения и действия.
+  const card = (f: ModFile) => {
+    const m = f.mods[0];
+    const u = updateFor(f);
+    const needs = m ? data.files.filter((o) => o.mods.some((x) => x.dependencies.some((d) => d.id === m.id && d.kind === "required"))).map((o) => o.mods[0]?.name ?? o.file_name) : [];
+    return (
+      <aside className="card modcard" aria-label={t("Карточка мода")}>
+        <h3>{m?.name ?? f.file_name} {m?.version && <span className="mono muted">{m.version}</span>}</h3>
+        <p className="muted small">{f.file_name}</p>
+        {r.findings.filter((x) => x.files.includes(f.file_name)).map((x, i) => <FindingCard key={i} f={x} files={data.files} onToggle={toggle} onSearch={(q) => setCatalog(q)} />)}
+        <dl className="kv">
+          <dt>{t("Источник")}</dt><dd>{f.source ? sourceName[f.source.source] : t("вручную")}</dd>
+          <dt>{t("Сторона")}</dt><dd>{sideName[m?.side ?? "unknown"]}</dd>
+          <dt>{t("Слой")}</dt><dd>{f.source?.layer === "base" ? t("сборка") : t("мои моды")}</dd>
+          <dt>{t("Нужен для")}</dt><dd>{needs.length ? needs.join(", ") : t("никто не требует")}</dd>
+          <dt>{t("Размер")}</dt><dd>{sizeText(f.size)}</dd>
+          <dt>{t("Группа")}</dt>
+          <dd>
+            <select className="field auto mini" aria-label={t("Группа для {0}", m?.name ?? f.file_name)} value={groups.groups[f.file_name] ?? ""}
+              onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert(t("Не получилось"), errText(er)))}>
+              <option value="">—</option>
+              {groups.names.map((g) => <option key={g} value={g}>{tc(g)}</option>)}
+            </select>
+          </dd>
+          {u && <><dt>{t("Доступна версия")}</dt><dd>
+            <label className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+              <input type="checkbox" checked={picked.has(f.file_name)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(f.file_name); else n.delete(f.file_name); setPicked(n); }} />
+              <span className="mono upd">{u.new_version}</span>
+            </label>
+          </dd></>}
+        </dl>
+        <div className="acts">
+          <button className={`btn ${f.enabled ? "cta" : ""}`} disabled={running} onClick={() => toggle(f.file_name, !f.enabled)}>{f.enabled ? t("Выключить") : t("Включить")}</button>
+          <button className="btn" disabled={running} onClick={() => remove(f)}>{t("Удалить")}</button>
+          <button className="btn" disabled={running} onClick={() => pin(f)} title={t("Закреплённая версия не обновляется")}>{f.source?.pinned ? t("Открепить") : t("Закрепить")}</button>
+          {f.source?.source === "modrinth" && f.source.project_id && <button className="btn" onClick={() => api.openLink(`https://modrinth.com/mod/${f.source!.project_id}`).catch((e) => dialog.alert(t("Не получилось"), errText(e)))}>{t("На Modrinth")}</button>}
+        </div>
+      </aside>
+    );
+  };
+
   return (
     <>
       {running && <div className="alert warn"><span className="small">{t("Игра запущена — менять моды можно после её закрытия.")}</span></div>}
       {dragging && <div className="alert info"><div className="h">{t("Отпустите, чтобы добавить моды в «")}{inst.name}»</div><span className="small">{t("Перед добавлением будет создан снимок.")}</span></div>}
+      {/* Замечания без файла (например, не хватает мода) — над таблицей; остальные — в карточке мода. */}
       <div className="findings">
-        {r.findings.map((f, i) => <FindingCard key={i} f={f} files={data.files} onToggle={toggle} onSearch={(q) => setCatalog(q)} />)}
-      </div>
-      <div className="summary">
-        <div className="kpi"><b>{r.total}</b><span>{t("модов в профиле")}</span></div>
-        <div className="kpi ok"><b>{r.ok}</b><span>{t("конфликтов не найдено")}</span></div>
-        <div className="kpi warn"><b>{r.warnings}</b><span>{t("есть предупреждение")}</span></div>
-        <div className="kpi err"><b>{r.blocked}</b><span>{t("блокирует запуск")}</span></div>
+        {r.findings.filter((f) => f.files.length === 0).map((f, i) => <FindingCard key={i} f={f} files={data.files} onToggle={toggle} onSearch={(q) => setCatalog(q)} />)}
       </div>
       {bisect && (
         <div className="alert warn" style={{ marginBottom: 12 }}>
@@ -335,6 +402,17 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
           </div>
         </div>
       )}
+      <div className="modbar">
+        <div className="chips" role="group" aria-label={t("Фильтр модов")}>
+          {CHIPS.map(([k, l, n]) => <button key={k} className={`fchip ${chip === k ? "on" : ""}`} aria-pressed={chip === k} onClick={() => setChip(k)}>{l} <span className="muted">{n}</span></button>)}
+        </div>
+        <span style={{ flex: 1 }} />
+        <input ref={search} className="field" style={{ maxWidth: 220 }} placeholder={t("Найти мод…")} aria-label={t("Найти мод…")} aria-keyshortcuts="/" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <button className="btn" disabled={running || checking || updateCount === 0} onClick={updates} title={available === null ? t("обновления проверяются…") : updateCount ? t("обновления есть у {0}", updateCount) : t("обновлений нет")}>
+          {checking ? t("Проверяем…") : picked.size ? t("Обновить выбранные ({0})… (предпросмотр)", picked.size) : t("Обновить всё… (предпросмотр)")}
+        </button>
+        <button className="btn pri" disabled={running} onClick={() => setCatalog("")}>{t("+ Добавить мод")}</button>
+      </div>
       {data.files.length > 0 && (
         <div className="groupbar" role="group" aria-label={t("Наборы модов")}>
           <span className="muted small">{t("Наборы:")}</span>
@@ -353,60 +431,23 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
           <button className="btn link small" disabled={grouping} onClick={autoGroups}>{grouping ? t("Раскладываем…") : t("Разложить автоматически")}</button>
         </div>
       )}
-      <div className="modbar">
-        <input className="field" style={{ maxWidth: 260 }} placeholder={t("Найти мод…")} aria-label={t("Найти мод…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <span style={{ flex: 1 }} />
-        <span className="muted small">{available === null ? t("обновления проверяются…") : updateCount ? t("обновления есть у {0}", updateCount) : t("обновлений нет")}</span>
-        <button className="btn" disabled={running || checking || updateCount === 0} onClick={updates}>
-          {checking ? t("Проверяем…") : picked.size ? t("Обновить выбранные ({0})… (предпросмотр)", picked.size) : t("Обновить всё… (предпросмотр)")}
-        </button>
-        <button className="btn pri" disabled={running} onClick={() => setCatalog("")}>{t("+ Добавить мод")}</button>
-      </div>
       {data.files.length === 0 ? (
         <div className="card empty"><p>{t("Модов пока нет. Добавьте их из каталога Modrinth или перетащите JAR-файлы в окно.")}</p></div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: "auto" }}>
-          <table className="modtable">
-            <thead><tr><th style={{ width: 44 }} /><th>{t("Мод")}</th><th>{t("Версия")}</th><th>{t("Доступна версия")}</th><th>{t("Группа")}</th><th>{t("Сторона")}</th><th>{t("Источник")}</th><th>{t("Слой")}</th><th>{t("Состояние")}</th><th /></tr></thead>
-            <tbody>
-              {shown.map((f) => {
-                const st = stateOf(f);
-                const m = f.mods[0];
-                return (
-                  <tr key={f.rel_path} className={f.enabled ? "" : "off"}>
-                    <td><button className={`tog ${f.enabled ? "on" : ""}`} disabled={running} aria-label={f.enabled ? t("Выключить") : t("Включить")} onClick={() => toggle(f.file_name, !f.enabled)} /></td>
-                    <td><b>{m?.name ?? f.file_name}</b>{(st?.notes.length ?? 0) > 0 && <small>{tc(st!.notes[0])}</small>}{!m && <small>{f.file_name}</small>}</td>
-                    <td>{m?.version ?? "?"}{f.source?.pinned && <small style={{ color: "var(--warn)" }}>{t("закреплена")}</small>}</td>
-                    <td>{(() => {
-                      const u = updateFor(f);
-                      if (!u) return <span className="muted">—</span>;
-                      return (
-                        <label className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                          <input type="checkbox" checked={picked.has(f.file_name)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(f.file_name); else n.delete(f.file_name); setPicked(n); }} />
-                          <span className="upd" style={{ color: "var(--blue)" }}>→ {u.new_version}</span>
-                        </label>
-                      );
-                    })()}</td>
-                    <td>
-                      <select className="field auto mini" aria-label={t("Группа для {0}", m?.name ?? f.file_name)} value={groups.groups[f.file_name] ?? ""}
-                        onChange={(e) => mods.setGroup(inst.id, f.file_name, e.target.value || null).then(load).catch((er) => dialog.alert(t("Не получилось"), errText(er)))}>
-                        <option value="">—</option>
-                        {groups.names.map((g) => <option key={g} value={g}>{tc(g)}</option>)}
-                      </select>
-                    </td>
-                    <td>{sideName[m?.side ?? "unknown"]}</td>
-                    <td>{f.source ? sourceName[f.source.source] : t("вручную")}</td>
-                    <td className="layer">{f.source?.layer === "base" ? t("сборка") : t("мои моды")}</td>
-                    <td>{st && <span className={`badge ${stateCls[st.state]}`}>{tc(st.state_label)}</span>}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <button className="btn link small" disabled={running} onClick={() => pin(f)} title={t("Закреплённая версия не обновляется")}>{f.source?.pinned ? t("Открепить") : t("Закрепить")}</button>{" · "}
-                      <button className="btn link small" disabled={running} onClick={() => remove(f)}>{t("Удалить")}</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="modsgrid">
+          <div className="card" style={{ padding: 0, overflow: "auto" }}>
+            <table className="modtable">
+              <thead><tr><th style={{ width: 52 }} /><th>{t("Мод")}</th><th>{t("Версия")}</th><th>{t("Источник")}</th><th>{t("Состояние")}</th></tr></thead>
+              <tbody>
+                {rowsIssues.length > 0 && <tr className="grp"><td colSpan={5}>{t("Замечания: {0}", rowsIssues.length)}</td></tr>}
+                {rowsIssues.map(row)}
+                {rowsIssues.length > 0 && rowsRest.length > 0 && <tr className="grp"><td colSpan={5}>{t("Остальные: {0}", rowsRest.length)}</td></tr>}
+                {rowsRest.map(row)}
+                {visible.length === 0 && <tr><td colSpan={5} className="muted">{t("Ничего не нашлось.")}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {sel && card(sel)}
         </div>
       )}
 
