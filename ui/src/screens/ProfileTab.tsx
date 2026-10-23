@@ -77,12 +77,13 @@ function CopyFromDialog({ inst, instances, onClose }: { inst: Instance; instance
   );
 }
 
-export function ProfileTab({ inst, instances, running, onChanged, onCloned, action }: {
+export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTrash, action }: {
   inst: Instance;
   instances: Instance[];
   running: boolean;
   onChanged: (i: Instance) => void;
   onCloned: (i: Instance) => void;
+  onTrash: () => void;
   /** Просьба из меню «Ещё» в шапке профиля: открыть копирование или начать экспорт. */
   action?: { kind: "clone" | "export"; n: number } | null;
 }) {
@@ -174,15 +175,16 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
   };
 
   return (
-    <>
-      <div className="card">
+    <div className="stack" style={{ maxWidth: 900 }}>
+      <section className="card psec" aria-labelledby="ps-profile">
+        <h3 id="ps-profile">{t("Профиль")}</h3>
         <div className="setting">
           <div className="lbl">{t("Название")}</div>
           <input className="field" value={name} maxLength={64} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== inst.name && save()} />
           <span />
         </div>
         <div className="setting">
-          <div className="lbl">{t("Группа")}<span className="hint">{t("для фильтра на главной")}</span></div>
+          <div className="lbl">{t("Группа")}<span className="hint">{t("видна в подсказке значка на рельсе")}</span></div>
           <input className="field" list="groups" placeholder={t("Без группы")} value={meta.group ?? ""} maxLength={40}
             onChange={(e) => setMeta({ ...meta, group: e.target.value })} onBlur={() => save()} />
           <datalist id="groups">{groups.map((g) => <option key={g} value={g} />)}</datalist>
@@ -209,15 +211,10 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
           <label className="row"><input type="checkbox" checked={meta.favorite} onChange={(e) => save({ favorite: e.target.checked })} /> {t("в избранном")}</label>
           <span />
         </div>
-        <div className="setting">
-          <div className="lbl">{t("Архив")}<span className="hint">{t("скрыть с главной, файлы останутся на месте")}</span></div>
-          <label className="row"><input type="checkbox" checked={meta.archived} onChange={(e) => save({ archived: e.target.checked })} /> {t("в архиве")}</label>
-          <span />
-        </div>
-      </div>
+      </section>
 
-      <h4 style={{ margin: "22px 0 10px" }}>{t("Место на диске")}{usage ? ` · ${sizeText(usage.total)}` : ""}</h4>
-      <div className="card">
+      <section className="card psec" aria-labelledby="ps-disk">
+        <h3 id="ps-disk">{t("Место на диске")}{usage ? ` · ${sizeText(usage.total)}` : ""}</h3>
         {!usage ? <p className="muted" style={{ margin: 0 }}><span className="spinner" /> {t("Считаем…")}</p> : usage.parts.length === 0 ? <p className="muted" style={{ margin: 0 }}>{t("Профиль пока пустой.")}</p> : (
           <div className="usage">
             {usage.parts.map((p) => (
@@ -229,12 +226,12 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {inst.pack && (
-        <>
-          <h4 style={{ margin: "22px 0 10px" }}>{t("Сборка")}</h4>
-          <div className="card row">
+        <section className="card psec" aria-labelledby="ps-pack">
+          <h3 id="ps-pack">{t("Сборка")}</h3>
+          <div className="row">
             <span><b>{inst.pack.name}</b> {inst.pack.version}</span>
             <span style={{ flex: 1 }} />
             {inst.pack.project_id && (
@@ -250,10 +247,17 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
             )}
             <button className="btn" disabled={running} onClick={pickUpdate}>{t("Обновить из файла .mrpack…")}</button>
           </div>
-        </>
+        </section>
       )}
-      <h4 style={{ margin: "22px 0 10px" }}>{t("Где лежит папка игры")}</h4>
-      <div className="card">
+
+      <section className="card psec" aria-labelledby="ps-copy">
+        <h3 id="ps-copy">{t("Копия и перенос")}</h3>
+        <div className="row" style={{ margin: "8px 0 14px" }}>
+          <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
+          <button className="btn" onClick={exportPack}>{t("Экспорт в .mrpack…")}</button>
+          <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
+        </div>
+        <div className="lbl" style={{ fontWeight: 500 }}>{t("Где лежит папка игры")}</div>
         <p className="small" style={{ marginTop: 0 }}>
           {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : t("В папке данных Quarry.")}
         </p>
@@ -261,13 +265,21 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
           <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? t("Переносим…") : t("Перенести в другую папку или на другой диск…")}</button>
           {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>{t("Вернуть в Quarry")}</button>}
         </div>
-      </div>
+      </section>
 
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn" onClick={() => setModal("clone")}>{t("Сделать копию профиля…")}</button>
-        <button className="btn" onClick={exportPack}>{t("Экспорт в .mrpack…")}</button>
-        <button className="btn" disabled={running} onClick={() => setModal("copy")}>{t("Перенести настройки из другого профиля…")}</button>
-      </div>
+      <section className="card psec danger" aria-labelledby="ps-danger">
+        <h3 id="ps-danger">{t("Опасная зона")}</h3>
+        <div className="setting">
+          <div className="lbl">{t("Архив")}<span className="hint">{t("в конце рельсы, бледнее; файлы останутся на месте")}</span></div>
+          <label className="row"><input type="checkbox" checked={meta.archived} onChange={(e) => save({ archived: e.target.checked })} /> {t("в архиве")}</label>
+          <span />
+        </div>
+        <div className="setting">
+          <div className="lbl">{t("В корзину")}<span className="hint">{t("профиль с мирами переедет в trash/, его можно вернуть")}</span></div>
+          <span />
+          <button className="btn danger" disabled={running} onClick={onTrash}>{t("В корзину")}</button>
+        </div>
+      </section>
       {update && (
         <Modal title={t("Обновить сборку {0} → {1}?", update.plan.from || "?", update.plan.to)} onClose={() => setUpdate(null)} wide>
           {update.changelog && (
@@ -296,6 +308,6 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, acti
       )}
       {modal === "clone" && <CloneDialog inst={inst} onClose={() => setModal("")} onDone={(i) => { setModal(""); onCloned(i); }} />}
       {modal === "copy" && <CopyFromDialog inst={inst} instances={instances} onClose={() => setModal("")} />}
-    </>
+    </div>
   );
 }

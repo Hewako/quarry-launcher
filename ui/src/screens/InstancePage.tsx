@@ -102,6 +102,7 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
     }).catch(() => setData(null));
   }, [inst.id]);
   useEffect(load, [load]);
+  useEffect(() => { api.previewCommand(inst.id).then(setPreview).catch((e) => setPreview(errText(e))); }, [inst.id, inst.settings, data]);
   const maxForAdvice = draft.max_memory_mb ?? inst.pack_settings.max_memory_mb ?? data?.global.max_memory_mb ?? 4096;
   useEffect(() => {
     const timer = setTimeout(() => api.memoryAdvice(maxForAdvice, inst.pack_settings.max_memory_mb).then(setAdvice).catch(() => setAdvice([])), 250);
@@ -147,107 +148,125 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   const ms = accounts.filter((a) => a.provider === "microsoft");
   const ely = accounts.filter((a) => a.provider === "elyby");
   const javaEff = pick("java_path", "");
+  const advanced = [args.trim() && t("аргументы JVM"), gameArgs.trim() && t("аргументы игры"), envText.trim() && t("переменные окружения"), Object.keys(inst.hooks ?? {}).some((k) => k !== "approved") && t("команды")].filter(Boolean);
   return (
-    <>
-      <div className="alert info">
-        <div className="h">{t("Откуда берутся значения")}</div>
-        <span className="small">{t("Значение берётся с ближайшего уровня, где оно задано: профиль → сборка → глобальные. Метка показывает, откуда пришло текущее значение; «сбросить» возвращает наследуемое.")}</span>
-      </div>
-      <div className="card">
-        <div className="setting">
-          <div className="lbl">{t("Память")}<span className="hint">{(max.value / 1024).toFixed(1).replace(".0", "")} {t("ГБ")}{total ? t(" из {0} ГБ ОЗУ", Math.round(total / 1024)) : ""}</span></div>
-          <div>
-            <input type="range" min={1024} max={ceiling} step={512} value={Math.min(max.value, ceiling)} aria-label={t("Память, МБ")}
-              onChange={(e) => setDraft({ ...draft, max_memory_mb: Number(e.target.value), min_memory_mb: undefined })} />
-            <span className="muted small">{t("Xms = Xmx: память не перевыделяется посреди игры.")}{inst.pack_settings.max_memory_mb ? t(" Сборка рекомендует {0} МБ.", inst.pack_settings.max_memory_mb) : ""}</span>
-            {advice.map((a) => <span key={a} className="small" style={{ color: "var(--warn)" }}>⚠ {tc(a)}</span>)}
-          </div>
-          <SourceTag source={max.source} onReset={() => setDraft({ ...draft, max_memory_mb: undefined, min_memory_mb: undefined })} />
-        </div>
-        <div className="setting">
-          <div className="lbl">Java<span className="hint">{t("по умолчанию — по javaVersion из JSON версии")}</span></div>
-          <input className="field mono" placeholder={t("Авто: лаунчер подберёт или скачает нужную")} value={draft.java_path ?? ""}
-            onChange={(e) => setDraft({ ...draft, java_path: e.target.value || undefined })} />
-          <SourceTag source={javaEff.source} onReset={() => setDraft({ ...draft, java_path: undefined })} />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Аргументы JVM")}<span className="hint">{t("через пробел; -Xmx и -javaagent запрещены")}</span></div>
-          <input className="field mono" placeholder={t("например -XX:+UseG1GC")} value={args} onChange={(e) => setArgs(e.target.value)} />
-          <SourceTag source={args.trim() ? "profile" : inst.pack_settings.jvm_args ? "pack" : data.global.jvm_args ? "global" : "default"} onReset={() => setArgs("")} />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Размер окна игры")}<span className="hint">{t("пусто — как решит игра")}</span></div>
-          <div className="row" style={{ flexWrap: "nowrap" }}>
-            <input className="field" type="number" min={320} aria-label={t("Ширина окна")} placeholder={t("ширина")} value={draft.resolution?.[0] ?? ""}
-              onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [Number(e.target.value), draft.resolution?.[1] ?? 720] : undefined })} />
-            <span className="muted">×</span>
-            <input className="field" type="number" min={240} aria-label={t("Высота окна")} placeholder={t("высота")} value={draft.resolution?.[1] ?? ""}
-              onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [draft.resolution?.[0] ?? 1280, Number(e.target.value)] : undefined })} />
-          </div>
-          <SourceTag source={draft.resolution ? "profile" : inst.pack_settings.resolution ? "pack" : data.global.resolution ? "global" : "default"} onReset={() => setDraft({ ...draft, resolution: undefined })} />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Аргументы игры")}<span className="hint">{t("через пробел, в конце команды; вход и папки задаёт лаунчер")}</span></div>
-          <input className="field mono" placeholder={t("например --fullscreen")} value={gameArgs} onChange={(e) => setGameArgs(e.target.value)} />
-          <SourceTag source={gameArgs.trim() ? "profile" : inst.pack_settings.game_args ? "pack" : data.global.game_args ? "global" : "default"} onReset={() => setGameArgs("")} />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Переменные окружения")}<span className="hint">{t("ИМЯ=значение, по одной в строке; LD_*, DYLD_* и JAVA_TOOL_OPTIONS запрещены")}</span></div>
-          <textarea className="field mono" rows={2} placeholder="MESA_GL_VERSION_OVERRIDE=4.5" value={envText} onChange={(e) => setEnvText(e.target.value)} />
-          <SourceTag source={envText.trim() ? "profile" : inst.pack_settings.env ? "pack" : data.global.env ? "global" : "default"} onReset={() => setEnvText("")} />
-        </div>
-        <div className="setting">
-          <div className="lbl">{t("Вход")}<span className="hint">{t("Ely.by — только при Microsoft-аккаунте с купленной игрой")}</span></div>
-          <select className="field" value={inst.auth_mode} onChange={async (e) => {
-            try { onChanged(await api.updateInstance(inst.id, { authMode: e.target.value as Instance["auth_mode"] })); }
-            catch (err) { await dialog.alert(t("Нельзя переключить вход"), errText(err)); }
-          }}>
-            <option value="microsoft">{t("Microsoft — официальные серверы")}</option>
-            <option value="ely_by" disabled={!ms.some((a) => a.owns_java_edition) || ely.length === 0}>{t("Ely.by — только совместимые серверы")}</option>
-          </select>
-          <span />
-        </div>
-        {(inst.auth_mode === "microsoft" ? ms : ely).length > 1 && (
+    <div className="ov" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (!saving) save(); } }}>
+      <div className="stack">
+        <div className="card">
           <div className="setting">
-            <div className="lbl">{t("Аккаунт")}<span className="hint">{t("для этого профиля")}</span></div>
-            <select className="field" value={inst.account ?? ""} onChange={async (e) => {
-              try { onChanged(await api.updateInstance(inst.id, { account: e.target.value || null })); }
-              catch (err) { await dialog.alert(t("Не удалось сменить аккаунт"), errText(err)); }
-            }}>
-              <option value="">{t("По умолчанию")}</option>
-              {(inst.auth_mode === "microsoft" ? ms : ely).map((a) => <option key={a.uuid} value={`${a.provider}:${a.uuid}`}>{nick(a.name, streamer)}</option>)}
-            </select>
-            <SourceTag source={inst.account ? "profile" : "global"} />
+            <div className="lbl">{t("Память")}<span className="hint">{t("Xms = Xmx: память не перевыделяется посреди игры.")}</span></div>
+            <div>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <b className="big">{(max.value / 1024).toFixed(1).replace(".0", "")} {t("ГБ")}</b>
+                {total ? <span className="muted small">{t(" из {0} ГБ ОЗУ", Math.round(total / 1024)).trim()}</span> : null}
+              </div>
+              <input type="range" min={1024} max={ceiling} step={512} value={Math.min(max.value, ceiling)} aria-label={t("Память, МБ")}
+                onChange={(e) => setDraft({ ...draft, max_memory_mb: Number(e.target.value), min_memory_mb: undefined })} />
+              {inst.pack_settings.max_memory_mb ? <span className="muted small">{t(" Сборка рекомендует {0} МБ.", inst.pack_settings.max_memory_mb).trim()}</span> : null}
+              {advice.map((a) => <span key={a} className="small" style={{ color: "var(--warn)" }}>⚠ {tc(a)}</span>)}
+            </div>
+            <SourceTag source={max.source} onReset={() => setDraft({ ...draft, max_memory_mb: undefined, min_memory_mb: undefined })} />
           </div>
-        )}
-      </div>
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className="btn pri" onClick={save} disabled={saving}>{saving ? t("Сохраняем…") : t("Сохранить")}</button>
-        <button className="btn" onClick={() => { setPreview("…"); api.previewCommand(inst.id).then(setPreview).catch((e) => setPreview(errText(e))); }}>{t("Показать итоговую команду")}</button>
-        <span className="muted small">{t("Прирост FPS от флагов не обещаем: он зависит от модов, Java и железа.")}</span>
-      </div>
-      {preview && (
-        <div style={{ marginTop: 12 }}>
-          <span className="muted small">{t("Команда по сохранённым настройкам. Токен и UUID скрыты.")}</span>
-          <div className="cmd" style={{ marginTop: 6 }}>{preview}</div>
-        </div>
-      )}
-      <details className="card" style={{ marginTop: 16 }} open={!!inst.hooks && !inst.hooks.approved}>
-        <summary>{t("Команды до и после запуска (для опытных)")}</summary>
-        {inst.hooks && Object.keys(inst.hooks).some((k) => k !== "approved") && !inst.hooks.approved && (
-          <div className="alert warn"><span>{t("Команды изменены вне лаунчера и не выполняются, пока вы их не подтвердите.")}</span></div>
-        )}
-        {([["pre", t("Перед запуском"), "./backup.sh"], ["post_exit", t("После выхода"), ""], ["post_crash", t("После краша"), ""], ["wrapper", t("Обёртка (только Linux)"), "gamemoderun"]] as const).map(([k, label, ph]) => (
-          <div className="setting" key={k}>
-            <div className="lbl">{label}</div>
-            <input className="field mono" placeholder={ph} value={hooks[k] ?? ""} onChange={(e) => setHooks({ ...hooks, [k]: e.target.value })} />
+          <div className="setting">
+            <div className="lbl">Java<span className="hint">{t("по умолчанию — по javaVersion из JSON версии")}</span></div>
+            <input className="field mono" placeholder={t("Авто: лаунчер подберёт или скачает нужную")} value={draft.java_path ?? ""}
+              onChange={(e) => setDraft({ ...draft, java_path: e.target.value || undefined })} />
+            <SourceTag source={javaEff.source} onReset={() => setDraft({ ...draft, java_path: undefined })} />
+          </div>
+          <div className="setting">
+            <div className="lbl">{t("Размер окна игры")}<span className="hint">{t("пусто — как решит игра")}</span></div>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <input className="field" type="number" min={320} aria-label={t("Ширина окна")} placeholder={t("ширина")} value={draft.resolution?.[0] ?? ""}
+                onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [Number(e.target.value), draft.resolution?.[1] ?? 720] : undefined })} />
+              <span className="muted">×</span>
+              <input className="field" type="number" min={240} aria-label={t("Высота окна")} placeholder={t("высота")} value={draft.resolution?.[1] ?? ""}
+                onChange={(e) => setDraft({ ...draft, resolution: e.target.value ? [draft.resolution?.[0] ?? 1280, Number(e.target.value)] : undefined })} />
+            </div>
+            <SourceTag source={draft.resolution ? "profile" : inst.pack_settings.resolution ? "pack" : data.global.resolution ? "global" : "default"} onReset={() => setDraft({ ...draft, resolution: undefined })} />
+          </div>
+          <div className="setting">
+            <div className="lbl">{t("Вход")}<span className="hint">{t("Ely.by — только при Microsoft-аккаунте с купленной игрой")}</span></div>
+            <select className="field" value={inst.auth_mode} onChange={async (e) => {
+              try { onChanged(await api.updateInstance(inst.id, { authMode: e.target.value as Instance["auth_mode"] })); }
+              catch (err) { await dialog.alert(t("Нельзя переключить вход"), errText(err)); }
+            }}>
+              <option value="microsoft">{t("Microsoft — официальные серверы")}</option>
+              <option value="ely_by" disabled={!ms.some((a) => a.owns_java_edition) || ely.length === 0}>{t("Ely.by — только совместимые серверы")}</option>
+            </select>
             <span />
           </div>
-        ))}
-        <p className="muted small">{t("Команда выполняется в папке игры; доступны переменные QUARRY_PROFILE и QUARRY_GAME_DIR. Если команда перед запуском завершится с ошибкой, игра не запустится.")}</p>
-        <button className="btn" onClick={saveHooks}>{t("Сохранить команды…")}</button>
-      </details>
-    </>
+          {(inst.auth_mode === "microsoft" ? ms : ely).length > 1 && (
+            <div className="setting">
+              <div className="lbl">{t("Аккаунт")}<span className="hint">{t("для этого профиля")}</span></div>
+              <select className="field" value={inst.account ?? ""} onChange={async (e) => {
+                try { onChanged(await api.updateInstance(inst.id, { account: e.target.value || null })); }
+                catch (err) { await dialog.alert(t("Не удалось сменить аккаунт"), errText(err)); }
+              }}>
+                <option value="">{t("По умолчанию")}</option>
+                {(inst.auth_mode === "microsoft" ? ms : ely).map((a) => <option key={a.uuid} value={`${a.provider}:${a.uuid}`}>{nick(a.name, streamer)}</option>)}
+              </select>
+              <SourceTag source={inst.account ? "profile" : "global"} />
+            </div>
+          )}
+        </div>
+
+        <details className="card adv" open={!!inst.hooks && !inst.hooks.approved}>
+          <summary>
+            <span><b>{t("Расширенные")}</b>
+            <span className="muted small">{t("Аргументы JVM и игры, переменные окружения, команды до и после запуска.")}{advanced.length ? ` ${t("Изменено: {0}.", advanced.join(", "))}` : ""}</span></span>
+          </summary>
+          <div className="setting">
+            <div className="lbl">{t("Аргументы JVM")}<span className="hint">{t("через пробел; -Xmx и -javaagent запрещены")}</span></div>
+            <input className="field mono" placeholder={t("например -XX:+UseG1GC")} value={args} onChange={(e) => setArgs(e.target.value)} />
+            <SourceTag source={args.trim() ? "profile" : inst.pack_settings.jvm_args ? "pack" : data.global.jvm_args ? "global" : "default"} onReset={() => setArgs("")} />
+          </div>
+          <div className="setting">
+            <div className="lbl">{t("Аргументы игры")}<span className="hint">{t("через пробел, в конце команды; вход и папки задаёт лаунчер")}</span></div>
+            <input className="field mono" placeholder={t("например --fullscreen")} value={gameArgs} onChange={(e) => setGameArgs(e.target.value)} />
+            <SourceTag source={gameArgs.trim() ? "profile" : inst.pack_settings.game_args ? "pack" : data.global.game_args ? "global" : "default"} onReset={() => setGameArgs("")} />
+          </div>
+          <div className="setting">
+            <div className="lbl">{t("Переменные окружения")}<span className="hint">{t("ИМЯ=значение, по одной в строке; LD_*, DYLD_* и JAVA_TOOL_OPTIONS запрещены")}</span></div>
+            <textarea className="field mono" rows={2} placeholder="MESA_GL_VERSION_OVERRIDE=4.5" value={envText} onChange={(e) => setEnvText(e.target.value)} />
+            <SourceTag source={envText.trim() ? "profile" : inst.pack_settings.env ? "pack" : data.global.env ? "global" : "default"} onReset={() => setEnvText("")} />
+          </div>
+          <h4 className="subhead">{t("Команды до и после запуска (для опытных)")}</h4>
+          {inst.hooks && Object.keys(inst.hooks).some((k) => k !== "approved") && !inst.hooks.approved && (
+            <div className="alert warn"><span>{t("Команды изменены вне лаунчера и не выполняются, пока вы их не подтвердите.")}</span></div>
+          )}
+          {([["pre", t("Перед запуском"), "./backup.sh"], ["post_exit", t("После выхода"), ""], ["post_crash", t("После краша"), ""], ["wrapper", t("Обёртка (только Linux)"), "gamemoderun"]] as const).map(([k, label, ph]) => (
+            <div className="setting" key={k}>
+              <div className="lbl">{label}</div>
+              <input className="field mono" placeholder={ph} value={hooks[k] ?? ""} onChange={(e) => setHooks({ ...hooks, [k]: e.target.value })} />
+              <span />
+            </div>
+          ))}
+          <p className="muted small">{t("Команда выполняется в папке игры; доступны переменные QUARRY_PROFILE и QUARRY_GAME_DIR. Если команда перед запуском завершится с ошибкой, игра не запустится.")}</p>
+          <button className="btn" onClick={saveHooks}>{t("Сохранить команды…")}</button>
+        </details>
+
+        <div className="row">
+          <button className="btn cta" onClick={save} disabled={saving} aria-keyshortcuts="Control+S Meta+S">{saving ? t("Сохраняем…") : t("Сохранить")}</button>
+          <button className="btn" disabled={saving} onClick={load}>{t("Отменить правки")}</button>
+        </div>
+      </div>
+
+      <div className="stack">
+        <section className="card">
+          <h3>{t("Итоговая команда")}</h3>
+          <div className="cmd">{preview || "…"}</div>
+          <div className="row foot">
+            <span className="muted small grow">{t("Команда по сохранённым настройкам. Токен и UUID скрыты.")}</span>
+            <button className="btn link" disabled={!preview} onClick={() => navigator.clipboard.writeText(preview).catch(() => {})}>{t("Копировать")}</button>
+          </div>
+        </section>
+        <section className="card">
+          <h3>{t("Откуда берутся значения")}</h3>
+          <p className="muted">{t("Значение берётся с ближайшего уровня, где оно задано: профиль → сборка → глобальные. Метка показывает, откуда пришло текущее значение; «сбросить» возвращает наследуемое.")}</p>
+          <p className="muted small" style={{ marginTop: 8 }}>{t("Прирост FPS от флагов не обещаем: он зависит от модов, Java и железа.")}</p>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -380,7 +399,7 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
           {subOf("game") === "launch" && <LaunchTab key={inst.id} inst={inst} accounts={accounts} onChanged={onChanged} />}
           {subOf("game") === "options" && <OptionsTab key={inst.id} inst={inst} running={isActive(state)} />}
           {subOf("game") === "servers" && <ServersTab key={inst.id} inst={inst} running={isActive(state)} />}
-          {subOf("game") === "profile" && <ProfileTab key={inst.id} inst={inst} instances={instances} running={isActive(state)} onChanged={onChanged} onCloned={onCloned} action={profileAction} />}
+          {subOf("game") === "profile" && <ProfileTab key={inst.id} inst={inst} instances={instances} running={isActive(state)} onChanged={onChanged} onCloned={onCloned} onTrash={trash} action={profileAction} />}
         </>
       )}
     </>
