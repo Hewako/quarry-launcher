@@ -292,7 +292,12 @@ fn loader_from_deps(
 
 /// Распаковать из архива папку `prefix/` в `dest` (безопасно).
 /// Распаковать `prefix/…` в `dest`; пути из `skip` (относительно `dest`) не перезаписываются.
-fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path, skip: &[String]) -> Result<u64> {
+fn extract_prefix(
+    zip_path: &Path,
+    prefix: &str,
+    dest: &Path,
+    keep: impl Fn(&str) -> bool,
+) -> Result<u64> {
     let file = std::fs::File::open(zip_path).at(zip_path)?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| Error::parse("архив сборки", e))?;
     let mut n = 0;
@@ -304,7 +309,7 @@ fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path, skip: &[String]) -
         let Some(rel) = name.strip_prefix(prefix) else {
             continue;
         };
-        if e.is_dir() || rel.is_empty() || e.is_symlink() || skip.iter().any(|s| s == rel) {
+        if e.is_dir() || rel.is_empty() || e.is_symlink() || !keep(rel) {
             continue;
         }
         let target = safe_join(dest, rel)
@@ -318,6 +323,40 @@ fn extract_prefix(zip_path: &Path, prefix: &str, dest: &Path, skip: &[String]) -
         n += 1;
     }
     Ok(n)
+}
+
+/// Папка с конфигами сборки как их выпустил автор — основа для слияния при следующем обновлении.
+const PACK_BASE: &str = "pack-base";
+
+/// Сохранить текстовые конфиги из overrides сборки как основу (старая основа заменяется).
+fn save_pack_base(zip_path: &Path, instance_dir: &Path) -> Result<()> {
+    let base = instance_dir.join(PACK_BASE);
+    if base.exists() {
+        std::fs::remove_dir_all(&base).at(&base)?;
+    }
+    for prefix in ["overrides/", "client-overrides/"] {
+        extract_prefix(zip_path, prefix, &base, crate::configs::is_text_config)?;
+    }
+    Ok(())
+}
+
+/// Слить конфиг игрока с новой версией автора: основа — `pack-base`. `None` — нет основы,
+/// файл не текстовый или правки пересекаются (тогда файл игрока остаётся как есть).
+fn merged_config(
+    zip_path: &Path,
+    instance_dir: &Path,
+    game_dir: &Path,
+    rel: &str,
+) -> Option<String> {
+    if !crate::configs::is_text_config(rel) {
+        return None;
+    }
+    let base = std::fs::read_to_string(safe_join(&instance_dir.join(PACK_BASE), rel)?).ok()?;
+    let ours = std::fs::read_to_string(safe_join(game_dir, rel)?).ok()?;
+    let theirs = read_zip_entry(zip_path, &format!("overrides/{rel}"))
+        .or_else(|_| read_zip_entry(zip_path, &format!("client-overrides/{rel}")))
+        .ok()?;
+    crate::configs::merge3(&base, &ours, &theirs)
 }
 
 fn read_zip_entry(zip_path: &Path, name: &str) -> Result<String> {
@@ -484,8 +523,9 @@ pub async fn import_mrpack(
             lock.upsert(entry);
         }
         download::download_all(tasks, 6, Verify::Full, None, cancel).await?;
-        let mut overrides = extract_prefix(path, "overrides/", &game_dir, &[])?;
-        overrides += extract_prefix(path, "client-overrides/", &game_dir, &[])?;
+        let mut overrides = extract_prefix(path, "overrides/", &game_dir, |_| true)?;
+        overrides += extract_prefix(path, "client-overrides/", &game_dir, |_| true)?;
+        save_pack_base(path, &store.dir(&id)?)?;
         lock.save(&store.dir(&id)?)?;
         let mut notes = vec![format!(
             "Файлов сборки: {}, из архива: {overrides}",
@@ -519,6 +559,8 @@ pub struct PackUpdatePlan {
     pub remove: Vec<String>,
     pub kept_mods: Vec<String>,
     pub kept_configs: Vec<String>,
+    /// Конфиги, которые правил игрок, но правки автора в них вливаются без конфликтов.
+    pub merged: Vec<String>,
     pub optional: Vec<String>,
     /// Новая версия игры или загрузчика, если сборка их сменила.
     pub game_change: Option<String>,
@@ -572,6 +614,7 @@ fn plan_with(
             .map(|f| f.path.clone())
             .collect(),
         kept_configs: Vec::new(),
+        merged: Vec::new(),
         optional: index
             .files
             .iter()
@@ -611,9 +654,18 @@ fn plan_with(
             .strip_prefix("overrides/")
             .or_else(|| name.strip_prefix("client-overrides/"))
             && crate::configs::is_user_edited(&dir, rel)
-            && !plan.kept_configs.iter().any(|k| k == rel)
+            && !plan
+                .kept_configs
+                .iter()
+                .chain(&plan.merged)
+                .any(|k| k == rel)
         {
-            plan.kept_configs.push(rel.to_string());
+            let game_dir = store.game_dir(id)?;
+            if merged_config(path, &dir, &game_dir, rel).is_some() {
+                plan.merged.push(rel.to_string());
+            } else {
+                plan.kept_configs.push(rel.to_string());
+            }
         }
     }
     for v in [
@@ -622,6 +674,7 @@ fn plan_with(
         &mut plan.remove,
         &mut plan.kept_mods,
         &mut plan.kept_configs,
+        &mut plan.merged,
     ] {
         v.sort();
     }
@@ -678,8 +731,24 @@ pub async fn apply_pack_update(
     for e in entries {
         lock.upsert(e);
     }
-    extract_prefix(path, "overrides/", &game_dir, &plan.kept_configs)?;
-    extract_prefix(path, "client-overrides/", &game_dir, &plan.kept_configs)?;
+    let ours = |rel: &str| {
+        !plan
+            .kept_configs
+            .iter()
+            .chain(&plan.merged)
+            .any(|k| k == rel)
+    };
+    extract_prefix(path, "overrides/", &game_dir, ours)?;
+    extract_prefix(path, "client-overrides/", &game_dir, ours)?;
+    for rel in &plan.merged {
+        if let (Some(text), Some(target)) = (
+            merged_config(path, &dir, &game_dir, rel),
+            safe_join(&game_dir, rel),
+        ) {
+            std::fs::write(&target, text).at(&target)?;
+        }
+    }
+    save_pack_base(path, &dir)?;
     lock.save(&dir)?;
     let mut inst = store.get(id)?;
     let (game, _, loader_version) = loader_from_deps(&index.dependencies)?;
@@ -1059,7 +1128,7 @@ pub fn import_curseforge(store: &InstanceStore, path: &Path) -> Result<ImportRes
     let r = (|| -> Result<ImportResult> {
         let game_dir = store.game_dir(&id)?;
         let prefix = format!("{}/", m.overrides.trim_end_matches('/'));
-        let n = extract_prefix(path, &prefix, &game_dir, &[])?;
+        let n = extract_prefix(path, &prefix, &game_dir, |_| true)?;
         mark_imported(&store.dir(&id)?, &game_dir)?;
         let manual: Vec<ManualFile> = m
             .files
@@ -1466,6 +1535,38 @@ mod tests {
                 .unwrap()
                 .is_empty(),
             "перед обновлением снимок"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pack_update_merges_player_config_with_author_changes() {
+        let (store, id, root) = installed_pack("mrmerge");
+        let (game, dir) = (store.game_dir(&id).unwrap(), store.dir(&id).unwrap());
+        // Как было у автора в 1.0 и как поправил игрок.
+        std::fs::create_dir_all(dir.join("pack-base/config")).unwrap();
+        std::fs::write(dir.join("pack-base/config/x.toml"), "a = 1\nb = 2\n").unwrap();
+        std::fs::write(game.join("config/x.toml"), "a = 1\nb = 20\n").unwrap();
+        let p = root.join("p2.mrpack");
+        mrpack(
+            &p,
+            &index("2.0", &[mr_file("mods/a.jar", "a1", "required")]),
+            &[("config/x.toml", "a = 10\nb = 2\n")],
+        );
+        let plan = plan_pack_update(&store, &id, &p).unwrap();
+        assert_eq!(plan.merged, ["config/x.toml"]);
+        assert!(plan.kept_configs.is_empty());
+        apply_pack_update(&store, &id, &p, &[], None, &Cancel::new())
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(game.join("config/x.toml")).unwrap(),
+            "a = 10\nb = 20\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("pack-base/config/x.toml")).unwrap(),
+            "a = 10\nb = 2\n",
+            "основа для следующего обновления — новая версия автора"
         );
         std::fs::remove_dir_all(&root).unwrap();
     }

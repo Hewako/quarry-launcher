@@ -113,7 +113,7 @@ export const diagnostics = {
 };
 
 export interface PackVersion { path?: string; version_id: string; version_number: string; changelog?: string }
-export interface PackUpdatePlan { from: string; to: string; add: string[]; update: string[]; remove: string[]; kept_mods: string[]; kept_configs: string[]; optional: string[]; game_change?: string }
+export interface PackUpdatePlan { from: string; to: string; add: string[]; update: string[]; remove: string[]; kept_mods: string[]; kept_configs: string[]; merged: string[]; optional: string[]; game_change?: string }
 
 export interface Bisect { suspects: string[]; disabled: string[]; half: string[]; round: number; snapshot: string }
 

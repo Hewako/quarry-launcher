@@ -983,6 +983,7 @@ export const EN: Record<string, string> = {
   "Настройки запуска": "Launch settings",
   "Настройки игры (options.txt)": "Game settings (options.txt)",
   "Сравнить с другим профилем…": "Compare with another profile…",
+  "В ваши конфиги добавятся правки автора, ваши изменения останутся:": "The author's changes will be merged into your configs, your edits stay:",
   "Разделы модов": "Mod sections",
   "Разделы игры": "Game sections",
 };

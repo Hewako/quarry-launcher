@@ -54,6 +54,11 @@ const MAX_SIZE: u64 = 1024 * 1024;
 const KEEP_HISTORY: usize = 10;
 const USER_FILE: &str = "user-configs.toml";
 
+/// Текстовый конфиг по расширению (json, toml, properties…).
+pub fn is_text_config(rel: &str) -> bool {
+    has_text_ext(Path::new(rel))
+}
+
 fn has_text_ext(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -208,23 +213,12 @@ pub fn validate(rel: &str, text: &str) -> std::result::Result<(), String> {
     }
 }
 
-/// Построчное сравнение (наибольшая общая подпоследовательность).
-pub fn diff(old: &str, new: &str) -> Vec<DiffLine> {
-    let a: Vec<&str> = old.lines().collect();
-    let b: Vec<&str> = new.lines().collect();
-    let line = |kind, t: &str| DiffLine {
-        kind,
-        text: t.to_string(),
-    };
-    if a.len().saturating_mul(b.len()) > 4_000_000 {
-        // Слишком большие файлы: показываем «всё старое → всё новое».
-        return a
-            .iter()
-            .map(|t| line('-', t))
-            .chain(b.iter().map(|t| line('+', t)))
-            .collect();
-    }
+/// Таблица длин наибольшей общей подпоследовательности строк; `None` — файлы слишком большие.
+fn lcs_table(a: &[&str], b: &[&str]) -> Option<Vec<Vec<u32>>> {
     let (n, m) = (a.len(), b.len());
+    if n.saturating_mul(m) > 4_000_000 {
+        return None;
+    }
     let mut lcs = vec![vec![0u32; m + 1]; n + 1];
     for i in (0..n).rev() {
         for j in (0..m).rev() {
@@ -235,6 +229,26 @@ pub fn diff(old: &str, new: &str) -> Vec<DiffLine> {
             };
         }
     }
+    Some(lcs)
+}
+
+/// Построчное сравнение (наибольшая общая подпоследовательность).
+pub fn diff(old: &str, new: &str) -> Vec<DiffLine> {
+    let a: Vec<&str> = old.lines().collect();
+    let b: Vec<&str> = new.lines().collect();
+    let line = |kind, t: &str| DiffLine {
+        kind,
+        text: t.to_string(),
+    };
+    let Some(lcs) = lcs_table(&a, &b) else {
+        // Слишком большие файлы: показываем «всё старое → всё новое».
+        return a
+            .iter()
+            .map(|t| line('-', t))
+            .chain(b.iter().map(|t| line('+', t)))
+            .collect();
+    };
+    let (n, m) = (a.len(), b.len());
     let (mut i, mut j, mut out) = (0, 0, Vec::new());
     while i < n || j < m {
         if i < n && j < m && a[i] == b[j] {
@@ -250,6 +264,99 @@ pub fn diff(old: &str, new: &str) -> Vec<DiffLine> {
         }
     }
     out
+}
+
+/// Для каждой строки `a` — номер совпавшей строки `b` (по LCS).
+fn matches(a: &[&str], b: &[&str]) -> Option<Vec<Option<usize>>> {
+    let lcs = lcs_table(a, b)?;
+    let (mut i, mut j, mut out) = (0, 0, vec![None; a.len()]);
+    while i < a.len() && j < b.len() {
+        if a[i] == b[j] {
+            out[i] = Some(j);
+            i += 1;
+            j += 1;
+        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    Some(out)
+}
+
+/// Участки одной длины — сливаем строку за строкой (в конфигах строка обычно = один ключ).
+fn by_line<'a>(base: &[&'a str], ours: &[&'a str], theirs: &[&'a str]) -> Option<Vec<&'a str>> {
+    if ours.len() != base.len() || theirs.len() != base.len() {
+        return None;
+    }
+    (0..base.len())
+        .map(|k| match (ours[k] == base[k], theirs[k] == base[k]) {
+            (true, _) => Some(theirs[k]),
+            (false, true) => Some(ours[k]),
+            (false, false) => (ours[k] == theirs[k]).then_some(ours[k]),
+        })
+        .collect()
+}
+
+/// Одна сторона только дописала строки до или после участка (`add` = base + новое), а другая
+/// участок изменила: берём изменение и дописанное. Частый случай — автор добавил новые ключи.
+fn grow<'a>(base: &[&'a str], changed: &[&'a str], add: &[&'a str]) -> Option<Vec<&'a str>> {
+    if add.len() <= base.len() {
+        return None;
+    }
+    let extra = add.len() - base.len();
+    if add.starts_with(base) {
+        Some([changed, &add[base.len()..]].concat())
+    } else if add.ends_with(base) {
+        Some([&add[..extra], changed].concat())
+    } else {
+        None
+    }
+}
+
+/// Трёхстороннее слияние по строкам (diff3): `base` — как было у автора сборки, `ours` — как у
+/// игрока, `theirs` — новая версия от автора. Участок, изменённый только одной стороной, берётся
+/// у неё; изменённый обеими по-разному — конфликт, тогда `None` (файл игрока не трогаем).
+pub fn merge3(base: &str, ours: &str, theirs: &str) -> Option<String> {
+    let (b, o, t): (Vec<&str>, Vec<&str>, Vec<&str>) = (
+        base.lines().collect(),
+        ours.lines().collect(),
+        theirs.lines().collect(),
+    );
+    let (mo, mt) = (matches(&b, &o)?, matches(&b, &t)?);
+    let (mut out, mut pb, mut po, mut pt) = (Vec::new(), 0, 0, 0);
+    for i in 0..=b.len() {
+        // Опорная строка: есть без изменений у обеих сторон (или конец файла).
+        let (x, y) = if i == b.len() {
+            (o.len(), t.len())
+        } else {
+            match (mo[i], mt[i]) {
+                (Some(x), Some(y)) if x >= po && y >= pt => (x, y),
+                _ => continue,
+            }
+        };
+        let (cb, co, ct) = (&b[pb..i], &o[po..x], &t[pt..y]);
+        if co == cb {
+            out.extend_from_slice(ct);
+        } else if ct == cb || co == ct {
+            out.extend_from_slice(co);
+        } else {
+            out.extend(
+                by_line(cb, co, ct)
+                    .or_else(|| grow(cb, co, ct))
+                    .or_else(|| grow(cb, ct, co))?,
+            );
+        }
+        if i < b.len() {
+            out.push(b[i]);
+        }
+        (pb, po, pt) = (i + 1, x + 1, y + 1);
+    }
+    let mut text = out.join("\n");
+    if ours.ends_with('\n') || theirs.ends_with('\n') {
+        text.push('\n');
+    }
+    Some(text)
 }
 
 fn history_dir(instance_dir: &Path, rel: &str) -> PathBuf {
@@ -406,6 +513,30 @@ mod tests {
         assert!(validate("config/a.toml", "a = = 1").is_err());
         // Форматы без строгой проверки принимаются как есть.
         assert!(validate("config/a.properties", "что угодно").is_ok());
+    }
+
+    #[test]
+    fn merge3_takes_both_sides_and_stops_on_conflict() {
+        let base = "a = 1\nb = 2\nc = 3\n";
+        let ours = "a = 1\nb = 2\nc = 30\n";
+        let theirs = "a = 10\nb = 2\nc = 3\nd = 4\n";
+        assert_eq!(
+            merge3(base, ours, theirs).as_deref(),
+            Some("a = 10\nb = 2\nc = 30\nd = 4\n")
+        );
+        assert_eq!(
+            merge3(base, "a = 5\nb = 2\nc = 3\n", theirs),
+            None,
+            "одна строка изменена по-разному"
+        );
+        assert_eq!(
+            merge3("a = 1\nb = 2\n", "a = 1\nb = 20\n", "a = 10\nb = 2\n").as_deref(),
+            Some("a = 10\nb = 20\n"),
+            "соседние строки"
+        );
+        assert_eq!(merge3(base, base, theirs).as_deref(), Some(theirs));
+        assert_eq!(merge3(base, ours, base).as_deref(), Some(ours));
+        assert_eq!(merge3(base, ours, ours).as_deref(), Some(ours));
     }
 
     #[test]

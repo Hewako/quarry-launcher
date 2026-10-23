@@ -346,6 +346,7 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
           </div>
           {update.plan.kept_mods.length > 0 && <p className="small">{t("Ваши моды останутся:")} {update.plan.kept_mods.map((m) => m.split("/").pop()).join(", ")}</p>}
           {update.plan.kept_configs.length > 0 && <p className="small">{t("Ваши конфиги не заменятся:")} {update.plan.kept_configs.join(", ")}</p>}
+          {update.plan.merged.length > 0 && <p className="small">{t("В ваши конфиги добавятся правки автора, ваши изменения останутся:")} {update.plan.merged.join(", ")}</p>}
           {update.plan.optional.map((f) => (
             <label key={f} className="row small">
               <input type="checkbox" checked={!update.off.includes(f)} onChange={(e) => setUpdate({ ...update, off: e.target.checked ? update.off.filter((x) => x !== f) : [...update.off, f] })} />
