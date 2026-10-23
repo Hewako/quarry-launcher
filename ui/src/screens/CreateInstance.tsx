@@ -13,7 +13,7 @@ const LOADERS: { kind: LoaderKind; ready: boolean; note?: string }[] = [
   { kind: "forge", ready: false, note: t("позже") },
 ];
 
-export function CreateInstance({ onClose, onCreated }: { onClose: () => void; onCreated: (i: Instance) => void }) {
+export function CreateInstance({ onClose, onCreated, onImport }: { onClose: () => void; onCreated: (i: Instance) => void; onImport?: () => void }) {
   const [name, setName] = useState("");
   const [snapshots, setSnapshots] = useState(false);
   const [query, setQuery] = useState("");
@@ -128,6 +128,7 @@ export function CreateInstance({ onClose, onCreated }: { onClose: () => void; on
         )}
         {error && <div className="alert err"><span>{error}</span></div>}
         <div className="acts">
+          {onImport && <button type="button" className="btn" style={{ marginRight: "auto" }} onClick={onImport}>{t("Импорт .mrpack / zip / Prism")}</button>}
           <button type="button" className="btn" onClick={onClose}>{t("Отмена")}</button>
           <button type="submit" className="btn pri" disabled={!canCreate}>{busy ? t("Создаём…") : t("Создать")}</button>
         </div>

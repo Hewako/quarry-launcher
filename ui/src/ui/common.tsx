@@ -95,7 +95,8 @@ function QuickPlayDialog({ kind, onClose, onGo }: { kind: "singleplayer" | "mult
   );
 }
 
-export function PlayButton({ inst, state, compact }: { inst: Instance; state?: LaunchState; compact?: boolean }) {
+/** fix — «Починить и играть»: сначала починка (Mod Doctor), потом обычный запуск. */
+export function PlayButton({ inst, state, compact, fix }: { inst: Instance; state?: LaunchState; compact?: boolean; fix?: () => Promise<void> }) {
   const dialog = useDialog();
   const [menu, setMenu] = useState(false);
   const [quick, setQuick] = useState<null | "singleplayer" | "multiplayer">(null);
@@ -109,11 +110,12 @@ export function PlayButton({ inst, state, compact }: { inst: Instance; state?: L
     return () => window.removeEventListener("mousedown", close);
   }, [menu]);
 
-  const go = async (quickPlay?: QuickPlay, fullVerify = false, safeMode = false) => {
+  const go = async (quickPlay?: QuickPlay, fullVerify = false, safeMode = false, before?: () => Promise<void>) => {
     setMenu(false);
     setQuick(null);
-    launches.begin(inst.id);
     try {
+      await before?.();
+      launches.begin(inst.id);
       await api.launch(inst.id, quickPlay, fullVerify, safeMode);
     } catch (e) {
       await dialog.alert(t("Не удалось начать запуск"), errText(e));
@@ -143,8 +145,8 @@ export function PlayButton({ inst, state, compact }: { inst: Instance; state?: L
     );
   }
   return (
-    <div className="play" ref={ref}>
-      <button className="go" onClick={() => go()} style={compact ? { padding: "8px 18px", minWidth: 0, fontSize: 14 } : undefined}>{t("▶ Играть")}</button>
+    <div className={`play ${fix ? "fix" : ""}`} ref={ref}>
+      <button className="go" onClick={() => go(undefined, false, false, fix)} style={compact ? { padding: "8px 18px", minWidth: 0, fontSize: 14 } : undefined}>{fix ? t("Починить и играть") : t("▶ Играть")}</button>
       <button className="more" aria-label={t("Другие варианты запуска")} aria-expanded={menu} onClick={() => setMenu((m) => !m)}>▾</button>
       {menu && (
         <div className="menu" role="menu">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errText, loaderName, modsLabel, sizeText, type Hooks, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
+import { api, errText, loaderName, mods as modsApi, modsLabel, sizeText, snapshots, type DoctorReport, type Hooks, type JournalEntry, sourceName, type AccountRef, type Instance, type LaunchOverrides, type Resolved, type Source } from "../api";
 import { isActive, type LaunchState } from "../launches";
 import { useDialog } from "../ui/Dialog";
 import { LaunchProgress, PlayButton, ProfileIcon, StatusBadge } from "../ui/common";
@@ -12,10 +12,11 @@ import { ResourcesTab } from "./ResourcesTab";
 import { ConfigsTab } from "./ConfigsTab";
 import { OptionsTab } from "./OptionsTab";
 import { DepsTab } from "./DepsTab";
+import { Overview } from "./Overview";
 import { nick, useStreamer } from "../streamer";
 import { t, tc } from "../i18n";
 
-/** Адрес места в профиле: так на него ссылаются палитра, разбор краша и уведомления. */
+/** Адрес места в профиле: так на него ссылаются разбор краша и уведомления. */
 export type Tab = "overview" | "mods" | "deps" | "resources" | "configs" | "options" | "launch" | "snapshots" | "servers" | "profile";
 type Main = "overview" | "mods" | "rollback" | "game";
 type Sub = "mods" | "resources" | "deps" | "launch" | "options" | "servers" | "profile";
@@ -37,7 +38,7 @@ function place(tab: Tab): [Main, Sub | undefined] {
 }
 
 /** Переключатель с ролью tablist: стрелки, Home и End, как у вкладок. */
-function TabStrip<K extends string>({ items, value, onPick, className, label }: { items: [K, string][]; value: K; onPick: (k: K) => void; className: string; label: string }) {
+function TabStrip<K extends string>({ items, value, onPick, className, label }: { items: [K, React.ReactNode][]; value: K; onPick: (k: K) => void; className: string; label: string }) {
   return (
     <div className={className} role="tablist" aria-label={label}>
       {items.map(([id, text], i) => (
@@ -250,7 +251,7 @@ function LaunchTab({ inst, accounts, onChanged }: { inst: Instance; accounts: Ac
   );
 }
 
-export function InstancePage({ inst, mods: modCount, instances, state, accounts, initialTab, onChanged, onTrashed, onCloned }: {
+export function InstancePage({ inst, mods: modCount, instances, state, accounts, initialTab, onChanged, onTrashed, onCloned, onLogs }: {
   inst: Instance;
   mods?: number;
   instances: Instance[];
@@ -260,6 +261,7 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
   initialTab?: Tab;
   onChanged: (i: Instance) => void;
   onTrashed: () => void;
+  onLogs: () => void;
 }) {
   const dialog = useDialog();
   const [[main, sub], setPlace] = useState<[Main, Sub | undefined]>(() => place(initialTab ?? "overview"));
@@ -272,6 +274,22 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
   const ask = (kind: "clone" | "export") => { setMore(false); setPlace(["game", "profile"]); setProfileAction({ kind, n: Date.now() }); };
   useEffect(() => { api.diskUsage(inst.id).then((u) => setDisk(u.total)).catch(() => setDisk(null)); }, [inst.id, reload]);
   useEffect(() => { if (initialTab) setPlace(place(initialTab)); }, [initialTab]);
+  // Mod Doctor для «Обзора», счётчика на «Моды» и главной кнопки; перечитываем после смены вкладки и запуска.
+  const [doctor, setDoctor] = useState<{ report: DoctorReport; journal: JournalEntry[] } | null>(null);
+  useEffect(() => { modsApi.view(inst.id).then(setDoctor).catch(() => setDoctor(null)); }, [inst.id, main, reload, state?.phase]);
+  const blocking = doctor?.report.findings.filter((f) => f.severity === "blocking") ?? [];
+  // «Починить и играть» — только если каждое блокирующее замечание чинится выключением мода (как в Mod Doctor).
+  const fix = blocking.length > 0 && blocking.every((f) => f.fixes.some((x) => x.kind !== "install")) ? async () => {
+    await snapshots.create(inst.id, t("Перед «Починить и играть»"));
+    for (const f of blocking) {
+      const x = f.fixes.find((k) => k.kind !== "install");
+      const off = x?.kind === "disable" ? [x.file_name] : x?.kind === "keep_one" ? x.file_names.slice(1) : [];
+      for (const file of off) await modsApi.toggle(inst.id, file, false);
+    }
+  } : undefined;
+  const issues = doctor?.report.findings.length ?? 0;
+  const tabs: [Main, React.ReactNode][] = MAIN.map(([m, l]) => [m, m === "mods" && issues > 0
+    ? <>{l} <span className={`count ${blocking.length ? "err" : "warn"}`} aria-label={t("замечаний: {0}", issues)}>{issues}</span></> : l]);
   // Меню «Ещё» закрывается кликом мимо него.
   useEffect(() => {
     if (!more) return;
@@ -308,7 +326,6 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
     }
   };
 
-  const mac = navigator.platform.includes("Mac");
   return (
     <>
       <div className="phead">
@@ -329,19 +346,18 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
               </div>
             )}
           </div>
-          <PlayButton inst={inst} state={state} compact />
+          <PlayButton inst={inst} state={state} compact fix={fix} />
         </div>
       </div>
       <div className="tabsrow">
-        <TabStrip className="mtabs" label={t("Вкладки профиля")} items={MAIN} value={main} onPick={(m) => setPlace([m, undefined])} />
-        <span className="muted small hide-narrow">{t("Всё остальное:")} <kbd>{mac ? "⌘ K" : "Ctrl K"}</kbd></span>
+        <TabStrip className="mtabs" label={t("Вкладки профиля")} items={tabs} value={main} onPick={(m) => setPlace([m, undefined])} />
       </div>
       {state && isActive(state) && <LaunchProgress state={state} />}
       {main === "overview" && (
         <div className="stack">
           {state?.phase === "failed" && state.error && <div className="alert err" style={{ whiteSpace: "pre-line" }}><div className="h">{t("Запуск не удался")}</div><span>{state.error}</span></div>}
           {state?.phase === "done" && state.exit?.analysis && <CrashCard inst={inst} a={state.exit.analysis} code={state.exit.code} onOpenTab={go} />}
-          {!failed && <div className="card muted">{t("Обзор профиля появится на следующем шаге работы над интерфейсом.")}</div>}
+          <Overview inst={inst} state={state} doctor={doctor} accounts={accounts} fix={fix} onGo={go} onLogs={onLogs} />
         </div>
       )}
       {main === "mods" && (

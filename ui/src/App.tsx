@@ -14,13 +14,10 @@ import { ProfileIcon } from "./ui/common";
 import { DialogProvider } from "./ui/Dialog";
 import { nick, path, setStreamer, useStreamer } from "./streamer";
 import { markRead, pushNote, useNotes } from "./notify";
-import { Palette, type Command } from "./ui/Palette";
 import { src, syncLang, t } from "./i18n";
 
 /** Профиль с вкладками или один из общих экранов, открытых с рельсы. */
 type Screen = "profile" | "logs" | "accounts" | "settings";
-const SCREENS: [Exclude<Screen, "profile">, string][] = [["logs", t("Логи и краши")], ["accounts", t("Аккаунты и скины")], ["settings", t("Настройки")]];
-const MAC = navigator.platform.includes("Mac");
 
 function applyTheme(theme: string) {
   const dark = theme === "system" ? window.matchMedia("(prefers-color-scheme: dark)").matches : theme !== "light";
@@ -54,7 +51,6 @@ export function applyAppearance(g: Pick<GlobalSettings, "accent" | "ui_scale" | 
   root.dataset.density = g.compact ? "compact" : "normal";
 }
 
-const TAB_LABELS: [Tab, string][] = [["overview", t("Обзор")], ["mods", t("Моды")], ["resources", t("Ресурсы и конфиги")], ["deps", t("Зависимости")], ["snapshots", t("Откат")], ["launch", t("Запуск и память")], ["options", t("Настройки игры")], ["servers", t("Серверы")], ["profile", t("О профиле")]];
 
 /** Подпись строки настроек (div.lbl) называет поле этой строки для экранных читалок. */
 function useSettingLabels() {
@@ -90,7 +86,6 @@ function Shell() {
   const [importing, setImporting] = useState(false);
   const [theme, setTheme] = useState("dark");
   const [loadError, setLoadError] = useState("");
-  const [palette, setPalette] = useState(false);
   const [firstRun, setFirstRun] = useState(false);
   const [release, setRelease] = useState<{ version: string; url: string } | null>(null);
   const notes = useNotes();
@@ -125,9 +120,8 @@ function Shell() {
       pushNote({ kind: "info", title: src("Вышла новая версия Quarry {0}", r.version) });
     }).catch(() => {});
     const off = listen("launch-finished", () => refresh());
-    // Ctrl+K / ⌘K — палитра команд; Esc — назад к профилю. Enter (играть) — ниже, ему нужен выбранный профиль.
+    // Esc — назад к профилю. Enter (играть) — ниже, ему нужен выбранный профиль.
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       if (e.key === "Escape" && !typing(e)) setScreen("profile");
     };
     window.addEventListener("keydown", onKey);
@@ -153,14 +147,13 @@ function Shell() {
   const msAll = accounts.filter((a) => a.provider === "microsoft");
   const ms = msAll.find((a) => `${a.provider}:${a.uuid}` === defaultKey) ?? msAll[0];
 
-  // Enter — играть выбранным профилем, только когда фокус не на кнопке, поле или в диалоге.
+  // Enter — главная кнопка в шапке профиля («Играть» или «Починить и играть»), только когда фокус не на кнопке, поле или в диалоге.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const free = document.activeElement === document.body || document.activeElement?.id === "main";
       if (e.key !== "Enter" || typing(e) || !free || screen !== "profile" || !selectedId || isActive(states.get(selectedId))) return;
       e.preventDefault();
-      launches.begin(selectedId);
-      api.launch(selectedId).catch(() => {});
+      document.querySelector<HTMLButtonElement>(".phead .play .go")?.click();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -168,20 +161,9 @@ function Shell() {
 
   if (!info) return <div className="content muted">{t("Загрузка…")}</div>;
   const open = (id: string, tab?: Tab) => { setSelectedId(id); setProfileTab(tab); setScreen("profile"); };
-  const commands: Command[] = [
-    ...SCREENS.map(([id, label]) => ({ id: `s-${id}`, label, hint: t("экран"), run: () => setScreen(id) })),
-    ...instances.flatMap((i) => [
-      { id: `p-${i.id}`, label: i.name, hint: t("профиль · {0}", i.game_version), run: () => open(i.id) },
-      { id: `play-${i.id}`, label: t("Играть: {0}", i.name), hint: t("запуск"), run: () => { launches.begin(i.id); api.launch(i.id).catch(() => {}); } },
-    ]),
-    ...(selected ? TAB_LABELS.map(([tab, l]) => ({ id: `t-${tab}`, label: `${selected.name}: ${t(l)}`, hint: t("вкладка"), run: () => open(selected.id, tab) })) : []),
-    { id: "a-new", label: t("Новый профиль"), hint: t("действие"), run: () => setCreating(true) },
-    { id: "a-import", label: t("Импорт сборки"), hint: ".mrpack / zip / Prism", run: () => setImporting(true) },
-    { id: "a-theme", label: t("Сменить тему"), hint: t("светлая / тёмная"), run: () => changeTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") },
-  ];
-  // Рельса: сначала избранные, потом по последнему запуску; архивные — только в палитре.
-  const rail = instances.filter((i) => !i.archived).sort((a, b) =>
-    Number(!!b.favorite) - Number(!!a.favorite) || (b.last_launch?.at ?? 0) - (a.last_launch?.at ?? 0));
+  // Рельса: сначала избранные, потом по последнему запуску; архивные — в самом конце, приглушённые.
+  const rail = [...instances].sort((a, b) =>
+    Number(!!a.archived) - Number(!!b.archived) || Number(!!b.favorite) - Number(!!a.favorite) || (b.last_launch?.at ?? 0) - (a.last_launch?.at ?? 0));
   const status = (i: Instance) => {
     const st = states.get(i.id);
     const s = statusOf(i, isActive(st) ? st!.phase : undefined);
@@ -197,10 +179,12 @@ function Shell() {
         <div className="rail-list">
           {rail.map((i, n) => {
             const s = status(i);
-            const sep = n > 0 && rail[n - 1].favorite && !i.favorite;
+            const prev = rail[n - 1];
+            const sep = n > 0 && ((prev.favorite && !i.favorite) || (!prev.archived && i.archived));
             return (
               <div key={i.id} className={sep ? "rail-sep" : undefined}>
-                <button className={`tile ${screen === "profile" && i.id === selectedId ? "on" : ""}`} aria-label={`${i.name}, ${s.text}`} title={`${i.name} · ${s.text}`}
+                <button className={`tile ${screen === "profile" && i.id === selectedId ? "on" : ""} ${i.archived ? "archived" : ""}`}
+                  aria-label={`${i.name}, ${i.archived ? `${t("в архиве")}, ` : ""}${s.text}`} title={`${i.name} · ${i.archived ? `${t("в архиве")} · ` : ""}${s.text}`}
                   aria-current={screen === "profile" && i.id === selectedId ? "page" : undefined} onClick={() => open(i.id)}>
                   <ProfileIcon id={i.id} color={i.color} size={34} />
                   <span className={`sdot ${s.cls}`} aria-hidden />
@@ -211,7 +195,6 @@ function Shell() {
           <button className="tile add" aria-label={t("Новый профиль")} title={t("Новый профиль")} onClick={() => setCreating(true)}>+</button>
         </div>
         <div className="rail-tools">
-          <button className="rail-btn" aria-label={t("Палитра команд (Ctrl+K)")} title={t("Палитра команд (Ctrl+K)")} onClick={() => setPalette(true)}>⌕</button>
           <button className={`rail-btn ${screen === "logs" ? "on" : ""}`} aria-label={t("Логи и краши{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} title={t("Логи и краши")}
             onClick={() => { markRead(); setScreen("logs"); }}>
             🔔{notes.unread > 0 && <span className="adot" aria-hidden />}
@@ -246,7 +229,7 @@ function Shell() {
             <InstancePage key={selected.id} inst={selected} mods={modsCount[selected.id]} instances={instances} state={states.get(selected.id)} accounts={accounts} initialTab={profileTab}
               onCloned={async (i) => { await refresh(); open(i.id, "profile"); }}
               onChanged={(i) => setInstances((list) => list.map((x) => (x.id === i.id ? i : x)))}
-              onTrashed={() => { refresh(); setProfileTab(undefined); }} />
+              onTrashed={() => { refresh(); setProfileTab(undefined); }} onLogs={() => setScreen("logs")} />
           ) : (
             <div className="card empty">
               <p>{t("Профилей нет.")}</p>
@@ -263,7 +246,6 @@ function Shell() {
 
         <footer className="bottombar">
           <span className="keys">
-            <kbd>{MAC ? "⌘ K" : "Ctrl K"}</kbd> {t("всё остальное")}
             {screen === "profile" && selected && <><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> {t("вкладки")}</>}
             {screen !== "profile" && <><kbd>Esc</kbd> {t("назад")}</>}
             {selected && <><kbd>Enter</kbd> {t("играть")}</>}
@@ -285,12 +267,11 @@ function Shell() {
           else if (next === "import") setImporting(true);
         }} />
       )}
-      {palette && <Palette commands={commands} onClose={() => setPalette(false)} />}
       {importing && (
         <ImportDialog onClose={() => setImporting(false)} onDone={(i) => { setImporting(false); refresh().then(() => open(i.id)); }} />
       )}
       {creating && (
-        <CreateInstance onClose={() => setCreating(false)} onCreated={(i) => { setCreating(false); refresh().then(() => open(i.id)); }} />
+        <CreateInstance onClose={() => setCreating(false)} onImport={() => { setCreating(false); setImporting(true); }} onCreated={(i) => { setCreating(false); refresh().then(() => open(i.id)); }} />
       )}
     </div>
   );
