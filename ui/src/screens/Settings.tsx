@@ -34,11 +34,11 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
     }
   };
 
-  const SECTIONS: [Section, string][] = [["general", t("Общие")], ["look", t("Внешний вид")], ["game", t("Игра")], ["data", t("Данные и сеть")], ["privacy", t("Приватность")], ["about", t("О Axel")]];
+  const SECTIONS: [Section, string][] = [["general", t("Общие")], ["look", t("Внешний вид")], ["game", t("Игра")], ["data", t("Данные и сеть")], ["privacy", t("Приватность")], ["about", t("О Axel'")]];
   const title = SECTIONS.find(([k]) => k === sec)![1];
   return (
     <>
-      <h2>{t("Настройки Axel")}</h2>
+      <h2>{t("Настройки Axel'")}</h2>
       <p className="sub">{t("Глобальные значения — нижний уровень наследования: профиль и сборка их переопределяют.")}</p>
       <div className="settings">
         <nav className="secnav" aria-label={t("Разделы настроек")}>
@@ -79,7 +79,7 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           <span className="muted small">{t("МБ")}</span>
         </div>
         <div className="setting">
-          <div className="lbl">{t("Сообщать о новой версии Axel")}<span className="hint">{t("проверка на GitHub при запуске; скачивание — только по вашему нажатию")}</span></div>
+          <div className="lbl">{t("Сообщать о новой версии Axel'")}<span className="hint">{t("проверка на GitHub при запуске; скачивание — только по вашему нажатию")}</span></div>
           <label className="row"><input type="checkbox" checked={s.check_launcher_updates} onChange={(e) => setS({ ...s, check_launcher_updates: e.target.checked })} /> {t("включено")}</label>
           <span />
         </div>
@@ -172,7 +172,7 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
         </div>
             <h4 className="subhead">{t("Место на диске")}</h4>
         {storage === null ? (
-          <button className="btn" onClick={loadStorage}>{t("Посчитать, сколько занимают данные Axel")}</button>
+          <button className="btn" onClick={loadStorage}>{t("Посчитать, сколько занимают данные Axel'")}</button>
         ) : (
           <>
             <div className="usage">
@@ -196,15 +196,15 @@ export function Settings({ info, theme, onTheme, onAppearance }: { info: AppInfo
           </>}
           {sec === "privacy" && <>
             <ul className="privacy">
-              <li>{t("Axel не собирает статистику и ничего не отправляет разработчикам.")}</li>
-              <li>{t("Лаунчер обращается только к нужным сервисам: Mojang и Microsoft (игра и вход), Modrinth и CurseForge (моды), Adoptium (Java), GitHub (проверка новой версии Axel).")}</li>
+              <li>{t("Axel' не собирает статистику и ничего не отправляет разработчикам.")}</li>
+              <li>{t("Лаунчер обращается только к нужным сервисам: Mojang и Microsoft (игра и вход), Modrinth и CurseForge (моды), Adoptium (Java), GitHub (проверка новой версии Axel').")}</li>
               <li>{t("Данные входа хранятся в защищённом хранилище системы, а не в файлах.")}</li>
               <li>{t("Из логов и отчётов скрываются токены, путь к домашней папке и IP-адреса.")}</li>
             </ul>
             <button className="btn link" onClick={() => api.openLink("https://github.com/Hewako/quarry-launcher/blob/main/docs/PRIVACY.md").catch(() => {})}>{t("Подробнее о приватности")}</button>
           </>}
           {sec === "about" && <>
-            <p>Axel {info.version} {t("· открытый проект под GPL-3.0 · не связан с Mojang и Microsoft.")}</p>
+            <p>Axel' {info.version} {t("· открытый проект под GPL-3.0 · не связан с Mojang и Microsoft.")}</p>
             <button className="btn link" onClick={() => api.openLink("https://github.com/Hewako/quarry-launcher/releases").catch(() => {})}>{t("Открыть страницу загрузки")}</button>
           </>}
           {!["privacy", "about"].includes(sec) && (

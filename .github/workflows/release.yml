@@ -66,12 +66,12 @@ jobs:
           projectPath: ui
           args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
-          releaseName: Axel ${{ github.ref_name }}
+          releaseName: Axel' ${{ github.ref_name }}
           releaseBody: |
             Что нового — в [CHANGELOG.md](https://github.com/Hewako/quarry-launcher/blob/main/CHANGELOG.md).
 
             Установщики не подписаны сертификатом разработчика: при первом запуске система предупредит об этом.
-            macOS 15 и новее: запустите Axel, затем «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть».
+            macOS 15 и новее: запустите Axel', затем «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть».
             Windows: «Подробнее» → «Выполнить в любом случае». Подробно — [Установка](https://github.com/Hewako/quarry-launcher#установка).
           releaseDraft: true
           # v0.1.0-rc.1, v0.2.0-beta — пробные: лаунчеры игроков не предлагают их как обновление.

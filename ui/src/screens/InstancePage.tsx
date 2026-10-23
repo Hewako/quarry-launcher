@@ -332,7 +332,7 @@ export function InstancePage({ inst, mods: modCount, instances, state, accounts,
   const trash = async () => {
     const ok = await dialog.confirm({
       title: t("Убрать «{0}» в корзину?", inst.name),
-      body: <>{t("Профиль вместе с мирами, модами и конфигами переместится в папку")} <span className="mono">trash/</span> {t("внутри папки данных Axel. Ничего не удаляется: чтобы вернуть, перенесите папку обратно в")} <span className="mono">instances/</span>.</>,
+      body: <>{t("Профиль вместе с мирами, модами и конфигами переместится в папку")} <span className="mono">trash/</span> {t("внутри папки данных Axel'. Ничего не удаляется: чтобы вернуть, перенесите папку обратно в")} <span className="mono">instances/</span>.</>,
       confirm: t("Убрать в корзину"),
       danger: true,
     });

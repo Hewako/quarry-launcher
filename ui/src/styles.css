@@ -292,7 +292,7 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 /* ---------- Каркас варианта F: рельса профилей, шапка профиля, вкладки, нижняя панель ---------- */
 .rail { background: var(--rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0; min-height: 0; user-select: none; -webkit-user-select: none; }
 .rail-logo { margin-bottom: 14px; }
-.rail-logo i { display: block; width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent) 0 50%, #2f8f69 50% 100%); }
+.rail-logo img { display: block; border-radius: 9px; }
 .rail-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; scrollbar-width: none; }
 .rail-sep { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
 .tile { position: relative; width: 48px; height: 46px; display: grid; place-items: center; border: 0; background: none; border-radius: 10px; }

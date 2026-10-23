@@ -27,7 +27,7 @@ export function FirstRun({ onDone }: { onDone: (next: "accounts" | "create" | "i
 
         {step === 0 && (
           <>
-            <h3 id="wiz-title">{t("Добро пожаловать в Axel")}</h3>
+            <h3 id="wiz-title">{t("Добро пожаловать в Axel'")}</h3>
             <p>{t("Пара коротких шагов — и можно играть. Всё это потом меняется в настройках.")}</p>
             <label className="small muted" htmlFor="wiz-lang">{t("Язык интерфейса")}</label>
             <select id="wiz-lang" className="field" value={lang} onChange={(e) => setLang(e.target.value)} data-autofocus>
@@ -38,7 +38,7 @@ export function FirstRun({ onDone }: { onDone: (next: "accounts" | "create" | "i
         )}
         {step === 1 && (
           <>
-            <h3 id="wiz-title">{t("Где Axel хранит игру")}</h3>
+            <h3 id="wiz-title">{t("Где Axel' хранит игру")}</h3>
             <p>{t("Версии игры, моды, миры и настройки лежат в одной папке:")}</p>
             <p className="mono small" style={{ userSelect: "text" }}>{info?.data_dir || "…"}</p>
             {info?.free_bytes !== undefined && <p>{t("Свободно на диске:")} <b>{sizeText(info.free_bytes)}</b>.</p>}
@@ -53,15 +53,15 @@ export function FirstRun({ onDone }: { onDone: (next: "accounts" | "create" | "i
               <>
                 <p>{t("Нашли на компьютере:")}</p>
                 <ul className="small">{info.javas.slice(0, 5).map((j) => <li key={j.path}>Java {j.major} ({j.arch})</li>)}</ul>
-                <p className="muted small">{t("Для каждой версии игры Axel сам выберет подходящую Java, а если нужной нет — скачает её.")}</p>
+                <p className="muted small">{t("Для каждой версии игры Axel' сам выберет подходящую Java, а если нужной нет — скачает её.")}</p>
               </>
-            ) : <p>{t("Java не найдена — это не страшно. Axel сам скачает нужную версию при первом запуске игры.")}</p>}
+            ) : <p>{t("Java не найдена — это не страшно. Axel' сам скачает нужную версию при первом запуске игры.")}</p>}
           </>
         )}
         {step === 3 && (
           <>
             <h3 id="wiz-title">{t("Вход")}</h3>
-            <p>{t("Чтобы играть, нужен аккаунт Microsoft, на котором куплена Minecraft: Java Edition. Пароль вводится на сайте Microsoft — Axel его не видит.")}</p>
+            <p>{t("Чтобы играть, нужен аккаунт Microsoft, на котором куплена Minecraft: Java Edition. Пароль вводится на сайте Microsoft — Axel' его не видит.")}</p>
             <div className="row">
               <button className={`btn ${next === "accounts" ? "pri" : ""}`} onClick={() => { setNext("accounts"); setStep(4); }}>{t("Войти после мастера")}</button>
               <button className="btn" onClick={() => setStep(4)}>{t("Войти позже")}</button>
@@ -83,8 +83,8 @@ export function FirstRun({ onDone }: { onDone: (next: "accounts" | "create" | "i
           <>
             <h3 id="wiz-title">{t("Ваши данные")}</h3>
             <ul className="small privacy">
-              <li>{t("Axel не собирает статистику и ничего не отправляет разработчикам.")}</li>
-              <li>{t("Лаунчер обращается только к нужным сервисам: Mojang и Microsoft (игра и вход), Modrinth и CurseForge (моды), Adoptium (Java), GitHub (проверка новой версии Axel).")}</li>
+              <li>{t("Axel' не собирает статистику и ничего не отправляет разработчикам.")}</li>
+              <li>{t("Лаунчер обращается только к нужным сервисам: Mojang и Microsoft (игра и вход), Modrinth и CurseForge (моды), Adoptium (Java), GitHub (проверка новой версии Axel').")}</li>
               <li>{t("Данные входа хранятся в защищённом хранилище системы, а не в файлах.")}</li>
               <li>{t("Из логов и отчётов скрываются токены, путь к домашней папке и IP-адреса.")}</li>
             </ul>

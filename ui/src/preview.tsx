@@ -54,7 +54,7 @@ mockIPC((cmd, args) => {
     case "storage_overview": return [{ label: "Профили (миры, моды, настройки)", size: 6_200_000_000, cleanable: false }, { label: "Библиотеки и ресурсы игры (общие для профилей)", size: 1_900_000_000, cleanable: false }, { label: "Временные файлы и кеш", size: 240_000_000, cleanable: true }];
     case "cache_clean": return 240_000_000;
     case "crash_reports": return [{ file: "crash-2026-10-21_09.30.00-client.txt", when: "2026-10-21 09:30:00", size: 18_000, description: "Rendering overlay" }];
-    case "support_report_preview": return [{ name: "summary.txt", content: "Отчёт поддержки Axel\n\nAxel: 0.1.0\nВерсия игры: 26.3" }, { name: "mods.txt", content: "[вкл] Sodium 0.8.14 (sodium.jar)" }];
+    case "support_report_preview": return [{ name: "summary.txt", content: "Отчёт поддержки Axel'\n\nAxel': 0.1.0\nВерсия игры: 26.3" }, { name: "mods.txt", content: "[вкл] Sodium 0.8.14 (sodium.jar)" }];
     case "first_run_info": return { data_dir: "/Users/player/.quarry", free_bytes: 84_000_000_000, javas: [{ path: "/usr/bin/java", major: 21, version: "21.0.4", arch: "aarch64" }] };
     case "first_run_done": return null;
     case "account_skin": return null;

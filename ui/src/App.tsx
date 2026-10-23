@@ -115,7 +115,7 @@ function Shell() {
     api.launcherUpdate().then((r) => {
       if (!r) return;
       setRelease(r);
-      pushNote({ kind: "info", title: src("Вышла новая версия Axel {0}", r.version) });
+      pushNote({ kind: "info", title: src("Вышла новая версия Axel' {0}", r.version) });
     }).catch(() => {});
     const off = listen("launch-finished", () => refresh());
     // Esc — назад к профилю. Enter (играть) — ниже, ему нужен выбранный профиль.
@@ -173,7 +173,7 @@ function Shell() {
     <div className="app">
       <a href="#main" className="skip">{t("Перейти к содержимому")}</a>
       <nav className="rail" aria-label={t("Профили и разделы")}>
-        <div className="rail-logo" aria-hidden title={`Axel ${info.version}`}><i /></div>
+        <div className="rail-logo" title={`Axel' ${info.version}`}><img src="/logo.png" alt="" width={34} height={34} /></div>
         <div className="rail-list">
           {rail.map((i, n) => {
             const s = status(i);
@@ -210,7 +210,7 @@ function Shell() {
         )}
         {release && (
           <div className="devbar" role="status">
-            {t("Вышла новая версия Axel {0}.", release.version)}{" "}
+            {t("Вышла новая версия Axel' {0}.", release.version)}{" "}
             <button className="btn link small" onClick={() => api.openLink(release.url).catch(() => {})}>{t("Открыть страницу загрузки")}</button>
             <button className="btn link small" onClick={() => setRelease(null)}>{t("Позже")}</button>
           </div>

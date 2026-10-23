@@ -210,9 +210,9 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
       target = picked;
     }
     const ok = await dialog.confirm({
-      title: toQuarry ? t("Вернуть папку игры в Axel?") : t("Перенести папку игры?"),
+      title: toQuarry ? t("Вернуть папку игры в Axel'?") : t("Перенести папку игры?"),
       body: toQuarry
-        ? t("Миры, моды и настройки переедут обратно в папку данных Axel.")
+        ? t("Миры, моды и настройки переедут обратно в папку данных Axel'.")
         : <>{t("Миры, моды и настройки переедут в")} <span className="mono">{target}</span>{t(". На другой диск это займёт время; исходная папка удалится только после полной проверки копии.")}</>,
       confirm: t("Перенести"),
     });
@@ -311,11 +311,11 @@ export function ProfileTab({ inst, instances, running, onChanged, onCloned, onTr
         </div>
         <div className="lbl" style={{ fontWeight: 500 }}>{t("Где лежит папка игры")}</div>
         <p className="small" style={{ marginTop: 0 }}>
-          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : t("В папке данных Axel.")}
+          {inst.external_game_dir ? <span className="mono" style={{ userSelect: "text" }}>{path(inst.external_game_dir, streamer)}</span> : t("В папке данных Axel'.")}
         </p>
         <div className="row">
           <button className="btn" disabled={running || moving} onClick={() => move(false)}>{moving ? t("Переносим…") : t("Перенести в другую папку или на другой диск…")}</button>
-          {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>{t("Вернуть в Axel")}</button>}
+          {inst.external_game_dir && <button className="btn" disabled={running || moving} onClick={() => move(true)}>{t("Вернуть в Axel'")}</button>}
         </div>
       </section>
 

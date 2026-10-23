@@ -1177,7 +1177,7 @@ pub fn link_existing(
     let data_root = std::fs::canonicalize(store.data().root())
         .unwrap_or_else(|_| store.data().root().to_path_buf());
     if game_dir.starts_with(&data_root) {
-        return Err(Error::invalid("Эта папка уже принадлежит Axel"));
+        return Err(Error::invalid("Эта папка уже принадлежит Axel'"));
     }
     let mut inst = store.create(name, game_version, loader, loader_version)?;
     let id = inst.id.clone();

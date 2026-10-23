@@ -66,7 +66,7 @@ export function ResourcesTab({ inst, running }: { inst: Instance; running: boole
     setOrder([p.file_name, ...enabled]);
   };
   const remove = async (kind: ResKind, p: PackInfo) => {
-    const ok = await dialog.confirm({ title: t("Убрать {0}?", p.file_name), body: t("Файл переместится в корзину Axel (папка trash в данных лаунчера) — его можно вернуть вручную."), confirm: t("Убрать"), danger: true });
+    const ok = await dialog.confirm({ title: t("Убрать {0}?", p.file_name), body: t("Файл переместится в корзину Axel' (папка trash в данных лаунчера) — его можно вернуть вручную."), confirm: t("Убрать"), danger: true });
     if (ok) await act(() => api.removeResource(inst.id, kind, p.file_name, kind === "datapack" ? world : undefined));
     if (ok && kind === "datapack") loadDatapacks();
   };
