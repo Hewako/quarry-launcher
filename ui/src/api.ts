@@ -197,7 +197,7 @@ export const api = {
   setResourcePacks: (id: string, enabled: string[]) => invoke<void>("resources_set_enabled", { id, enabled }),
   setShader: (id: string, shader: string | null) => invoke<void>("shader_set", { id, shader }),
   removeResource: (id: string, kind: ResKind, file: string, world?: string) => invoke<void>("resource_remove", { id, kind, file, world: world ?? null }),
-  installResource: (id: string, project: string, kind: ResKind, world?: string) => invoke<string>("resource_install", { id, project, kind, world: world ?? null }),
+  installResource: (id: string, project: string, kind: ResKind, world?: string, source: CatalogSource = "modrinth") => invoke<string>("resource_install", { id, project, kind, world: world ?? null, source }),
   servers: (id: string) => invoke<Server[]>("servers_list", { id }),
   saveServers: (id: string, servers: Server[]) => invoke<void>("servers_save", { id, servers }),
   serverTags: (id: string) => invoke<Record<string, string[]>>("server_tags", { id }),

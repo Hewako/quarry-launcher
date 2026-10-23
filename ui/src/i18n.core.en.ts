@@ -463,4 +463,6 @@ export const CORE_EN: Record<string, string> = {
   "Эта версия ставит иконку окна, а современная macOS это запрещает (ошибка игры MCL-15163). Мод MacOS LWJGL Fix отменяет только этот вызов.": "This version sets a window icon, and modern macOS does not allow it (game bug MCL-15163). The MacOS LWJGL Fix mod cancels only this call.",
   "Minecraft {0} на macOS, мода macoslwjglfix нет": "Minecraft {0} on macOS, no macoslwjglfix mod",
   "Загрузчик": "Loader",
+  "Неверный ID проекта CurseForge": "Invalid CurseForge project ID",
+  "Автор «{0}» запретил скачивание в сторонних лаунчерах — скачайте файл вручную на сайте CurseForge": "The author of “{0}” does not allow downloads in third-party launchers — download the file manually on the CurseForge website",
 };

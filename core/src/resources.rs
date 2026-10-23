@@ -365,46 +365,26 @@ pub async fn install(
     project: &str,
     kind: Kind,
     world: Option<&str>,
+    source: Source,
 ) -> Result<String> {
     let inst = store.get(id)?;
     let game = store.game_dir(id)?;
     let dir = target_dir(&game, kind, world)?;
-    let info = crate::catalog::project(project).await?;
-    let loaders: &[&str] = match kind {
-        Kind::Resourcepack => &["minecraft"],
-        Kind::Shader => &["iris"],
-        Kind::Datapack => &["datapack"],
+    let f = if source == Source::CurseForge {
+        curseforge_file(project, &inst.game_version).await?
+    } else {
+        modrinth_file(project, kind, &inst.game_version).await?
     };
-    let list = crate::catalog::versions(&info.id, loaders, &inst.game_version).await?;
-    let v = crate::catalog::pick(&list, crate::catalog::Channel::Auto).ok_or_else(|| {
-        Error::invalid(format!(
-            "У «{}» нет версии для Minecraft {}",
-            info.title, inst.game_version
-        ))
-    })?;
-    let f = v
-        .primary_file()
-        .ok_or_else(|| Error::invalid(format!("У версии {} нет файла", v.name)))?;
-    if !f.url.starts_with("https://") || crate::net::host_of(&f.url) != "cdn.modrinth.com" {
-        return Err(Error::invalid(
-            "Файл не с CDN Modrinth — установка отменена",
-        ));
-    }
-    let name = &f.filename;
+    let name = &f.name;
     if !crate::paths::is_plain_file_name(name) {
         return Err(Error::invalid(format!("Недопустимое имя файла: {name}")));
     }
-    let sha1 = f
-        .hashes
-        .get("sha1")
-        .ok_or_else(|| Error::invalid("Modrinth не прислал хэш файла"))?
-        .to_ascii_lowercase();
     std::fs::create_dir_all(&dir).at(&dir)?;
     download::download_all(
         vec![Task {
             url: f.url.clone(),
             dest: dir.join(name),
-            expected: Expected::Sha1(sha1.clone()),
+            expected: Expected::Sha1(f.sha1.clone()),
             size: Some(f.size),
         }],
         2,
@@ -417,19 +397,97 @@ pub async fn install(
     let mut lock = PackLock::load(&inst_dir)?;
     lock.upsert(LockEntry {
         path: rel_path(&game, &dir.join(name)),
-        sha1,
-        sha512: f.hashes.get("sha512").cloned(),
-        source: Source::Modrinth,
-        project_id: Some(info.id.clone()),
-        version_id: Some(v.id.clone()),
-        version_number: Some(v.version_number.clone()),
-        title: Some(info.title.clone()),
+        sha1: f.sha1,
+        sha512: f.sha512,
+        source,
+        project_id: Some(f.project_id),
+        version_id: Some(f.version_id),
+        version_number: Some(f.version_number),
+        title: Some(f.title),
         layer: Layer::User,
         installed_at: now(),
         pinned: false,
     });
     lock.save(&inst_dir)?;
     Ok(name.clone())
+}
+
+/// Выбранный в каталоге файл: откуда качать, как проверить и что записать в pack.lock.
+struct Picked {
+    url: String,
+    name: String,
+    sha1: String,
+    sha512: Option<String>,
+    size: u64,
+    project_id: String,
+    version_id: String,
+    version_number: String,
+    title: String,
+}
+
+async fn modrinth_file(project: &str, kind: Kind, game_version: &str) -> Result<Picked> {
+    let info = crate::catalog::project(project).await?;
+    let loaders: &[&str] = match kind {
+        Kind::Resourcepack => &["minecraft"],
+        Kind::Shader => &["iris"],
+        Kind::Datapack => &["datapack"],
+    };
+    let list = crate::catalog::versions(&info.id, loaders, game_version).await?;
+    let v = crate::catalog::pick(&list, crate::catalog::Channel::Auto).ok_or_else(|| {
+        Error::invalid(format!(
+            "У «{}» нет версии для Minecraft {game_version}",
+            info.title
+        ))
+    })?;
+    let f = v
+        .primary_file()
+        .ok_or_else(|| Error::invalid(format!("У версии {} нет файла", v.name)))?;
+    if !f.url.starts_with("https://") || crate::net::host_of(&f.url) != "cdn.modrinth.com" {
+        return Err(Error::invalid(
+            "Файл не с CDN Modrinth — установка отменена",
+        ));
+    }
+    Ok(Picked {
+        url: f.url.clone(),
+        name: f.filename.clone(),
+        sha1: f
+            .hashes
+            .get("sha1")
+            .ok_or_else(|| Error::invalid("Modrinth не прислал хэш файла"))?
+            .to_ascii_lowercase(),
+        sha512: f.hashes.get("sha512").cloned(),
+        size: f.size,
+        project_id: info.id.clone(),
+        version_id: v.id.clone(),
+        version_number: v.version_number.clone(),
+        title: info.title.clone(),
+    })
+}
+
+/// Ресурспак, шейдер или датапак с CurseForge: без фильтра по загрузчику, только CDN CurseForge.
+async fn curseforge_file(project: &str, game_version: &str) -> Result<Picked> {
+    let mod_id: u64 = project
+        .parse()
+        .map_err(|_| Error::invalid("Неверный ID проекта CurseForge"))?;
+    let (title, f) = crate::curseforge::resource_file(mod_id, game_version).await?;
+    let url = f.trusted_url().ok_or_else(|| {
+        Error::invalid(format!(
+            "Автор «{title}» запретил скачивание в сторонних лаунчерах — скачайте файл вручную на сайте CurseForge"
+        ))
+    })?;
+    Ok(Picked {
+        url: url.to_string(),
+        name: f.file_name.clone(),
+        sha1: f
+            .sha1()
+            .ok_or_else(|| Error::invalid("CurseForge не прислал хэш файла"))?,
+        sha512: None,
+        size: f.file_length,
+        project_id: mod_id.to_string(),
+        version_id: f.id.to_string(),
+        version_number: f.display_name.clone(),
+        title,
+    })
 }
 
 #[cfg(test)]
@@ -613,5 +671,41 @@ mod tests {
         let l = list(&g, Kind::Resourcepack, None);
         assert_eq!(l[0].icon.as_deref(), Some("data:image/png;base64,iVBORw=="));
         std::fs::remove_dir_all(&g).unwrap();
+    }
+
+    /// Сеть: ресурспак с Modrinth ставится в resourcepacks/ и записывается в pack.lock.
+    #[tokio::test]
+    #[ignore]
+    async fn install_resourcepack_from_modrinth() {
+        let root = std::env::temp_dir().join(format!("quarry-res-{}", std::process::id()));
+        let store = InstanceStore::new(crate::paths::DataDir::new(root.clone()));
+        let inst = store
+            .create("Р", "1.21.1", crate::loader::LoaderKind::Vanilla, None)
+            .unwrap();
+        let name = install(
+            &store,
+            &inst.id,
+            "faithful-32x",
+            Kind::Resourcepack,
+            None,
+            Source::Modrinth,
+        )
+        .await
+        .unwrap();
+        assert!(
+            store
+                .game_dir(&inst.id)
+                .unwrap()
+                .join("resourcepacks")
+                .join(&name)
+                .is_file()
+        );
+        let lock = PackLock::load(&store.dir(&inst.id).unwrap()).unwrap();
+        assert!(
+            lock.files
+                .iter()
+                .any(|f| f.source == Source::Modrinth && f.path.ends_with(&name))
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -81,8 +81,7 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
   const [source, setSource] = useState<CatalogSource>("modrinth");
   const [cf, setCf] = useState(false);
   useEffect(() => { api.appInfo().then((i) => setCf(i.curseforge)).catch(() => {}); }, []);
-  // CurseForge подключён только для модов.
-  const src: CatalogSource = kind === "mod" ? source : "modrinth";
+  const src: CatalogSource = cf ? source : "modrinth";
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -98,7 +97,7 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
     setError("");
     try {
       if (kind === "mod") onPlan?.(t("Установить {0}", h.title), await mods.planInstall(inst.id, h.project_id, channel, src));
-      else { await api.installResource(inst.id, h.project_id, kind, world); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
+      else { await api.installResource(inst.id, h.project_id, kind, world, src); setDone((d) => [...d, h.project_id]); onInstalled?.(); }
     } catch (e) { setError(errText(e)); }
     finally { setBusy(null); }
   };
@@ -113,7 +112,7 @@ export function CatalogDialog({ inst, initial, onClose, onPlan, kinds = ["mod", 
         </div>
       </div>
       <div className="row">
-        {cf && kind === "mod" && (
+        {cf && (
           <div className="seg" role="group" aria-label={t("Источник")}>
             <button className={source === "modrinth" ? "on" : ""} onClick={() => setSource("modrinth")}>Modrinth</button>
             <button className={source === "curseforge" ? "on" : ""} onClick={() => { setSource("curseforge"); setCategory(""); }}>CurseForge</button>

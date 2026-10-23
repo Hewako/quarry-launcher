@@ -262,6 +262,19 @@ pub async fn files(mod_id: u64, loader: LoaderKind, game_version: &str) -> Resul
     Ok(d.data)
 }
 
+/// Файл ресурспака, шейдера или датапака для версии игры (стабильный, если есть) и название проекта.
+pub async fn resource_file(mod_id: u64, game_version: &str) -> Result<(String, CfFile)> {
+    let info = mod_info(mod_id).await?;
+    let list = files(mod_id, LoaderKind::Vanilla, game_version).await?;
+    let f = pick(&list, Channel::Auto).cloned().ok_or_else(|| {
+        Error::invalid(format!(
+            "У «{}» нет версии для Minecraft {game_version}",
+            info.name
+        ))
+    })?;
+    Ok((info.name, f))
+}
+
 /// План установки мода с CurseForge вместе с обязательными зависимостями.
 pub async fn plan_install(
     store: &InstanceStore,

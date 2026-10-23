@@ -1126,13 +1126,20 @@ async fn resource_install(
     project: String,
     kind: quarry_core::resources::Kind,
     world: Option<String>,
+    source: Option<String>,
 ) -> CmdResult<String> {
+    let source = if source.as_deref() == Some("curseforge") {
+        quarry_core::mods::lock::Source::CurseForge
+    } else {
+        quarry_core::mods::lock::Source::Modrinth
+    };
     quarry_core::resources::install(
         &InstanceStore::new(state.data.clone()),
         &id,
         &project,
         kind,
         world.as_deref(),
+        source,
     )
     .await
     .map_err(err)
