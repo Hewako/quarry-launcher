@@ -173,14 +173,25 @@ select.field { padding: 6px 8px; }
 .planlist label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .planlist label small { display: block; color: var(--muted); font-size: 12px; }
 
-/* Снимки */
-.timeline { display: grid; position: relative; padding-left: 18px; }
-.timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
-.snap { position: relative; padding: 0 0 16px; }
-.snap::before { content: ""; position: absolute; left: -17px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); }
-.snap .diff { font: 12px var(--mono); margin-top: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; display: grid; gap: 2px; user-select: text; }
+/* «Откат» (макет 03): строки снимков, журнал, миры */
+.snaps { list-style: none; margin: 0; padding: 0; }
+.snaps li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 14px; align-items: start; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.snaps li:last-child { border-bottom: 0; }
+.snaps .what b { margin-right: 8px; }
+.snaps .what .tag { margin-right: 6px; }
+.snaps .acts, .world .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.snaps .acts { grid-column: 2; }
+.snaps .when { padding-top: 2px; }
+.snaps .when, .changes .when { font-size: 13px; white-space: nowrap; }
+.pad { margin: 0; padding: 16px; }
+details.card summary { cursor: pointer; font-weight: 600; }
+details.card[open] summary { margin-bottom: 8px; }
+.worlds { display: grid; }
+.world { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.world.sub { padding-left: 14px; }
+.world .grow { flex: 1 1 180px; min-width: 0; }
+.diff { font: 12px var(--mono); margin-top: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; display: grid; gap: 2px; user-select: text; }
 .add { color: var(--accent); } .del { color: var(--err); } .chg { color: var(--warn); }
-.pin { font-size: 11px; color: var(--warn); }
 .trace { font: 12px/1.55 var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; overflow: auto; user-select: text; white-space: pre-wrap; word-break: break-word; }
 
 /* Вкладка «Профиль» */
@@ -381,5 +392,5 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .modcard .alert { margin: 0; }
 .modcard .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 
-@media (max-width: 1100px) { .modsgrid, .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
+@media (max-width: 1100px) { .snaps li { grid-template-columns: minmax(0, 1fr); } .snaps .acts { grid-column: 1; } .modsgrid, .split2, .ov { grid-template-columns: minmax(0, 1fr); } .hide-narrow { display: none; } }
 

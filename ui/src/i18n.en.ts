@@ -950,6 +950,9 @@ export const EN: Record<string, string> = {
   "Размер": "Size",
   "Фильтр модов": "Mod filter",
   "никто не требует": "nothing requires it",
+  "С ним игра запускалась {0}": "The game last ran with it {0}",
+  "закреплён": "pinned",
+  "последний рабочий": "last working",
   "Разделы модов": "Mod sections",
   "Разделы игры": "Game sections",
 };

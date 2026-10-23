@@ -452,14 +452,6 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
       )}
 
       <p className="muted small">{t("Состояние — по метаданным модов (fabric.mod.json, quilt.mod.json, mods.toml), а не по имени файла. «Конфликтов не найдено» не гарантирует, что игра запустится: настоящую проверку даёт запуск.")}</p>
-      {data.journal.length > 0 && (
-        <details>
-          <summary className="muted small" style={{ cursor: "pointer" }}>{t("Журнал изменений (")}{data.journal.length})</summary>
-          <ul className="small" style={{ margin: "8px 0", paddingLeft: 18 }}>
-            {data.journal.map((j, i) => <li key={i}>{new Date(j.at * 1000).toLocaleString("ru-RU")} · <b>{tc(j.action)}</b> {j.what} <span className="muted">— {tc(j.reason)}</span></li>)}
-          </ul>
-        </details>
-      )}
       {catalog !== null && <CatalogDialog inst={inst} initial={catalog} onClose={() => setCatalog(null)} onPlan={(title, p) => { setCatalog(null); setPlan({ title, plan: p, reason: t("Перед: {0}", title.toLowerCase()) }); }} />}
       {plan && (
         <PlanDialog title={plan.title} plan={plan.plan} onClose={() => setPlan(null)} onApply={async (p) => { await mods.apply(inst.id, p, plan.reason); setPlan(null); setPicked(new Set()); load(); refreshUpdates(); }} />
