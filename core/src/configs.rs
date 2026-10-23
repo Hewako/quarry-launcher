@@ -12,7 +12,7 @@ pub struct ConfigFile {
     /// Путь от папки игры через `/`: `config/sodium-options.json`, `options.txt`.
     pub path: String,
     pub size: u64,
-    /// Правил игрок в Quarry — обновление сборки этот файл не заменит.
+    /// Правил игрок в Lime — обновление сборки этот файл не заменит.
     pub user_edited: bool,
 }
 

@@ -325,7 +325,7 @@ pub fn set_shader(game_dir: &Path, shader: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Убрать файл ресурспака или шейдера в корзину Quarry (не удаляя насовсем).
+/// Убрать файл ресурспака или шейдера в корзину Lime (не удаляя насовсем).
 pub fn remove(
     store: &InstanceStore,
     id: &str,

@@ -314,7 +314,7 @@ pub struct GlobalSettings {
     /// Ограничение скорости загрузок, КБ/с; 0 — без ограничения.
     #[serde(default)]
     pub download_limit_kbps: u32,
-    /// Проверять, вышла ли новая версия Quarry (страница релизов GitHub).
+    /// Проверять, вышла ли новая версия Lime (страница релизов GitHub).
     #[serde(default = "yes")]
     pub check_launcher_updates: bool,
 }

@@ -1,4 +1,4 @@
-//! Проверка новой версии Quarry на странице релизов GitHub. Ничего не скачивает и не
+//! Проверка новой версии Lime на странице релизов GitHub. Ничего не скачивает и не
 //! устанавливает сама: лаунчер только предлагает открыть страницу релиза.
 
 use crate::error::Result;
@@ -31,7 +31,7 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
-/// Последний релиз на GitHub, если он новее этой версии Quarry.
+/// Последний релиз на GitHub, если он новее этой версии Lime.
 pub async fn latest() -> Result<Option<Release>> {
     #[derive(serde::Deserialize)]
     struct Gh {

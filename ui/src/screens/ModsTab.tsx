@@ -294,7 +294,7 @@ export function ModsTab({ inst, running }: { inst: Instance; running: boolean })
   };
   const remove = async (f: ModFile) => {
     const world = f.world_content
-      ? t(" Этот мод добавляет в мир блоки, измерения или генерацию: без него часть построек и чанков может пропасть. Quarry сначала сделает бэкап последнего мира.")
+      ? t(" Этот мод добавляет в мир блоки, измерения или генерацию: без него часть построек и чанков может пропасть. Lime сначала сделает бэкап последнего мира.")
       : "";
     const ok = await dialog.confirm({ title: t("Удалить {0}?", f.mods[0]?.name ?? f.file_name), body: t("Перед удалением будет создан снимок — вернуть мод можно на вкладке «Снимки». Если сомневаетесь, лучше выключите мод.") + world, confirm: t("Удалить"), danger: true });
     if (!ok) return;

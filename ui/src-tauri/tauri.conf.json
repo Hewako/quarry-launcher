@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Quarry",
+  "productName": "Lime",
   "identifier": "com.quarry.launcher",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Quarry",
+        "title": "Lime",
         "width": 1280,
         "height": 820,
         "minWidth": 960,

@@ -203,7 +203,7 @@ pub fn parse_search(json: &str) -> Result<Vec<SearchHit>> {
 }
 
 fn no_key() -> Error {
-    Error::invalid("Каталог CurseForge не подключён в этой сборке Quarry (нет ключа API)")
+    Error::invalid("Каталог CurseForge не подключён в этой сборке Lime (нет ключа API)")
 }
 
 async fn get_json(url: &str) -> Result<String> {

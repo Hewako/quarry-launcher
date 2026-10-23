@@ -16,7 +16,7 @@ use std::sync::Arc;
 #[command(
     name = "quarry",
     version,
-    about = "Quarry — открытый лаунчер Minecraft Java Edition"
+    about = "Lime — открытый лаунчер Minecraft Java Edition"
 )]
 struct Cli {
     /// Папка данных (по умолчанию ~/.quarry)

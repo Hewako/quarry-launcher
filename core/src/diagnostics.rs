@@ -116,7 +116,7 @@ pub fn support_report(
     let files = crate::mods::inventory(&game, &dir).unwrap_or_default();
 
     let mut summary = format!(
-        "Отчёт поддержки Quarry\n\nQuarry: {}\nСистема: {} {}\n\nВерсия игры: {}\nЗагрузчик: {} {}\nВход: {:?}\nПамять: {} МБ (откуда: {:?})\nJava: {}\nМодов: {} (включено {})\n",
+        "Отчёт поддержки Lime\n\nLime: {}\nСистема: {} {}\n\nВерсия игры: {}\nЗагрузчик: {} {}\nВход: {:?}\nПамять: {} МБ (откуда: {:?})\nJava: {}\nМодов: {} (включено {})\n",
         crate::launch::LAUNCHER_VERSION,
         std::env::consts::OS,
         std::env::consts::ARCH,
@@ -243,7 +243,7 @@ fn safe_dirs(data: &crate::paths::DataDir) -> [PathBuf; 4] {
     [data.tmp(), data.natives(), data.catalog(), data.skins()]
 }
 
-/// Сколько места занимают данные Quarry, по частям.
+/// Сколько места занимают данные Lime, по частям.
 pub fn storage(data: &crate::paths::DataDir) -> Vec<StoragePart> {
     use crate::paths::dir_size;
     let safe: u64 = safe_dirs(data).iter().map(|d| dir_size(d)).sum();
