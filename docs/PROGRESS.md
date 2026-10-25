@@ -272,3 +272,14 @@ Microsoft (нет client ID), сборка установщиков в Actions (
   release.yml добавлен concurrency по тегу.
 - Не проверено: вход Microsoft и запуск игры из установленной версии (нет client ID).
 
+
+## 25.10.2026 — вход Microsoft проверен вживую
+
+- Mojang одобрил client ID приложения Axel' (`174c3629-…`, письмо Mojang Enforcement).
+- `quarry account login-microsoft` (сборка с QUARRY_MS_CLIENT_ID): device code → Xbox Live → XSTS →
+  login_with_xbox → entitlements → профиль: «Вход выполнен: Kot1ara — Java Edition куплена».
+- `quarry launch fabric-test` (Fabric, 26.3) с этим аккаунтом: «Setting user: Kot1ara», звук и
+  текстуры загружены. В логе запуска и в логе игры токен скрыт.
+- `v0.1.0-rc.3` собран: черновик pre-release, установщики macOS (arm64, x64), Windows (exe, msi),
+  Linux (deb, rpm, AppImage), лицензии сторонних библиотек внутри; client ID вшит.
+- Не проверено: вход и игра из установленной версии на Windows и Linux (владелец), Ely.by вживую.
