@@ -195,9 +195,9 @@ function Shell() {
         <div className="rail-tools">
           <button className={`rail-btn ${screen === "logs" ? "on" : ""}`} aria-label={t("Логи и краши{0}", notes.unread ? t(": новых {0}", notes.unread) : "")} title={t("Логи и краши")}
             onClick={() => { markRead(); setScreen("logs"); }}>
-            🔔{notes.unread > 0 && <span className="adot" aria-hidden />}
+            <Icon d={BELL} />{notes.unread > 0 && <span className="adot" aria-hidden />}
           </button>
-          <button className={`rail-btn ${screen === "settings" ? "on" : ""}`} aria-label={t("Настройки")} title={t("Настройки")} onClick={() => setScreen("settings")}>⚙</button>
+          <button className={`rail-btn ${screen === "settings" ? "on" : ""}`} aria-label={t("Настройки")} title={t("Настройки")} onClick={() => setScreen("settings")}><Icon d={GEAR} /></button>
           <button className={`rail-btn avatar ${screen === "accounts" ? "on" : ""}`} aria-label={t("Аккаунты и скины: {0}", ms ? nick(ms.name, streamer) : t("нет аккаунта"))} title={t("Аккаунты и скины")} onClick={() => setScreen("accounts")}>
             <Avatar account={ms} />
           </button>
@@ -277,6 +277,13 @@ function Shell() {
     </div>
   );
 }
+
+/** Значки рельсы — контуром, одним размером и цветом текста (эмодзи и символы шрифта выглядели вразнобой). */
+const Icon = ({ d }: { d: string }) => (
+  <svg className="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" aria-hidden><path d={d} /></svg>
+);
+const BELL = "M6 17V11a6 6 0 0 1 12 0v6l1.6 1.8H4.4Z M10 21a2.2 2.2 0 0 0 4 0";
+const GEAR = "M19.06 10.57 L21.52 10.76 L21.52 13.24 L19.06 13.43 L18.00 15.98 L19.61 17.85 L17.85 19.61 L15.98 18.00 L13.43 19.06 L13.24 21.52 L10.76 21.52 L10.57 19.06 L8.02 18.00 L6.15 19.61 L4.39 17.85 L6.00 15.98 L4.94 13.43 L2.48 13.24 L2.48 10.76 L4.94 10.57 L6.00 8.02 L4.39 6.15 L6.15 4.39 L8.02 6.00 L10.57 4.94 L10.76 2.48 L13.24 2.48 L13.43 4.94 L15.98 6.00 L17.85 4.39 L19.61 6.15 L18.00 8.02 Z M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0Z";
 
 export default function App() {
   return (

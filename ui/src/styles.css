@@ -307,7 +307,8 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px;
 .tile.on .sdot { border-color: var(--panel2); }
 .sdot.ok { background: var(--accent); } .sdot.err { background: var(--err); } .sdot.warn { background: var(--warn); } .sdot.idle { background: #6b7d74; }
 .rail-tools { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 10px; }
-.rail-btn { position: relative; width: 40px; height: 36px; border: 0; background: none; color: var(--muted); border-radius: 8px; font-size: 16px; }
+.rail-btn { position: relative; width: 40px; height: 36px; border: 0; background: none; color: var(--muted); border-radius: 8px; display: grid; place-items: center; }
+.rail-btn .ico { display: block; }
 .rail-btn:hover, .rail-btn.on { color: var(--text); background: var(--panel2); }
 .rail-btn.avatar { height: 40px; padding: 0; margin-top: 6px; }
 .adot { position: absolute; right: 9px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
